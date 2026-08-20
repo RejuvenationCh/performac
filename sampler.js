@@ -10,7 +10,7 @@ import {
 } from './collectors.js';
 import { sweep, getSetting, setSetting } from './db.js';
 import { cacheTargets, measure } from './paths.js';
-import { cacheGrowth } from './rules.js';
+import { cacheGrowth, thermalDuringExport } from './rules.js';
 import { maybeNotify } from './notify.js';
 
 let lastTickAt = null;
@@ -28,6 +28,11 @@ export function findingsGeneratedAt() {
 export async function refreshFindings(db, cfg, now, exec) {
   const findings = [
     ...cacheGrowth(db.prepare('SELECT * FROM cache_samples').all(), cfg, now),
+    ...thermalDuringExport(
+      db.prepare('SELECT * FROM proc_samples ORDER BY ts').all(),
+      db.prepare("SELECT * FROM events WHERE kind = 'thermal' ORDER BY ts").all(),
+      cfg, now
+    ),
   ];
   if (getSetting(db, 'premiere-sidebyside') === '1') {
     findings.push({

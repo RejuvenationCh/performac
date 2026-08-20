@@ -17,6 +17,90 @@ function ageText(ageDays) {
   return `${Math.round(ageDays)} days`;
 }
 
+// export windows (≥ export.cpuPct sustained ≥ export.minMinutes, gaps < 2 min merged)
+// × elevated intervals from thermlog level events (1/2 opens, 0 closes, open at now stays open)
+export function thermalDuringExport(procSamples, thermalEvents, cfg, now) {
+  const therm = thermalEvents
+    .filter(e => e.kind === 'thermal' && e.key === 'thermlog')
+    .sort((a, b) => a.ts - b.ts);
+  const intervals = [];
+  let open = null;
+  let maxLevel = 0;
+  for (const e of therm) {
+    const level = Number(e.detail);
+    if (level >= 1) {
+      if (open === null) open = e.ts;
+      maxLevel = Math.max(maxLevel, level);
+    } else if (open !== null) {
+      intervals.push({ start: open, end: e.ts, maxLevel });
+      open = null;
+      maxLevel = 0;
+    }
+  }
+  if (open !== null) intervals.push({ start: open, end: now, maxLevel });
+
+  const byPrefix = new Map();
+  for (const s of procSamples) {
+    const prefix = cfg.exportProcs.find(p => s.name.startsWith(p));
+    if (!prefix || s.cpu < cfg.export.cpuPct) continue;
+    if (!byPrefix.has(prefix)) byPrefix.set(prefix, []);
+    byPrefix.get(prefix).push(s);
+  }
+
+  const out = [];
+  for (const samples of byPrefix.values()) {
+    samples.sort((a, b) => a.ts - b.ts);
+    let winStart = null;
+    let lastTs = null;
+    let peak = 0;
+    let winName = null;
+    const closeWindow = () => {
+      if (winStart === null) return;
+      if (lastTs - winStart < cfg.export.minMinutes * 60000) return;
+      for (const iv of intervals) {
+        const overlap = Math.min(lastTs, iv.end) - Math.max(winStart, iv.start);
+        if (overlap < cfg.thermal.minElevatedMinutes * 60000) continue;
+        // ponytail: 30-min red line is plan-literal (not a DEFAULTS knob); calibrate in rules if it bites
+        const red = overlap >= 30 * 60000 || iv.maxLevel >= 2;
+        out.push({
+          id: `thermal-export-${slug(winName)}`,
+          kind: 'thermal',
+          severity: red ? 'red' : 'amber',
+          headline: `Thermal pressure ran elevated for ${Math.round(overlap / 60000)} min during your ${winName} export`,
+          why: `Your export ran ~${Math.round((lastTs - winStart) / 60000)} min with a peak of ${Math.round(peak)}% CPU, and thermal warning level ${iv.maxLevel} overlapped for ${Math.round(overlap / 60000)} of those minutes — sustained encode heat, not a spike.`,
+          detail: 'Check fan intakes for dust and consider a stand that improves airflow under load.',
+          linkKind: null,
+          linkTarget: null,
+        });
+        break;   // one card per export window
+      }
+    };
+    for (const s of samples) {
+      if (winStart === null) {
+        winStart = s.ts;
+        lastTs = s.ts;
+        peak = s.cpu;
+        winName = s.name;
+      } else if (s.ts - lastTs >= 2 * 60000) {
+        closeWindow();
+        winStart = s.ts;
+        lastTs = s.ts;
+        peak = s.cpu;
+        winName = s.name;
+      } else {
+        lastTs = s.ts;
+        peak = Math.max(peak, s.cpu);
+      }
+    }
+    closeWindow();
+  }
+  return out;
+}
+
+function slug(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
 // one Finding per cache id over the amber threshold; red/amber when stale, info when active
 export function cacheGrowth(cacheSamples, cfg, now) {
   const byId = new Map();
