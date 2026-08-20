@@ -3,23 +3,125 @@
 // so tests never touch real binaries. deps.execFile resolves {stdout}; deps.statfs
 // resolves the fs.statfs object; deps.now() returns ms.
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   parsePs, parseFrontAppName, parseTherm, parseThermlogLine, parseDiskutilActivity,
 } from './collectors.js';
-import { sweep } from './db.js';
+import { sweep, getSetting, setSetting } from './db.js';
+import { cacheTargets, measure } from './paths.js';
+import { cacheGrowth } from './rules.js';
+import { maybeNotify } from './notify.js';
 
 let lastTickAt = null;
 export function lastTick() {
   return lastTickAt;
 }
 
-// rules arrive per-feature (Task 6+). Task 5 keeps the shell.
-export async function refreshFindings() {
-  return [];
+let lastFindingsAt = null;
+export function findingsGeneratedAt() {
+  return lastFindingsAt;
+}
+
+// run all rules, upsert findings by id, delete ids no longer produced, notify.
+// exec is the injected execFile ({stdout} contract) used by maybeNotify.
+export async function refreshFindings(db, cfg, now, exec) {
+  const findings = [
+    ...cacheGrowth(db.prepare('SELECT * FROM cache_samples').all(), cfg, now),
+  ];
+  if (getSetting(db, 'premiere-sidebyside') === '1') {
+    findings.push({
+      id: 'cache-premiere-sidebyside', kind: 'cache', severity: 'info',
+      headline: 'Premiere keeps its media cache next to your media',
+      why: "Side-by-side caching is on in Premiere's prefs, so the cache grows wherever your footage lives.",
+      detail: 'Size and clear it from Premiere: Settings → Media Cache.',
+      linkKind: null, linkTarget: null,
+    });
+  }
+  const upsert = db.prepare(
+    `INSERT INTO findings(id, kind, severity, headline, why, detail, link_kind, link_target, first_seen, updated, last_notified)
+     VALUES(?,?,?,?,?,?,?,?,?,?,NULL)
+     ON CONFLICT(id) DO UPDATE SET kind=excluded.kind, severity=excluded.severity, headline=excluded.headline,
+       why=excluded.why, detail=excluded.detail, link_kind=excluded.link_kind, link_target=excluded.link_target,
+       updated=excluded.updated`
+  );
+  for (const f of findings) {
+    upsert.run(f.id, f.kind, f.severity, f.headline, f.why, f.detail, f.linkKind ?? null, f.linkTarget ?? null, now, now);
+  }
+  if (findings.length) {
+    const marks = findings.map(() => '?').join(',');
+    db.prepare(`DELETE FROM findings WHERE id NOT IN (${marks})`).run(...findings.map(f => f.id));
+  } else {
+    db.prepare('DELETE FROM findings').run();
+  }
+  if (exec) {
+    for (const f of findings) await maybeNotify(db, f, cfg, now, exec);
+  }
+  lastFindingsAt = now;
 }
 
 const GB = 1073741824;
 const RECENT_MS = 5000;   // reconcile dedupes against stream events newer than this
+
+// hourly: measure every cache target (D2 registry) into cache_samples, then refresh findings
+export async function cacheTick(db, cfg, deps) {
+  const t = deps.now();
+  const home = os.homedir();
+
+  let lrcats;
+  const cached = getSetting(db, 'lrcatCache');
+  if (cached && t - cached.ts < 86400000) {
+    lrcats = cached.paths;
+  } else {
+    try {
+      const { stdout } = await deps.execFile('mdfind', ['kMDItemFSName == "*.lrcat"']);
+      lrcats = String(stdout).split('\n').map(s => s.trim()).filter(Boolean);
+      setSetting(db, 'lrcatCache', { ts: t, paths: lrcats });
+    } catch {
+      lrcats = cached?.paths ?? [];
+    }
+  }
+
+  const readText = async (...parts) => {
+    try { return await fs.promises.readFile(path.join(home, ...parts), 'utf8'); } catch { return ''; }
+  };
+  const resolveCfg = await readText('Library/Preferences/Blackmagic Design/DaVinci Resolve/config.dat');
+  const prefs = await readPremierePrefs(home);
+
+  const targets = cacheTargets(cfg, { resolveCfg, prefs, lrcatPaths: lrcats });
+  const sideBySide = targets.find(t => t.id === 'premiere-media')?.note === 'side-by-side';
+  if (sideBySide) setSetting(db, 'premiere-sidebyside', '1');
+  else db.prepare('DELETE FROM settings WHERE key = ?').run('premiere-sidebyside');
+
+  const ins = db.prepare(
+    'INSERT INTO cache_samples(ts, cache_id, path, size_mb, newest_mtime, file_count) VALUES(?,?,?,?,?,?)'
+  );
+  for (const tg of targets) {
+    if (tg.note === 'side-by-side') continue;    // say so on the card instead of measuring
+    if (!fs.existsSync(tg.path)) continue;       // optional/absent → skip silently
+    const m = await measure(tg.path);
+    ins.run(t, tg.id, tg.path, Math.round(m.sizeMb), m.newestMtime, m.fileCount);
+  }
+  await refreshFindings(db, cfg, t, deps.execFile).catch(err => console.error('refreshFindings', err));
+}
+
+async function readPremierePrefs(home) {
+  try {
+    const versions = await fs.promises.readdir(path.join(home, 'Documents/Adobe/Premiere Pro'));
+    for (const v of versions) {
+      try {
+        const profiles = await fs.promises.readdir(path.join(home, 'Documents/Adobe/Premiere Pro', v));
+        for (const prof of profiles) {
+          if (!prof.startsWith('Profile-')) continue;
+          return await fs.promises.readFile(
+            path.join(home, 'Documents/Adobe/Premiere Pro', v, prof, 'Adobe Premiere Pro Prefs'), 'utf8'
+          );
+        }
+      } catch { /* try next version dir */ }
+    }
+  } catch { /* no Premiere on this machine */ }
+  return '';
+}
 
 export function startSampler(db, cfg, deps) {
   const { execFile, spawn, statfs } = deps;
@@ -80,7 +182,7 @@ export function startSampler(db, cfg, deps) {
     lastVolumes = vols;
 
     lastTickAt = t;
-    await refreshFindings(db, cfg, t).catch(err => console.error('refreshFindings', err));
+    await refreshFindings(db, cfg, t, execFile).catch(err => console.error('refreshFindings', err));
   }
 
   async function diskTick() {
@@ -94,7 +196,7 @@ export function startSampler(db, cfg, deps) {
       const st = await statfs(p);
       insertDisk.run(t, name, st.bavail * st.bsize / GB, st.blocks * st.bsize / GB);
     }
-    await refreshFindings(db, cfg, t).catch(err => console.error('refreshFindings', err));
+    await refreshFindings(db, cfg, t, execFile).catch(err => console.error('refreshFindings', err));
   }
 
   function startStream(bin, args, onLine) {
@@ -123,9 +225,10 @@ export function startSampler(db, cfg, deps) {
   // intervals only (unref'd so the HTTP server owns the process lifetime) — first data 30s after boot
   setInterval(() => tick().catch(err => console.error('tick', err)), cfg.tickSec * 1000).unref();
   setInterval(() => diskTick().catch(err => console.error('diskTick', err)), cfg.diskTickSec * 1000).unref();
+  setInterval(() => cacheTick(db, cfg, deps).catch(err => console.error('cacheTick', err)), cfg.cacheTickSec * 1000).unref();
   setInterval(() => {
     try { sweep(db, cfg, now()); } catch (err) { console.error('sweep', err); }
-    refreshFindings(db, cfg, now()).catch(err => console.error('refreshFindings', err));
+    refreshFindings(db, cfg, now(), execFile).catch(err => console.error('refreshFindings', err));
   }, 3600000).unref();
 
   startStream('diskutil', ['activity'], line => {
@@ -142,5 +245,5 @@ export function startSampler(db, cfg, deps) {
     for (const c of streams) { try { c.kill(); } catch { /* already gone */ } }
   }
 
-  return { tick, diskTick, stop };
+  return { tick, diskTick, cacheTick: () => cacheTick(db, cfg, deps), stop };
 }
