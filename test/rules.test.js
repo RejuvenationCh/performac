@@ -1,7 +1,7 @@
 // rules tests — cacheGrowth, thermalDuringExport (further rules arrive per-feature)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cacheGrowth, thermalDuringExport, driveInstability, backupStaleness, dupFindings, sustainedHogs, idleLoaded } from '../rules.js';
+import { cacheGrowth, thermalDuringExport, driveInstability, backupStaleness, dupFindings, sustainedHogs, idleLoaded, storageTrend } from '../rules.js';
 
 const DAY = 86400000;
 const NOW = 1756000000000;
@@ -366,4 +366,51 @@ test('idle-loaded: below RSS threshold → no finding', () => {
 test('idle-loaded: stale samples ignored', () => {
   const procs = [{ ts: NOW - 3 * 3600000, pid: 1, name: 'Zen', cpu: 5, rss_mb: 9000 }];
   assert.deepEqual(idleLoaded(procs, [], hcfg, NOW), []);
+});
+
+const scfg = { storage: { fitDays: 14, warnWeeksLeft: 8, redWeeksLeft: 3 } };
+
+// daily samples over nDays; free_gb = f(dayIndex)
+function diskSamples(vol, nDays, f) {
+  const rows = [];
+  for (let d = 0; d < nDays; d++) {
+    rows.push({ ts: NOW - (nDays - 1 - d) * DAY, volume: vol, free_gb: f(d), total_gb: 1000 });
+  }
+  return rows;
+}
+
+test('storage: 80→62 GB over 14 days (9 GB/week) → amber, weeks-left math', () => {
+  const rows = diskSamples('Macintosh HD', 15, d => 80 - d * (18 / 14));
+  const fs = storageTrend(rows, scfg, NOW);
+  assert.equal(fs.length, 1);
+  assert.equal(fs[0].severity, 'amber');
+  assert.equal(fs[0].headline, 'Macintosh HD is losing ~9 GB a week — full in about 7 weeks at this rate');
+  assert.ok(fs[0].why.includes('14') && fs[0].why.includes('62'), fs[0].why);
+});
+
+test('storage: under redWeeksLeft → red', () => {
+  const rows = diskSamples('Macintosh HD', 15, d => 100 - d * (60 / 14));   // ~30 GB/week
+  const fs = storageTrend(rows, scfg, NOW);
+  assert.equal(fs.length, 1);
+  assert.equal(fs[0].severity, 'red');
+});
+
+test('storage: growing → no finding', () => {
+  const rows = diskSamples('Macintosh HD', 15, d => 50 + d);
+  assert.deepEqual(storageTrend(rows, scfg, NOW), []);
+});
+
+test('storage: flat → no finding', () => {
+  const rows = diskSamples('Macintosh HD', 15, () => 62);
+  assert.deepEqual(storageTrend(rows, scfg, NOW), []);
+});
+
+test('storage: < 4 days of history → insufficient fit, no finding', () => {
+  const rows = diskSamples('Macintosh HD', 4, d => 80 - d * 3);
+  assert.deepEqual(storageTrend(rows, scfg, NOW), []);
+});
+
+test('storage: slow drain under warnWeeksLeft → no finding', () => {
+  const rows = diskSamples('Macintosh HD', 15, d => 500 - d * 0.1);   // ~0.05 GB/week
+  assert.deepEqual(storageTrend(rows, scfg, NOW), []);
 });

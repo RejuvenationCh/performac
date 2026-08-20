@@ -74,7 +74,7 @@ function renderToday(f) {
   }
 }
 
-function renderDigest(f) {
+function renderDigest(f, trends) {
   const intro = $('#digest-intro');
   const cards = $('#digest-cards');
   intro.textContent = f.coachIntro || '3 things worth doing this week, biggest first.';
@@ -82,12 +82,55 @@ function renderDigest(f) {
   cards.append(el('p', 'card-why', f.dupScan
     ? `Duplicate scan: last run ${fmtAgo(f.dupScan)}`
     : 'Duplicate scan: never run.'));
+  renderSparklines(trends);
   const all = (f.digest || []).slice().sort((a, b) => SEV_RANK[b.severity] - SEV_RANK[a.severity]);
   if (!all.length) {
     cards.append(el('p', 'card-why', 'Nothing worth doing — Performac is watching.'));
     return;
   }
   for (const item of all) cards.append(renderCard(item));
+}
+
+// 90px-tall inline-SVG sparklines per volume, straight from /api/trends (no library)
+function renderSparklines(trends) {
+  const box = $('#digest-sparklines');
+  box.replaceChildren();
+  const byVol = new Map();
+  for (const p of trends?.disk ?? []) {
+    if (!byVol.has(p.volume)) byVol.set(p.volume, []);
+    byVol.get(p.volume).push(p);
+  }
+  for (const [volume, points] of byVol) {
+    if (points.length < 2) continue;
+    const tile = el('div', 'tile');
+    const w = 120;
+    const h = 90;
+    const min = Math.min(...points.map(p => p.freeGb));
+    const max = Math.max(...points.map(p => p.freeGb));
+    const span = max - min || 1;
+    const d = points
+      .map((p, i) => `${i === 0 ? 'M' : 'L'}${((i / (points.length - 1)) * w).toFixed(1)},${(h - ((p.freeGb - min) / span) * h).toFixed(1)}`)
+      .join(' ');
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    svg.style.width = `${w}px`;
+    svg.style.height = `${h}px`;
+    svg.setAttribute('aria-label', `${volume} free space over time`);
+    const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    pathEl.setAttribute('d', d);
+    pathEl.setAttribute('fill', 'none');
+    pathEl.setAttribute('stroke', 'var(--primary)');
+    pathEl.setAttribute('stroke-width', '1.8');
+    pathEl.setAttribute('stroke-linecap', 'round');
+    svg.append(pathEl);
+    const latest = points[points.length - 1].freeGb;
+    tile.append(
+      el('p', 'card-title', volume),
+      svg,
+      el('p', 'card-why num', `${latest.toFixed(0)} GB free`),
+    );
+    box.append(tile);
+  }
 }
 
 function fmtAgo(ts) {
@@ -194,9 +237,14 @@ function fmtTick(ts) {
 
 async function refresh() {
   let findings = { live: [], digest: [], coachIntro: null };
+  let trends = { disk: [] };
   try {
     const r = await fetch('/api/findings');
     if (r.ok) findings = await r.json();
+  } catch {}
+  try {
+    const r = await fetch('/api/trends?days=30');
+    if (r.ok) trends = await r.json();
   } catch {}
   try {
     const r = await fetch('/api/health');
@@ -206,7 +254,7 @@ async function refresh() {
     }
   } catch {}
   renderToday(findings);
-  renderDigest(findings);
+  renderDigest(findings, trends);
 }
 
 let view = 'today';

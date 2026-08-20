@@ -11,7 +11,7 @@ import {
 } from './collectors.js';
 import { sweep, getSetting, setSetting } from './db.js';
 import { cacheTargets, measure } from './paths.js';
-import { cacheGrowth, thermalDuringExport, driveInstability, backupStaleness, sustainedHogs, idleLoaded } from './rules.js';
+import { cacheGrowth, thermalDuringExport, driveInstability, backupStaleness, sustainedHogs, idleLoaded, storageTrend } from './rules.js';
 import { maybeNotify } from './notify.js';
 
 let lastTickAt = null;
@@ -52,6 +52,7 @@ export async function refreshFindings(db, cfg, now, exec) {
       db.prepare("SELECT * FROM events WHERE kind = 'front_app'").all(),
       cfg, now
     ),
+    ...storageTrend(db.prepare('SELECT * FROM disk_samples').all(), cfg, now),
   ];
   if (getSetting(db, 'premiere-sidebyside') === '1') {
     findings.push({

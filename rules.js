@@ -44,6 +44,50 @@ function ageText(ageDays) {
   return `${Math.round(ageDays)} days`;
 }
 
+// per-volume least-squares fit over fitDays; weeks-left math from the slope.
+// Requires ≥ 4 days of history — a shorter fit is noise, not a trend.
+export function storageTrend(diskSamples, cfg, now) {
+  const since = now - cfg.storage.fitDays * DAY;
+  const byVol = new Map();
+  for (const s of diskSamples) {
+    if (s.ts < since) continue;
+    if (!byVol.has(s.volume)) byVol.set(s.volume, []);
+    byVol.get(s.volume).push(s);
+  }
+  const out = [];
+  for (const [vol, rows] of byVol) {
+    rows.sort((a, b) => a.ts - b.ts);
+    if (rows.length < 2 || now - rows[0].ts < 4 * DAY) continue;
+    const n = rows.length;
+    const meanX = rows.reduce((a, s) => a + s.ts, 0) / n;
+    const meanY = rows.reduce((a, s) => a + s.free_gb, 0) / n;
+    let num = 0;
+    let den = 0;
+    for (const s of rows) {
+      num += (s.ts - meanX) * (s.free_gb - meanY);
+      den += (s.ts - meanX) ** 2;
+    }
+    const gbPerWeek = (num / den) * 7 * 86400000;
+    // ponytail: -0.5 GB/week "≈ flat" line is plan-literal; calibrate if cards get noisy
+    if (gbPerWeek >= -0.5) continue;
+    const currentFree = rows[rows.length - 1].free_gb;
+    const weeksLeft = currentFree / -gbPerWeek;
+    if (weeksLeft >= cfg.storage.warnWeeksLeft) continue;
+    const severity = weeksLeft < cfg.storage.redWeeksLeft ? 'red' : 'amber';
+    out.push({
+      id: `storage-${slug(vol)}`,
+      kind: 'storage',
+      severity,
+      headline: `${vol} is losing ~${Math.round(-gbPerWeek)} GB a week — full in about ${Math.round(weeksLeft)} weeks at this rate`,
+      why: `Free space fell from ${rows[0].free_gb.toFixed(0)} GB to ${currentFree.toFixed(0)} GB over the last ${Math.round((now - rows[0].ts) / DAY)} days, with ${currentFree.toFixed(0)} GB free now.`,
+      detail: '',
+      linkKind: null,
+      linkTarget: null,
+    });
+  }
+  return out;
+}
+
 // sustained: window of qualifying ticks ≥ minMinutes with ≥ 80% of expected samples present.
 // Export-class procs are excluded while they look like an export (that's supposed to eat CPU).
 export function sustainedHogs(procSamples, cfg, now) {
