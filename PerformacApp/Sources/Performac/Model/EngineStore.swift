@@ -33,9 +33,6 @@ final class EngineStore: ObservableObject {
     var sampler: Sampler?
     private var scanTask: Task<Void, Never>?
     private var scanStart: Date?
-    /// The whole scanned tree, keyed by parent path, so descending is instant and never
-    /// rescans. Built once per scan.
-    private var treeByParent: [String: [SizeEntry]] = [:]
     /// Where the browser currently is. Starts at the scan root; clicking a folder descends.
     @Published var browsePath: String = NSHomeDirectory()
     /// What gets scanned. Never assumed: the user picks home, a mounted volume, or any folder.
@@ -313,23 +310,35 @@ final class EngineStore: ObservableObject {
         setSetting(db, "diskScanRoot", JSONValue.from(["path": path]))
     }
 
-    /// Group every entry under its parent, biggest first — the browser reads straight from
-    /// this, so descending a folder is a dictionary lookup, not another walk.
+    /// Persist the whole tree, replacing the previous scan. One transaction: ~100k rows
+    /// otherwise takes minutes of individual commits.
     private func buildTree(_ sum: ScanSummary) {
-        var byParent: [String: [SizeEntry]] = [:]
+        db.prepare("BEGIN").run([])
+        db.prepare("DELETE FROM scan_entries").run([])
+        let ins = db.prepare("INSERT INTO scan_entries(parent,name,items,bytes,is_dir) VALUES(?,?,?,?,?)")
         for e in sum.entries {
-            byParent[e.parent, default: []].append(SizeEntry(
-                name: e.name,
-                items: e.isDirectory ? e.files : 0,
-                bytes: e.bytes,
-                symbol: e.isDirectory ? "folder.fill" : "doc.fill",
-                kind: Self.fileKind(forPath: e.path)))
+            ins.run([.text(e.parent), .text(e.name),
+                     .int(Int64(e.isDirectory ? e.files : 0)), .int(e.bytes),
+                     .int(e.isDirectory ? 1 : 0)])
         }
-        for k in byParent.keys { byParent[k]?.sort { $0.bytes > $1.bytes } }
-        treeByParent = byParent
+        db.prepare("COMMIT").run([])
     }
 
-    func childrenOf(_ path: String) -> [SizeEntry] { treeByParent[path] ?? [] }
+    /// Reads from the table, so a scan from last week browses exactly like a fresh one.
+    func childrenOf(_ path: String) -> [SizeEntry] {
+        db.prepare("SELECT name, items, bytes, is_dir FROM scan_entries WHERE parent = ? ORDER BY bytes DESC")
+            .all([.text(path)])
+            .map { r in
+                let isDir = (r["is_dir"]?.intVal ?? 1) == 1
+                let name = r["name"]?.stringVal ?? ""
+                return SizeEntry(
+                    name: name,
+                    items: Int(r["items"]?.intVal ?? 0),
+                    bytes: r["bytes"]?.intVal ?? 0,
+                    symbol: isDir ? "folder.fill" : "doc.fill",
+                    kind: Self.fileKind(forPath: (path as NSString).appendingPathComponent(name)))
+            }
+    }
 
     /// Descend into a folder. Files and empty folders are not navigable.
     func browse(into name: String) {
@@ -341,9 +350,10 @@ final class EngineStore: ObservableObject {
 
     /// Jump to any ancestor from the breadcrumb.
     func browse(to path: String) {
-        guard treeByParent[path] != nil else { return }
+        let kids = childrenOf(path)
+        guard !kids.isEmpty else { return }
         browsePath = path
-        diskEntries = childrenOf(path)
+        diskEntries = kids
     }
 
     /// Breadcrumb components from the scan root down to where we are.
@@ -390,11 +400,8 @@ final class EngineStore: ObservableObject {
     private func persistScan(_ when: Date?) {
         let ts = Int64((when ?? Date()).timeIntervalSince1970 * 1000)
         lastScanAt = ts
-        let entries: [[String: Any]] = diskEntries.map {
-            ["name": $0.name, "items": $0.items, "bytes": Double($0.bytes), "kind": $0.kind.rawValue]
-        }
-        setSetting(db, "lastDiskScan",
-                   JSONValue.from(["ts": Double(ts), "entries": entries, "root": scanRoot]))
+        // Only the metadata: the tree itself is already in scan_entries.
+        setSetting(db, "lastDiskScan", JSONValue.from(["ts": Double(ts), "root": scanRoot]))
     }
 
     func loadPersistedScan() {
@@ -402,14 +409,10 @@ final class EngineStore: ObservableObject {
         if let saved = getSetting(db, "diskScanRoot")?.objectVal?["path"]?.stringVal { scanRoot = saved }
         guard let o = getSetting(db, "lastDiskScan")?.objectVal else { return }
         lastScanAt = o["ts"]?.doubleVal.map { Int64($0) }
-        diskEntries = (o["entries"]?.arrayVal ?? []).compactMap { v in
-            guard let e = v.objectVal, let name = e["name"]?.stringVal else { return nil }
-            return SizeEntry(
-                name: name,
-                items: Int(e["items"]?.doubleVal ?? 0),
-                bytes: Int64(e["bytes"]?.doubleVal ?? 0),
-                kind: FileKind(rawValue: e["kind"]?.stringVal ?? "") ?? .other)
-        }
+        // The tree lives in scan_entries, so a stale scan is fully browsable on relaunch.
+        let root = (o["root"]?.stringVal ?? scanRoot as String)
+        browsePath = (root as NSString).expandingTildeInPath
+        diskEntries = childrenOf(browsePath)
     }
 
     /// Heuristic file-kind buckets for the treemap legend — folder-name based.

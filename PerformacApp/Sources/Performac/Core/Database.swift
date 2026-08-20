@@ -53,6 +53,13 @@ CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS trash_log(
   ts INTEGER NOT NULL, path TEXT NOT NULL, ok INTEGER NOT NULL, detail TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS idx_trash_ts ON trash_log(ts);
+-- The last disk scan's tree. Kept in a table rather than a settings blob so browsing a
+-- stale scan is the same indexed lookup as browsing a fresh one — one code path, and a
+-- ~100k-node home directory never has to be held in memory or re-parsed as JSON.
+CREATE TABLE IF NOT EXISTS scan_entries(
+  parent TEXT NOT NULL, name TEXT NOT NULL, items INTEGER NOT NULL,
+  bytes INTEGER NOT NULL, is_dir INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_scan_parent ON scan_entries(parent);
 """
 
 final class DB: @unchecked Sendable {
