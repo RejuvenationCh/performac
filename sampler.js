@@ -103,7 +103,23 @@ export async function cacheTick(db, cfg, deps) {
   const resolveCfg = await readText('Library/Preferences/Blackmagic Design/DaVinci Resolve/config.dat');
   const prefs = await readPremierePrefs(home);
 
-  const targets = cacheTargets(cfg, { resolveCfg, prefs, lrcatPaths: lrcats });
+  // discover big per-bundle cache dirs in ~/Library/Caches (fixed registry entries skipped here)
+  const FIXED_CACHE_NAMES = new Set(['com.apple.dt.Xcode', 'Google', 'BraveSoftware', 'zen']);
+  const cacheDirs = [];
+  try {
+    for (const name of await fs.promises.readdir(path.join(home, 'Library/Caches'))) {
+      if (name.startsWith('.') || FIXED_CACHE_NAMES.has(name)) continue;
+      const p = path.join(home, 'Library/Caches', name);
+      let st;
+      try { st = await fs.promises.stat(p); } catch { continue; }
+      if (!st.isDirectory()) continue;
+      const m = await measure(p);
+      // ponytail: 500 MB discovery line is plan-literal; calibrate if cards get noisy
+      if (m.sizeMb > 500) cacheDirs.push({ name, sizeMb: Math.round(m.sizeMb), newestMtime: m.newestMtime, fileCount: m.fileCount });
+    }
+  } catch { /* no caches dir */ }
+
+  const targets = cacheTargets(cfg, { resolveCfg, prefs, lrcatPaths: lrcats, cacheDirs });
   const sideBySide = targets.find(t => t.id === 'premiere-media')?.note === 'side-by-side';
   if (sideBySide) setSetting(db, 'premiere-sidebyside', '1');
   else db.prepare('DELETE FROM settings WHERE key = ?').run('premiere-sidebyside');
@@ -113,8 +129,8 @@ export async function cacheTick(db, cfg, deps) {
   );
   for (const tg of targets) {
     if (tg.note === 'side-by-side') continue;    // say so on the card instead of measuring
-    if (!fs.existsSync(tg.path)) continue;       // optional/absent → skip silently
-    const m = await measure(tg.path);
+    if (!tg.measurement && !fs.existsSync(tg.path)) continue;   // optional/absent → skip silently
+    const m = tg.measurement ?? await measure(tg.path);
     ins.run(t, tg.id, tg.path, Math.round(m.sizeMb), m.newestMtime, m.fileCount);
   }
   await refreshFindings(db, cfg, t, deps.execFile).catch(err => console.error('refreshFindings', err));

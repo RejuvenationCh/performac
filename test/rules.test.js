@@ -267,3 +267,30 @@ test('dupFindings: 2 copies → info; 3 copies → amber; sorted by wasted bytes
 test('dupFindings: empty → empty', () => {
   assert.deepEqual(dupFindings([], { dup: { minMb: 100 } }), []);
 });
+
+test('generic safe cache stale 30 d → amber with Open Purge link-out', () => {
+  const genCfg = { cacheRules: { amberGb: 2, redGb: 20, staleDays: 21 } };
+  const rows = [{
+    ts: NOW, cache_id: 'gen-npm', path: '/x/npm',
+    size_mb: 3072, newest_mtime: NOW - 30 * DAY, file_count: 10,
+  }];
+  const fs = cacheGrowth(rows, genCfg, NOW);
+  assert.equal(fs.length, 1);
+  assert.equal(fs[0].severity, 'amber');
+  assert.equal(fs[0].linkKind, 'open_purge');
+  assert.ok(fs[0].headline.includes("npm's cache"), fs[0].headline);
+  assert.ok(fs[0].headline.includes('30 days'), fs[0].headline);
+});
+
+test('generic check-first cache → reveal link, browser rebuild note', () => {
+  const genCfg = { cacheRules: { amberGb: 2, redGb: 20, staleDays: 21 } };
+  const rows = [{
+    ts: NOW, cache_id: 'gen-zen', path: '/x/zen',
+    size_mb: 3072, newest_mtime: NOW - 40 * DAY, file_count: 10,
+  }];
+  const fs = cacheGrowth(rows, genCfg, NOW);
+  assert.equal(fs.length, 1);
+  assert.equal(fs[0].severity, 'amber');
+  assert.equal(fs[0].linkKind, 'reveal');
+  assert.ok(fs[0].detail.toLowerCase().includes('rebuild'), fs[0].detail);
+});

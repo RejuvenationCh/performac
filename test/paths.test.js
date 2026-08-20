@@ -88,3 +88,26 @@ test('measure: size/newest mtime/count; symlinks skipped; EACCES dirs count 0', 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('generic registry: fixed entries + discovered per-bundle dirs, Purge safety labels', () => {
+  const targets = cacheTargets({}, {
+    home: HOME,
+    cacheDirs: [{ name: 'BigBundle', sizeMb: 600, newestMtime: 1, fileCount: 2 }],
+  });
+  const fixed = ['gen-xcode', 'gen-deriveddata', 'gen-npm', 'gen-google', 'gen-brave', 'gen-zen'];
+  for (const id of fixed) {
+    const t = targets.find(x => x.id === id);
+    assert.ok(t, `missing ${id}`);
+    assert.ok(t.path.startsWith(`${HOME}/Library`) || t.path.startsWith(`${HOME}/.npm`), t.path);
+  }
+  const byId = Object.fromEntries(targets.map(t => [t.id, t]));
+  assert.equal(byId['gen-xcode'].safety, 'safe');
+  assert.equal(byId['gen-google'].safety, 'check-first');
+  assert.equal(byId['gen-brave'].safety, 'check-first');
+  assert.equal(byId['gen-zen'].safety, 'check-first');
+  const big = byId['gen-bigbundle'];
+  assert.ok(big, 'discovered per-bundle dir becomes a target');
+  assert.equal(big.safety, 'safe');
+  assert.equal(big.path, `${HOME}/Library/Caches/BigBundle`);
+  assert.deepEqual(big.measurement, { sizeMb: 600, newestMtime: 1, fileCount: 2 });
+});

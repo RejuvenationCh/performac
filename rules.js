@@ -6,7 +6,34 @@ import { CACHE_META } from './paths.js';
 const DAY = 86400000;
 const LR_META = { app: 'Lightroom Classic', media: true, clearing: 'Lightroom Classic: Catalog Settings → Previews.' };
 
+// generic caches (Task 11): Purge's Safe/Check First split; dynamic per-bundle dirs default to safe
+const GEN_META = {
+  'gen-xcode': { app: 'Xcode', safety: 'safe' },
+  'gen-deriveddata': { app: 'Xcode', safety: 'safe' },
+  'gen-npm': { app: 'npm', safety: 'safe' },
+  'gen-google': { app: 'Google Chrome', safety: 'check-first' },
+  'gen-brave': { app: 'Brave', safety: 'check-first' },
+  'gen-zen': { app: 'Zen', safety: 'check-first' },
+};
+
+function humanize(slugName) {
+  return slugName.split('-').filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
+}
+
 function cacheMeta(id) {
+  if (id.startsWith('gen-')) {
+    const known = GEN_META[id];
+    const app = known?.app ?? humanize(id.slice(4));
+    const safety = known?.safety ?? 'safe';
+    return {
+      app,
+      media: false,
+      safety,
+      clearing: safety === 'check-first'
+        ? 'Browser caches rebuild themselves and clearing signs you out of nothing.'
+        : '',
+    };
+  }
   return CACHE_META[id] ?? (id.startsWith('lr-') ? LR_META : { app: id, media: false, clearing: '' });
 }
 
@@ -283,7 +310,7 @@ export function cacheGrowth(cacheSamples, cfg, now) {
       headline,
       why,
       detail: m.clearing ? `Safest route: clear it from inside the app — ${m.clearing}` : '',
-      linkKind: 'reveal',
+      linkKind: m.safety === 'safe' ? 'open_purge' : 'reveal',
       linkTarget: latest.path,
     });
   }

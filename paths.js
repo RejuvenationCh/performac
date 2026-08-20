@@ -60,6 +60,26 @@ export function cacheTargets(cfg, inputs = {}) {
   }
   if (!defaultCovered) targets.push({ id: 'lr-default', label: 'Lightroom Classic (default catalog)', path: lrHome });
 
+  // generic caches (Task 11) — safety labels mirror Purge's Safe to Clean / Check First
+  const GENERIC = [
+    { id: 'gen-xcode', label: 'Xcode cache', path: path.join(home, 'Library/Caches/com.apple.dt.Xcode'), safety: 'safe' },
+    { id: 'gen-deriveddata', label: 'Xcode DerivedData', path: path.join(home, 'Library/Developer/Xcode/DerivedData'), safety: 'safe' },
+    { id: 'gen-npm', label: 'npm cache', path: path.join(home, '.npm/_cacache'), safety: 'safe' },
+    { id: 'gen-google', label: 'Google Chrome cache', path: path.join(home, 'Library/Caches/Google'), safety: 'check-first' },
+    { id: 'gen-brave', label: 'Brave cache', path: path.join(home, 'Library/Caches/BraveSoftware'), safety: 'check-first' },
+    { id: 'gen-zen', label: 'Zen cache', path: path.join(home, 'Library/Caches/zen'), safety: 'check-first' },
+  ];
+  for (const g of GENERIC) targets.push({ id: g.id, label: g.label, path: g.path, safety: g.safety });
+  for (const d of inputs.cacheDirs ?? []) {
+    targets.push({
+      id: `gen-${slug(d.name)}`,
+      label: `${d.name} cache`,
+      path: path.join(home, 'Library/Caches', d.name),
+      safety: 'safe',
+      measurement: { sizeMb: d.sizeMb, newestMtime: d.newestMtime, fileCount: d.fileCount },   // premeasured — no double walk
+    });
+  }
+
   return targets;
 }
 
