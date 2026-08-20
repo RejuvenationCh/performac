@@ -1,0 +1,8 @@
+{
+  "name": "Performac",
+  "display": "standalone",
+  "start_url": "/",
+  "theme_color": "#edf1f9",
+  "background_color": "#edf1f9",
+  "icons": [{ "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }]
+}

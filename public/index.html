@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Performac</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-512.png">
+<link rel="apple-touch-icon" href="icon-512.png">
+<style>
+:root{
+--canvas:#edf1f9; --surface:#ffffff; --soft:#f3f6fc; --soft-2:#e4eaf6;
+--ink:#0f1729; --ink-2:#39435c; --muted:#69738d; --line:#e5eaf4;
+--primary:#2f5fe0; --primary-hi:#2450c9; --primary-soft:#e5ecfd;
+--green:#0b7052; --green-soft:#d8f2e7; --red:#c02626; --red-soft:#ffe2df;
+--amber:#8c5600; --amber-soft:#fdefd0;
+--r:10px; --r-md:14px; --r-lg:20px;
+--sh:0 1px 2px rgba(26,31,46,.05), 0 10px 30px -10px rgba(26,31,46,.14);
+--rail:64px; --gap:18px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--canvas);color:var(--ink);
+  font:13px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+svg{width:16px;height:16px}
+.num{font-variant-numeric:tabular-nums}
+
+.rail{position:fixed;inset:0 auto 0 0;width:var(--rail);background:var(--surface);
+  border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;
+  gap:8px;padding-top:16px}
+.rail a{width:40px;height:40px;display:grid;place-items:center;border-radius:var(--r);
+  color:var(--muted);transition:background .15s,color .15s}
+.rail a:hover{color:var(--ink-2)}
+.rail a.active{background:var(--primary-soft);color:var(--primary)}
+
+main{margin-left:var(--rail);padding:20px var(--gap) 64px;max-width:920px}
+.topbar{position:sticky;top:0;background:var(--canvas);z-index:5;
+  display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  padding:8px 0 16px}
+.topbar h1{font-size:20px;font-weight:700;margin:0}
+.tick{color:var(--muted);font-size:12px;margin:0;font-variant-numeric:tabular-nums}
+
+.cards{display:flex;flex-direction:column;gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);
+  box-shadow:var(--sh);padding:18px}
+.card-title{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 10px}
+.card-headline{font-size:15px;font-weight:600;margin:0 0 6px}
+.card-why{color:var(--muted);margin:0;max-width:70ch}
+.card-detail{font-size:12px;color:var(--ink-2);margin:8px 0 0;max-width:70ch}
+.tile{background:var(--soft);border-radius:var(--r);padding:12px 14px;margin-top:10px}
+
+.badge{display:inline-block;padding:1px 7px;border-radius:999px;font-size:10px;
+  font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-right:6px;
+  vertical-align:1px}
+.badge.red{background:var(--red-soft);color:var(--red)}
+.badge.amber{background:var(--amber-soft);color:var(--amber)}
+.badge.blue{background:var(--primary-soft);color:var(--primary)}
+.badge.slate{background:var(--soft-2);color:var(--ink-2)}
+
+.hero{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  box-shadow:var(--sh);padding:22px;margin-bottom:14px}
+.hero h2{font-size:17px;font-weight:700;margin:0 0 4px}
+.hero .tile .card-headline{font-size:14px}
+
+.btn{border:1px solid var(--line);background:var(--soft);color:var(--ink-2);
+  padding:6px 12px;border-radius:8px;font:inherit;font-size:12.5px;cursor:pointer;
+  transition:border-color .15s,color .15s;margin-top:12px}
+.btn:hover{border-color:var(--primary);color:var(--primary)}
+.btn.ghost{background:transparent}
+
+.empty{display:flex;align-items:center;gap:10px;color:var(--muted)}
+.empty svg{width:20px;height:20px;color:var(--primary)}
+.intro{color:var(--ink-2);max-width:70ch;margin:0 0 14px}
+.spark-row{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:14px}
+.section-label{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 10px}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px 18px}
+.field label{display:block;font-size:12px;color:var(--ink-2);margin-bottom:4px}
+.field input[type=number]{width:100%;padding:6px 8px;border:1px solid var(--line);
+  border-radius:8px;font:inherit;background:var(--surface)}
+.field input:focus{outline:2px solid var(--primary-soft);border-color:var(--primary)}
+.check-row{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-2)}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition:none!important;animation:none!important}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2.5-6 3.5 12 3-8 1.5 2H22"/></symbol>
+<symbol id="i-drive" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M6 15h4"/><path d="M17 15h1"/></symbol>
+<symbol id="i-flame" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c2.5 3.5 5 5.5 5 9a5 5 0 0 1-10 0c0-3.5 2.5-5.5 5-9z"/><path d="M12 10.5c1.2 1.7 2.4 2.7 2.4 4.2a2.4 2.4 0 0 1-4.8 0c0-1.5 1.2-2.5 2.4-4.2z"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></symbol>
+<symbol id="i-box" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></symbol>
+<symbol id="i-trend" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-8"/><path d="M15 7h5v5"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></symbol>
+</defs></svg>
+
+<aside class="rail" aria-label="Views">
+<a href="#today" data-view="today" class="active" aria-label="Today"><svg><use href="#i-pulse"/></svg></a>
+<a href="#digest" data-view="digest" aria-label="Digest"><svg><use href="#i-trend"/></svg></a>
+<a href="#duplicates" data-view="duplicates" aria-label="Duplicates"><svg><use href="#i-copy"/></svg></a>
+<a href="#settings" data-view="settings" aria-label="Settings"><svg><use href="#i-gear"/></svg></a>
+</aside>
+
+<main>
+<header class="topbar">
+  <h1 id="page-title">Today</h1>
+  <p class="tick" id="tick-line">sampler last tick: —</p>
+</header>
+
+<section id="view-today" class="view">
+  <div id="today-hero"></div>
+  <div id="today-cards" class="cards"></div>
+  <div class="card empty" id="empty-state" hidden>
+    <svg><use href="#i-pulse"/></svg>
+    <span>Nothing worth doing — Performac is watching.</span>
+  </div>
+</section>
+
+<section id="view-digest" class="view" hidden>
+  <p class="intro" id="digest-intro"></p>
+  <div class="spark-row" id="digest-sparklines"></div>
+  <div id="digest-cards" class="cards"></div>
+</section>
+
+<section id="view-duplicates" class="view" hidden>
+  <div class="card">
+    <p class="card-title">Exact-duplicate scan</p>
+    <p class="card-why">Byte-for-byte duplicates of large files across a folder you pick. Nothing runs until you press Start — scanning is on-demand so it never competes with an export.</p>
+    <div id="dupe-controls"></div>
+    <div id="dupe-groups"></div>
+    <p class="card-detail" id="dupe-hint">Duplicate scan: never run.</p>
+  </div>
+</section>
+
+<section id="view-settings" class="view" hidden>
+  <div class="card">
+    <p class="card-title">Settings</p>
+    <div id="settings-form"></div>
+  </div>
+</section>
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
