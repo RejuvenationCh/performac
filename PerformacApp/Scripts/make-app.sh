@@ -8,6 +8,8 @@ cd "$(dirname "$0")/.."
 swift build -c release
 
 APP="build/Performac.app"
+# removal scope: this exact regenerable build output only — never user data
+# (the app's only deletion path is FileManager.trashItem; build artifacts are rebuilt here)
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
