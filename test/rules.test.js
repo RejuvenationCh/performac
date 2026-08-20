@@ -1,7 +1,7 @@
 // rules tests — cacheGrowth, thermalDuringExport (further rules arrive per-feature)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cacheGrowth, thermalDuringExport, driveInstability, backupStaleness, dupFindings } from '../rules.js';
+import { cacheGrowth, thermalDuringExport, driveInstability, backupStaleness, dupFindings, sustainedHogs, idleLoaded } from '../rules.js';
 
 const DAY = 86400000;
 const NOW = 1756000000000;
@@ -293,4 +293,77 @@ test('generic check-first cache → reveal link, browser rebuild note', () => {
   assert.equal(fs[0].severity, 'amber');
   assert.equal(fs[0].linkKind, 'reveal');
   assert.ok(fs[0].detail.toLowerCase().includes('rebuild'), fs[0].detail);
+});
+
+const hcfg = {
+  tickSec: 30,
+  hog: { cpuPct: 80, minMinutes: 30, lookbackHours: 24,
+         ignore: ['kernel_task', 'WindowServer', 'launchd', 'mds_stores', 'backupd'] },
+  exportProcs: ['Adobe Premiere Pro', 'Adobe Media Encoder', 'PProHeadless', 'Resolve', 'Compressor', 'Blackmagic Proxy Generator'],
+  export: { cpuPct: 150, minMinutes: 10 },
+  idle: { rssMb: 800, hours: 12 },
+};
+
+function hogSamples(name, minutes, lo, hi, t0 = NOW) {
+  const rows = [];
+  for (let i = 0; i * 30000 <= minutes * 60000; i++) {
+    rows.push({ ts: t0 + i * 30000, pid: 1, name, cpu: i % 2 ? hi : lo, rss_mb: 500 });
+  }
+  return rows;
+}
+
+test('35 min at ~92% CPU → amber hog with Activity Monitor link', () => {
+  const fs = sustainedHogs(hogSamples('RobloxPlayer', 35, 88, 96), hcfg, NOW);
+  assert.equal(fs.length, 1);
+  assert.equal(fs[0].severity, 'amber');
+  assert.equal(fs[0].headline, 'RobloxPlayer has averaged 92% CPU for 35 minutes');
+  assert.ok(fs[0].why.includes('not a momentary spike'), fs[0].why);
+  assert.equal(fs[0].linkKind, 'open_activity_monitor');
+});
+
+test('20 min → no hog finding', () => {
+  assert.deepEqual(sustainedHogs(hogSamples('RobloxPlayer', 20, 88, 96), hcfg, NOW), []);
+});
+
+test('ignore list respected', () => {
+  assert.deepEqual(sustainedHogs(hogSamples('kernel_task', 40, 90, 90), hcfg, NOW), []);
+});
+
+test('export-class proc during an export window → excluded (an export is supposed to eat CPU)', () => {
+  const fs = sustainedHogs(hogSamples('Adobe Media Encoder 2026', 40, 300, 400), hcfg, NOW);
+  assert.deepEqual(fs, []);
+});
+
+test('export-class proc below export.cpuPct → still flagged as hog', () => {
+  const fs = sustainedHogs(hogSamples('Resolve', 35, 88, 96), hcfg, NOW);
+  assert.equal(fs.length, 1);
+  assert.equal(fs[0].headline.includes('Resolve'), true);
+});
+
+test('idle-loaded: 6 GB RSS, no front event in 12h → info with anti-placebo detail', () => {
+  const procs = [{ ts: NOW - 60000, pid: 1, name: 'Adobe Premiere Pro 2026', cpu: 5, rss_mb: 6144 }];
+  const fronts = [{ ts: NOW - 30 * 3600000, kind: 'front_app', key: 'Adobe Premiere Pro 2026', detail: '' }];
+  const fs = idleLoaded(procs, fronts, hcfg, NOW);
+  assert.equal(fs.length, 1);
+  assert.equal(fs[0].severity, 'info');
+  assert.ok(fs[0].headline.includes('6.0 GB of RAM'), fs[0].headline);
+  assert.ok(fs[0].headline.includes("hasn't been in front since yesterday"), fs[0].headline);
+  assert.ok(fs[0].why.toLowerCase().includes('pressure'), fs[0].why);
+  assert.equal(fs[0].linkKind, null);
+});
+
+test('idle-loaded: recent front event → no finding', () => {
+  const procs = [{ ts: NOW - 60000, pid: 1, name: 'Adobe Premiere Pro 2026', cpu: 5, rss_mb: 6144 }];
+  const fronts = [{ ts: NOW - 2 * 3600000, kind: 'front_app', key: 'Adobe Premiere Pro 2026', detail: '' }];
+  assert.deepEqual(idleLoaded(procs, fronts, hcfg, NOW), []);
+});
+
+test('idle-loaded: below RSS threshold → no finding', () => {
+  const procs = [{ ts: NOW - 60000, pid: 1, name: 'Zen', cpu: 5, rss_mb: 500 }];
+  assert.deepEqual(idleLoaded(procs, [], hcfg, NOW), []);
+});
+
+test('idle-loaded: stale samples ignored', () => {
+  const procs = [{ ts: NOW - 3 * 3600000, pid: 1, name: 'Zen', cpu: 5, rss_mb: 9000 }];
+  assert.deepEqual(idleLoaded(procs, [], hcfg, NOW), []);
 });

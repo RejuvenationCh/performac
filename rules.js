@@ -44,6 +44,115 @@ function ageText(ageDays) {
   return `${Math.round(ageDays)} days`;
 }
 
+// sustained: window of qualifying ticks ≥ minMinutes with ≥ 80% of expected samples present.
+// Export-class procs are excluded while they look like an export (that's supposed to eat CPU).
+export function sustainedHogs(procSamples, cfg, now) {
+  const lookback = now - cfg.hog.lookbackHours * 3600000;
+  const tickMs = (cfg.tickSec || 30) * 1000;
+  const byName = new Map();
+  for (const s of procSamples) {
+    if (s.ts < lookback || cfg.hog.ignore.includes(s.name)) continue;
+    if (!byName.has(s.name)) byName.set(s.name, []);
+    byName.get(s.name).push(s);
+  }
+  const out = [];
+  for (const [name, rows] of byName) {
+    rows.sort((a, b) => a.ts - b.ts);
+    const isExportClass = cfg.exportProcs.some(p => name.startsWith(p));
+    if (isExportClass && isExportWindow(rows, cfg)) continue;
+    let winStart = null;
+    let winEnd = null;
+    let sum = 0;
+    let count = 0;
+    const check = () => {
+      if (winStart === null) return;
+      const durMs = winEnd - winStart;
+      const expected = Math.floor(durMs / tickMs) + 1;
+      if (durMs >= cfg.hog.minMinutes * 60000 && count >= 0.8 * expected) {
+        out.push({
+          id: `hog-${slug(name)}`,
+          kind: 'hog',
+          severity: 'amber',
+          headline: `${name} has averaged ${Math.round(sum / count)}% CPU for ${Math.round(durMs / 60000)} minutes`,
+          why: `That's sustained load, not a momentary spike — if you're not using it, quit it from Activity Monitor.`,
+          detail: '',
+          linkKind: 'open_activity_monitor',
+          linkTarget: null,
+        });
+      }
+      winStart = null;
+      sum = 0;
+      count = 0;
+    };
+    for (const s of rows) {
+      if (s.cpu < cfg.hog.cpuPct) continue;
+      if (winStart === null) {
+        winStart = s.ts; winEnd = s.ts; sum = s.cpu; count = 1;
+      } else if (s.ts - winEnd <= 2 * tickMs) {
+        winEnd = s.ts; sum += s.cpu; count += 1;
+      } else {
+        check();
+        winStart = s.ts; winEnd = s.ts; sum = s.cpu; count = 1;
+      }
+    }
+    check();
+  }
+  return out;
+}
+
+function isExportWindow(rows, cfg) {
+  const gapMs = 2 * 60000;
+  let start = null;
+  let end = null;
+  for (const s of rows) {
+    if (s.cpu < cfg.export.cpuPct) continue;
+    if (start === null || s.ts - end > gapMs) {
+      if (start !== null && end - start >= cfg.export.minMinutes * 60000) return true;
+      start = s.ts;
+    }
+    end = s.ts;
+  }
+  return start !== null && end - start >= cfg.export.minMinutes * 60000;
+}
+
+// anti-placebo stance: never recommend freeing RAM for its own sake
+export function idleLoaded(procSamples, frontEvents, cfg, now) {
+  const fresh = now - 3600000;
+  const latest = new Map();
+  for (const s of procSamples) {
+    if (s.ts < fresh || s.rss_mb < cfg.idle.rssMb) continue;
+    if (!latest.has(s.name) || s.ts > latest.get(s.name).ts) latest.set(s.name, s);
+  }
+  const fronts = (frontEvents ?? []).filter(e => e.kind === 'front_app');
+  const matches = (e, name) => e.key === name || name.startsWith(e.key) || e.key.startsWith(name);
+  const out = [];
+  for (const [name, s] of latest) {
+    if (fronts.some(e => matches(e, name) && now - e.ts < cfg.idle.hours * 3600000)) continue;
+    const last = fronts.filter(e => matches(e, name)).sort((a, b) => b.ts - a.ts)[0];
+    const display = name.split(' ').filter(w => !/^\d{4}$/.test(w)).slice(0, 2).join(' ');
+    out.push({
+      id: `idle-${slug(name)}`,
+      kind: 'idle',
+      severity: 'info',
+      headline: `${display} is holding ${(s.rss_mb / 1024).toFixed(1)} GB of RAM and hasn't been in front since ${last ? sinceText(last.ts, now) : 'the last 12 hours'}`,
+      why: 'macOS reclaims memory from background apps under pressure on its own — free RAM for its own sake does nothing.',
+      detail: 'Worth quitting only if things actually feel slow.',
+      linkKind: null,
+      linkTarget: null,
+    });
+  }
+  return out;
+}
+
+function sinceText(ts, now) {
+  const d = new Date(ts);
+  const days = Math.floor((now - ts) / DAY);
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  if (days < 1) return `today ${hm}`;
+  if (days < 2) return `yesterday ${hm}`;
+  return `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
+}
+
 // groups = [{hash, sizeMb, paths:[...]}] — deliberately exact-only, no fuzzy matching
 export function dupFindings(groups, cfg) {
   return groups

@@ -11,7 +11,7 @@ import {
 } from './collectors.js';
 import { sweep, getSetting, setSetting } from './db.js';
 import { cacheTargets, measure } from './paths.js';
-import { cacheGrowth, thermalDuringExport, driveInstability, backupStaleness } from './rules.js';
+import { cacheGrowth, thermalDuringExport, driveInstability, backupStaleness, sustainedHogs, idleLoaded } from './rules.js';
 import { maybeNotify } from './notify.js';
 
 let lastTickAt = null;
@@ -41,6 +41,15 @@ export async function refreshFindings(db, cfg, now, exec) {
     ...backupStaleness(
       getSetting(db, 'tmState') ?? { configured: false, names: [], backupISO: null },
       getSetting(db, 'watchStats') ?? [],
+      cfg, now
+    ),
+    ...sustainedHogs(
+      db.prepare('SELECT * FROM proc_samples WHERE ts > ?').all(now - cfg.hog.lookbackHours * 3600000),
+      cfg, now
+    ),
+    ...idleLoaded(
+      db.prepare('SELECT * FROM proc_samples WHERE ts > ?').all(now - 3600000),
+      db.prepare("SELECT * FROM events WHERE kind = 'front_app'").all(),
       cfg, now
     ),
   ];
