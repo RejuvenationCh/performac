@@ -162,7 +162,7 @@ async function refreshDuplicates() {
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.value = root;
-    cb.checked = true;
+    cb.checked = !savedCfg || (savedCfg.dupRoots ?? ['~']).includes(root);
     label.append(cb, root === '~' ? 'Home folder' : root);
     controls.append(label);
   }
@@ -278,11 +278,115 @@ setInterval(() => {
   if (view === 'today' || view === 'digest') refresh();
 }, 60000);
 
-// Settings — the login-items scan button lives here now; the full form arrives with Task 15
+// Settings — thresholds grouped by feature, tier-3 toggles (off by default), watch paths,
+// dedupe roots, notification master switch, and the on-demand login-items scan.
+let savedCfg = null;
+
+const SETTING_GROUPS = [
+  ['Cache rules', { 'cacheRules.amberGb': 'Amber at (GB)', 'cacheRules.redGb': 'Red at (GB)', 'cacheRules.staleDays': 'Stale after (days)' }],
+  ['Sustained hogs', { 'hog.cpuPct': 'CPU %', 'hog.minMinutes': 'Minutes' }],
+  ['Idle-but-loaded', { 'idle.rssMb': 'RSS (MB)', 'idle.hours': 'Hours' }],
+  ['Backup', { 'backup.maxAgeDays': 'Max age (days)' }],
+  ['Storage trend', { 'storage.fitDays': 'Fit window (days)', 'storage.warnWeeksLeft': 'Amber at (weeks left)', 'storage.redWeeksLeft': 'Red at (weeks left)' }],
+  ['Drive cycles', { 'drive.cycles24h': 'Cycles / 24h', 'drive.cycles7d': 'Cycles / 7d' }],
+  ['Thermal', { 'thermal.minElevatedMinutes': 'Min elevated (min)' }],
+  ['Exports', { 'export.cpuPct': 'CPU %', 'export.minMinutes': 'Minutes' }],
+  ['Dedupe', { 'dup.minMb': 'Min file (MB)' }],
+  ['Drift', { 'drift.minAgeDays': 'Min age (days)', 'drift.minMb': 'Min size (MB)' }],
+  ['Notifications', { 'notifyCooldownHours': 'Cooldown (hours)' }],
+];
+
+function getNested(obj, key) {
+  return key.split('.').reduce((o, k) => (o == null ? o : o[k]), obj);
+}
+
+function setNested(obj, key, value) {
+  const parts = key.split('.');
+  let o = obj;
+  for (const k of parts.slice(0, -1)) o = o[k] ?? (o[k] = {});
+  o[parts[parts.length - 1]] = value;
+}
+
 async function renderSettings() {
   const box = $('#settings-form');
   box.replaceChildren();
-  const scan = el('button', 'btn', 'Scan login items');
+  let cfg;
+  try {
+    cfg = await (await fetch('/api/settings')).json();
+  } catch {
+    return;
+  }
+  savedCfg = cfg;
+
+  const toggles = el('div', 'form-grid');
+  const toggle = (key, label) => {
+    const row = el('label', 'check-row');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.dataset.key = key;
+    cb.checked = !!getNested(cfg, key);
+    row.append(cb, label);
+    toggles.append(row);
+  };
+  toggle('notifyEnabled', 'Notifications on');
+  toggle('tier3.battery', 'Battery health tracking (Tier 3)');
+  toggle('tier3.browserBloat', 'Browser RAM bloat (Tier 3)');
+  box.append(toggles);
+
+  for (const [title, fields] of SETTING_GROUPS) {
+    box.append(el('p', 'section-label', title));
+    const grid = el('div', 'form-grid');
+    for (const [key, label] of Object.entries(fields)) {
+      const field = el('div', 'field');
+      field.append(el('label', '', label));
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.step = 'any';
+      input.dataset.key = key;
+      input.value = getNested(cfg, key) ?? '';
+      field.append(input);
+      grid.append(field);
+    }
+    box.append(grid);
+  }
+
+  box.append(el('p', 'section-label', 'Backup watch paths'));
+  box.append(el('p', 'card-why', 'One per line: path|maxDays. Any file older than maxDays in that folder triggers an amber card.'));
+  const watch = document.createElement('textarea');
+  watch.id = 'watch-paths';
+  watch.style.width = '100%';
+  watch.rows = 3;
+  watch.style.font = 'inherit';
+  watch.style.padding = '6px 8px';
+  watch.style.border = '1px solid var(--line)';
+  watch.style.borderRadius = '8px';
+  watch.value = (cfg.backup?.watchPaths ?? []).map(w => `${w.path}|${w.maxAgeDays}`).join('\n');
+  box.append(watch);
+
+  box.append(el('p', 'section-label', 'Dedupe roots'));
+  box.append(el('p', 'card-why', 'Comma-separated. These pre-check in the Duplicates view; new volumes appear there automatically.'));
+  const roots = document.createElement('input');
+  roots.type = 'text';
+  roots.id = 'dup-roots';
+  roots.style.width = '100%';
+  roots.style.padding = '6px 8px';
+  roots.style.font = 'inherit';
+  roots.style.border = '1px solid var(--line)';
+  roots.style.borderRadius = '8px';
+  roots.value = (cfg.dupRoots ?? ['~']).join(', ');
+  box.append(roots);
+
+  const row = el('div', 'check-row');
+  row.style.marginTop = '14px';
+  row.style.gap = '10px';
+  const save = el('button', 'btn', 'Save settings');
+  save.addEventListener('click', () => saveSettings(box, save));
+  const status = el('span', 'card-why', '');
+  row.append(save, status);
+  box.append(row);
+
+  const scan = el('button', 'btn ghost', 'Scan login items');
+  scan.style.marginLeft = '0';
   scan.addEventListener('click', () => {
     fetch('/api/login-scan', {
       method: 'POST',
@@ -293,4 +397,33 @@ async function renderSettings() {
     }).catch(() => {});
   });
   box.append(scan, el('p', 'card-why', 'On-demand only: asks macOS for a one-time Automation permission, cross-checks login items against a month of process samples.'));
+}
+
+async function saveSettings(box, button) {
+  const body = {};
+  for (const input of box.querySelectorAll('input[data-key]')) {
+    const v = input.type === 'checkbox' ? input.checked : Number(input.value);
+    setNested(body, input.dataset.key, v);
+  }
+  const watchPaths = $('#watch-paths').value.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+    const [p, d] = l.split('|').map(s => s.trim());
+    return { path: p, maxAgeDays: Number(d) || 7 };
+  });
+  body.backup = { ...(body.backup ?? {}), watchPaths };
+  const roots = $('#dup-roots').value.split(',').map(s => s.trim()).filter(Boolean);
+  body.dupRoots = roots.length ? roots : ['~'];
+  const r = await fetch('/api/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).catch(() => null);
+  const err = r && !r.ok ? await r.json().catch(() => null) : null;
+  const prev = button.textContent;
+  button.textContent = err ? `Save failed: ${err.error}` : 'Saved';
+  if (err) button.style.borderColor = 'var(--red)';
+  setTimeout(() => {
+    button.textContent = prev;
+    button.style.borderColor = '';
+  }, 3000);
+  savedCfg = { ...(await (await fetch('/api/settings')).json()) };
 }

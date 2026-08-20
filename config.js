@@ -19,9 +19,25 @@ export const DEFAULTS = {
   drift:  { paths: ['~/Downloads','~/Desktop'], minAgeDays: 60, minMb: 100, maxItems: 8 },
   dup:    { minMb: 100 },
   notifyCooldownHours: 24, weeklyDigestNotify: true,       // Monday 09:00 local
+  notifyEnabled: true,                                      // master switch (Task 15 Settings)
+  dupRoots: ['~'],                                          // saved dedupe roots (Task 15 Settings)
   tier3:  { battery: false, browserBloat: false },         // OFF by default (scope doc §Tier 3)
   browser:{ procs: ['Zen','Google Chrome','Brave Browser','Safari','Chromium'], rssGb: 4, minMinutes: 60 },
 };
+
+// PUT /api/settings validation: value must match the DEFAULTS template shape
+// (numbers finite + positive, nested objects may carry a subset of template keys)
+export function validateSetting(value, template) {
+  if (typeof template === 'number') return typeof value === 'number' && Number.isFinite(value) && value > 0;
+  if (typeof template === 'boolean') return typeof value === 'boolean';
+  if (typeof template === 'string') return typeof value === 'string';
+  if (Array.isArray(template)) return Array.isArray(value);
+  if (template && typeof template === 'object') {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    return Object.entries(value).every(([k, v]) => k in template && validateSetting(v, template[k]));
+  }
+  return false;
+}
 
 export function loadConfig(db) {
   const cfg = structuredClone(DEFAULTS);

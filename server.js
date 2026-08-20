@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { execFile, spawn } from 'node:child_process';
 import { openDb, setSetting } from './db.js';
-import { loadConfig } from './config.js';
+import { loadConfig, DEFAULTS, validateSetting } from './config.js';
 import { startSampler, lastTick, findingsGeneratedAt, refreshFindings } from './sampler.js';
 import { startScan, scanStatus } from './dedupe.js';
 import { parseLoginItems } from './collectors.js';
@@ -108,6 +108,33 @@ const server = http.createServer(async (req, res) => {
           .map(r => ({ ts: r.ts, cacheId: r.cache_id, sizeMb: r.size_mb })),
       });
     }
+    if (req.method === 'GET' && p === '/api/settings') {
+      return json(res, 200, loadConfig(db));
+    }
+    if (req.method === 'PUT' && p === '/api/settings') {
+      const origin = req.headers.origin;
+      if (origin && !['http://localhost:7420', 'http://127.0.0.1:7420'].includes(origin)) {
+        return json(res, 403, { error: 'bad origin' });
+      }
+      if (!(req.headers['content-type'] || '').includes('application/json')) {
+        return json(res, 415, { error: 'expected application/json' });
+      }
+      let body;
+      try {
+        body = await readJson(req);
+      } catch (err) {
+        return json(res, 400, { error: err.message });
+      }
+      if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        return json(res, 400, { error: 'expected object' });
+      }
+      for (const [k, v] of Object.entries(body)) {
+        if (!(k in DEFAULTS)) return json(res, 400, { error: `unknown key: ${k}` });
+        if (!validateSetting(v, DEFAULTS[k])) return json(res, 400, { error: `bad value for ${k}` });
+      }
+      for (const [k, v] of Object.entries(body)) setSetting(db, k, v);
+      return json(res, 200, { saved: true });
+    }
     if (req.method === 'GET' && p === '/api/dedupe') {
       const st = scanStatus();
       const rows = st.state === 'idle'
@@ -119,7 +146,11 @@ const server = http.createServer(async (req, res) => {
         groups: rows ? rows.map(r => ({ hash: r.hash, sizeMb: r.size_mb, paths: JSON.parse(r.paths) })) : st.groups,
         startedAt: st.startedAt,
         lastScan: db.prepare('SELECT MAX(scan_ts) m FROM dup_groups').get().m ?? null,
-        roots: ['~', ...(fs.existsSync('/Volumes') ? fs.readdirSync('/Volumes').map(v => `/Volumes/${v}`) : [])],
+        roots: (() => {
+          const vols = fs.existsSync('/Volumes') ? fs.readdirSync('/Volumes').map(v => `/Volumes/${v}`) : [];
+          const saved = loadConfig(db).dupRoots ?? ['~'];
+          return [...new Set(['~', ...vols, ...saved])];
+        })(),
       });
     }
     if (req.method === 'POST' && p === '/api/dedupe') {

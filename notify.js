@@ -3,6 +3,7 @@
 const NOTIFY_KINDS = new Set(['drive', 'thermal', 'backup', 'storage', 'digest']);
 
 export async function maybeNotify(db, finding, cfg, now, exec) {
+  if (cfg.notifyEnabled === false) return false;   // master switch (Settings)
   if (finding.severity === 'info') return false;
   if (!NOTIFY_KINDS.has(finding.kind)) return false;
   if (finding.kind === 'storage' && finding.severity !== 'red') return false;

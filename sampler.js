@@ -10,6 +10,7 @@ import {
   parseTmDestinations, parseTmLatest,
 } from './collectors.js';
 import { sweep, getSetting, setSetting } from './db.js';
+import { loadConfig } from './config.js';
 import { cacheTargets, measure } from './paths.js';
 import { cacheGrowth, thermalDuringExport, driveInstability, backupStaleness, sustainedHogs, idleLoaded, storageTrend, drift, loginItemsAudit } from './rules.js';
 import { maybeNotify } from './notify.js';
@@ -161,7 +162,7 @@ export async function cacheTick(db, cfg, deps) {
     const m = tg.measurement ?? await measure(tg.path);
     ins.run(t, tg.id, tg.path, Math.round(m.sizeMb), m.newestMtime, m.fileCount);
   }
-  await refreshFindings(db, cfg, t, deps.execFile).catch(err => console.error('refreshFindings', err));
+  await refreshFindings(db, loadConfig(db), t, deps.execFile).catch(err => console.error('refreshFindings', err));
 }
 
 // hourly: depth-2 walk of drift.paths → settings; EPERM → permission-explainer card path
@@ -198,7 +199,7 @@ export async function driftTick(db, cfg, deps) {
   }
   setSetting(db, 'driftEntries', entries);
   setSetting(db, 'driftEperm', eperm);
-  await refreshFindings(db, cfg, t, deps.execFile).catch(err => console.error('refreshFindings', err));
+  await refreshFindings(db, loadConfig(db), t, deps.execFile).catch(err => console.error('refreshFindings', err));
 }
 
 // hourly: tmutil state + measured watch paths into settings, then refresh findings
@@ -230,7 +231,7 @@ export async function backupTick(db, cfg, deps) {
     stats.push({ path: p, newestMtime: m.newestMtime, maxAgeDays: w.maxAgeDays });
   }
   setSetting(db, 'watchStats', stats);
-  await refreshFindings(db, cfg, t, deps.execFile).catch(err => console.error('refreshFindings', err));
+  await refreshFindings(db, loadConfig(db), t, deps.execFile).catch(err => console.error('refreshFindings', err));
 }
 
 async function readPremierePrefs(home) {
@@ -310,7 +311,7 @@ export function startSampler(db, cfg, deps) {
     lastVolumes = vols;
 
     lastTickAt = t;
-    await refreshFindings(db, cfg, t, execFile).catch(err => console.error('refreshFindings', err));
+    await refreshFindings(db, loadConfig(db), t, execFile).catch(err => console.error('refreshFindings', err));
   }
 
   async function diskTick() {
@@ -324,7 +325,7 @@ export function startSampler(db, cfg, deps) {
       const st = await statfs(p);
       insertDisk.run(t, name, st.bavail * st.bsize / GB, st.blocks * st.bsize / GB);
     }
-    await refreshFindings(db, cfg, t, execFile).catch(err => console.error('refreshFindings', err));
+    await refreshFindings(db, loadConfig(db), t, execFile).catch(err => console.error('refreshFindings', err));
   }
 
   function startStream(bin, args, onLine) {
@@ -358,7 +359,7 @@ export function startSampler(db, cfg, deps) {
   setInterval(() => driftTick(db, cfg, deps).catch(err => console.error('driftTick', err)), 3600000).unref();
   setInterval(() => {
     try { sweep(db, cfg, now()); } catch (err) { console.error('sweep', err); }
-    refreshFindings(db, cfg, now(), execFile).catch(err => console.error('refreshFindings', err));
+    refreshFindings(db, loadConfig(db), now(), execFile).catch(err => console.error('refreshFindings', err));
   }, 3600000).unref();
 
   startStream('diskutil', ['activity'], line => {
