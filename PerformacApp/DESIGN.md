@@ -1,0 +1,145 @@
+# Design — Performac v2
+
+Recorded from the Stitch artifact (8 screens: menu bar popover, disk browser, disk scan in
+progress, today quiet state, clean view, duplicates browser, trash confirmation modal,
+settings). Every value below is one the generated HTML actually uses — read out of its
+Tailwind config and markup, not from intentions.
+
+**One caveat this file exists to resolve.** The artifact is a *web* mockup: Tailwind via CDN,
+**Inter** from Google Fonts, **Material Symbols** icons, and Material Design 3 colour token
+names (`surface-container-lowest`, `on-surface-variant`, `tertiary-container`). The shipping
+app is native macOS. The values are right; three of the mechanisms are not. §Translation
+below is binding — build to that, not to the HTML.
+
+## World
+
+A quiet instrument panel. Most days it says nothing; the Today screen's default state is a
+green seal reading "Nothing worth doing." When it speaks, it is because something changed
+over time, and it says so in one sentence with the evidence attached.
+
+Two densities, because there are two surfaces: a **popover that answers in one glance**
+(380×520), and a **window dense enough to browse a filesystem** (1200×800, 64pt rail).
+
+## Colour — as used
+
+| role | hex | used for |
+|---|---|---|
+| page ground | `#f7f9ff` | window and popover background |
+| card surface | `#ffffff` | every card, row group, modal |
+| tinted fills | `#ecf4ff` · `#e6effa` · `#e0e9f5` · `#dae3ef` | tiles, bar tracks, hover states (lightest→darkest) |
+| primary text | `#141c25` | headlines, values |
+| secondary text | `#434654` | why-lines, descriptions |
+| outline | `#747686` · `#c3c5d7` | borders, disabled |
+| hairline | `rgba(0,0,0,0.1)` | every separator, 1px |
+| accent / link | `#0045c5` | link-outs, selected rail item |
+| accent fill | `#2f5fe0` | primary buttons, progress bars |
+| **amber (warning)** | `#b24800` fill · `#ffe4d9` soft | warning severity spine, "Check first" pill |
+| **red (critical)** | `#ba1a1a` fill · `#ffdad6` soft | critical severity spine, over-threshold storage |
+| neutral chip | `#dfe3eb` | inactive badges |
+
+Colour carries exactly two jobs: **severity** on cards and badges, and **file-type identity**
+in the treemap legend (video · image · cache/app data · document · other/system). Nothing
+else is coloured. No gradients, no coloured shadows, no gradient text.
+
+## Type — as used
+
+Inter in the artifact; **SF Pro in the build** (see §Translation). Scale is unchanged.
+
+| token | size / line / weight | used for |
+|---|---|---|
+| display-sm | 20 / 28 / 600, −0.01em | page titles, popover metric values |
+| headline-sm | 16 / 24 / 600, −0.01em | section headings ("Cache Files", "Duplicates") |
+| title-sm | 14 / 20 / 600 | card headlines, row names, summary totals |
+| body-md | 13 / 18 / 400 | body, why-lines, list rows |
+| body-sm | 12 / 16 / 400 | meta, reassurance text, path captions |
+| label-md | 11 / 14 / 500, +0.02em | column headers, badges, link-outs, metric labels |
+| mono-numeric | 13 / 18 / 400 | all figures — **always with tabular figures** |
+
+Every size, count, percentage and duration uses tabular figures. The artifact applies
+`tabular-nums`; the build uses `.monospacedDigit()`.
+
+## Geometry — as used
+
+Radii are deliberately small, which is what makes it read as desktop rather than mobile:
+**2px default · 4px (`lg`) cards and buttons · 8px (`xl`) modals · 12px (`full`) pills.**
+
+Spacing scale: **4 · 8 · 12 (gutter) · 16 (stack/margin)**. Sidebar rail is **64px** fixed.
+
+## Components — anatomy as built
+
+**CoachCard** — the load-bearing component:
+
+```
+white surface · 4px radius · 1px rgba(0,0,0,.1) border · small shadow · 12px pad (16 left)
+├─ 4px full-height severity spine on the left edge   ← the severity signal
+└─ row: filled severity icon + column:
+     headline    title-sm, primary text
+     why-line    body-md, secondary text        ← mandatory, never omitted
+     link-out    label-md, accent               ← at most one, optional
+```
+
+**MetricStrip** (popover header): four equal cells split by 1px vertical hairlines; each is a
+`label-md` uppercase label above a `mono-numeric` value.
+
+Others as built: `SizeRow` (name · item count · size · proportional bar, hover-revealed
+actions) · `CacheRow` (checkbox · name · size · last-written age · safety pill · why-line) ·
+`SafetyPill` ("Safe to clean" green / "Check first" amber) · `StorageBar` (red past 92%) ·
+`TreeMap` + legend · `Breadcrumb` · `ProgressRow` (indeterminate bar, running totals,
+elapsed, Cancel) · `QuietState` (green seal, headline, sentence, four neutral tiles).
+
+**Cards do not nest.** Tiles inside a card use a tinted fill, never a second shadowed card.
+
+## The trash confirmation — verified in the artifact
+
+The one irreversible-feeling moment, and the artifact gets it right. Do not "fix" any of this:
+
+- The primary button is **`#2f5fe0` blue, not red.** The action is recoverable; colouring it
+  red teaches fear of a safe operation.
+- **Cancel carries `autofocus`** — the safe option is the default.
+- Every item lists **full path and size**, with a `title-sm` total line ("18.0 GB total").
+- A permanent reassurance block with a filled trash icon:
+  *"These go to the Trash, not deleted. You can put them back from Finder until you empty it."*
+
+## Translation — web artifact → native build (binding)
+
+| artifact | build |
+|---|---|
+| Inter (Google Fonts) | **SF Pro** via `.system` — no bundled or webfonts |
+| Material Symbols | **SF Symbols**, `.regular`, 16pt rows / 18pt rail |
+| Tailwind utility classes | SwiftUI modifiers; tokens above as a `Color`/`Font` extension |
+| `tabular-nums` | `.monospacedDigit()` |
+| `rgba(0,0,0,0.1)` hairlines | `Divider()` / `.separatorColor` |
+| px | pt, 1:1 at these sizes |
+| flat popover background | **`NSVisualEffectView`, `.popover` material** — a flat popover reads as a screenshot pasted on the desktop |
+| `html class="light"` only | **light *and* dark both first-class.** The artifact is light-only; the hexes above are the light values. Map each role to its macOS semantic colour so dark mode follows the system. |
+
+## Do not carry over
+
+Present in the artifact, wrong for this app:
+
+1. **`Support · Privacy Policy · License` footer** on the duplicates screen. There is no
+   support desk; this is a personal local tool.
+2. **"System Status: Optimal"** in that same footer — an evidence-free reassurance, exactly
+   what this app must never say. It would also be wrong the moment something fails.
+3. **Top tabs (`All Files · Applications · System Data`)** on duplicates and settings — a
+   second navigation competing with the 64pt rail. The rail is the only navigation.
+4. **The "speed" wordmark** that replaced "Performac" on two screens.
+5. **Checkboxes on individual duplicate copies.** With exact duplicates at least one copy must
+   survive; per-row trash actions only, so deleting every copy can never be one misclick.
+6. The treemap is drawn as vertical strips. Build a **squarified** treemap so small items keep
+   a clickable aspect ratio.
+
+## Rules the next change must keep
+
+1. **Native, dense, macOS.** If a change would look at home on a phone, it is wrong here.
+   No bottom tabs, no FABs, no oversized touch targets, no second navigation.
+2. **Colour only for severity or treemap file type.** Everything else is neutral.
+3. **The why-line is mandatory.** A card showing a size without its evidence does not ship.
+4. **All figures are tabular.**
+5. **Icons are SF Symbols. No emoji**, in UI or in copy.
+6. **One action per card, and it never performs the fix** — except the Clean view, whose one
+   action is always and only **"Move to Trash"**, never "Clean", "Optimize", or "Free up".
+7. **Destructive confirmations stay blue, with Cancel focused**, and always state recoverability.
+8. **Cards do not nest.**
+9. **Light and dark are both first-class.** Nothing hard-codes a hex where a semantic colour exists.
+10. **Never state a status the app cannot evidence.**
