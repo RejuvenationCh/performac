@@ -448,22 +448,25 @@ export function driveInstability(events, cfg, now) {
   const out = [];
   for (const [vol, list] of byVol) {
     list.sort((a, b) => a.ts - b.ts);
+    // Two shapes count as a cycle. The ordinary one is unmount -> mount within 30 min.
+    // The other is a mount for a volume already believed mounted: it must have gone away
+    // and come back with the disconnect too brief for the stream to report at all. That
+    // is the more dangerous shape — fast enough to corrupt a write in progress — so a
+    // missing unmount must not make it invisible. A volume's first mount is not a cycle
+    // (boot noise), and neither is one reappearing across a sleep/wake gap.
     const cycles = [];
-    let i = 0;
-    while (i < list.length) {
-      if (list[i].kind !== 'unmount') { i += 1; continue; }
-      const u = list[i].ts;
-      let j = i + 1;
-      let paired = false;
-      while (j < list.length && list[j].ts - u <= 30 * 60000) {
-        if (list[j].kind === 'mount') {
-          if (!gaps.some(g => u < g.end && list[j].ts > g.start)) cycles.push(u);
-          paired = true;
-          break;
-        }
-        j += 1;
+    const grace = (cfg.tickSec ?? 30) * 2 * 1000;
+    let mounted = false;
+    let openUnmount = null;
+    for (const e of list) {
+      if (e.kind === 'unmount') { openUnmount = e.ts; mounted = false; continue; }
+      if (openUnmount !== null && e.ts - openUnmount <= 30 * 60000) {
+        if (!gaps.some(g => openUnmount < g.end && e.ts > g.start)) cycles.push(openUnmount);
+      } else if (mounted) {
+        if (!gaps.some(g => e.ts > g.start && e.ts <= g.end + grace)) cycles.push(e.ts);
       }
-      i = paired ? j + 1 : i + 1;
+      openUnmount = null;
+      mounted = true;
     }
     const in24 = cycles.filter(u => now - u <= 24 * 3600000).length;
     const in7 = cycles.filter(u => now - u <= 7 * 86400000).length;

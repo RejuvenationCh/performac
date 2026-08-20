@@ -620,3 +620,28 @@ test('Time Machine reporting off → no TM card; watched paths still checked', (
     'the only card may be the watched path, never a Time Machine card');
   assert.ok(fs[0].headline.includes('Resolve Project Backups'), fs[0].headline);
 });
+
+// Real 'External SSD' sequence, 2026-08-20: the second mount had no user action and no
+// recorded unmount — the drive dropped and returned faster than the stream could see.
+// A mount for an already-mounted volume can only mean it went away and came back.
+test('drive: repeat mount with no unmount between counts as a flap', () => {
+  const events = [
+    driveEvent(NOW - 300000, 'mount', 'External SSD'),
+    driveEvent(NOW - 232000, 'mount', 'External SSD'),   // the flap — no unmount recorded
+    driveEvent(NOW - 136000, 'unmount', 'External SSD'),
+    driveEvent(NOW - 129000, 'mount', 'External SSD'),   // ordinary paired cycle
+  ];
+  const fs = driveInstability(events, { drive: { cycles24h: 1, cycles7d: 3 } }, NOW);
+  assert.equal(fs.length, 1, 'flap + pair = 2 cycles, over a threshold of 1');
+  assert.ok(fs[0].headline.includes('2 times'), fs[0].headline);
+});
+
+test('drive: a volume reappearing after sleep/wake is not a flap', () => {
+  const wake = NOW - 100000;
+  const events = [
+    driveEvent(NOW - 400000, 'mount', 'T7'),
+    { ts: wake, kind: 'sleep_gap', key: 'sleep_gap', detail: String(NOW - 300000) },
+    driveEvent(wake + 5000, 'mount', 'T7'),   // reappears on wake — normal, not a fault
+  ];
+  assert.deepEqual(driveInstability(events, { drive: { cycles24h: 0, cycles7d: 0 } }, NOW), []);
+});
