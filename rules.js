@@ -320,7 +320,7 @@ export function idleLoaded(procSamples, frontEvents, cfg, now) {
       id: `idle-${slug(name)}`,
       kind: 'idle',
       severity: 'info',
-      headline: `${display} is holding ${(s.rss_mb / 1024).toFixed(1)} GB of RAM and hasn't been in front since ${last ? sinceText(last.ts, now) : 'the last 12 hours'}`,
+      headline: `${display} is holding ${(s.rss_mb / 1024).toFixed(1)} GB of RAM and hasn't been in front ${last ? `since ${sinceText(last.ts, now)}` : 'in the last 12 hours'}`,
       why: 'macOS reclaims memory from background apps under pressure on its own — free RAM for its own sake does nothing.',
       detail: 'Worth quitting only if things actually feel slow.',
       linkKind: null,
