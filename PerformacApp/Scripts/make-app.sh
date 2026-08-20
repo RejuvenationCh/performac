@@ -46,3 +46,12 @@ PLIST
 
 codesign --force --sign - "$APP"
 echo "built $APP (ad-hoc signed)"
+
+# Install to ~/Applications so the Dock has a stable target: build/ is wiped on every
+# rebuild, so pinning that path would break each time. rsync --delete replaces the
+# installed bundle in place (build artifact, never user data).
+INSTALL="$HOME/Applications/Performac.app"
+mkdir -p "$HOME/Applications"
+rsync -a --delete "$APP/" "$INSTALL/"
+codesign --force --sign - "$INSTALL"
+echo "installed $INSTALL"
