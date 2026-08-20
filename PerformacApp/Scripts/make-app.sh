@@ -42,7 +42,14 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-codesign --force --sign - "$APP"
+# Sign with a stable self-signed identity, NOT ad-hoc. macOS ties Full Disk Access to the
+# app's signing identity; with ad-hoc that identity is the binary hash, so every code change
+# looked like a brand-new app and TCC silently dropped every grant. A certificate keeps the
+# identity constant across rebuilds, so the grant is made once and sticks.
+# Falls back to ad-hoc if the certificate is missing, so the build never breaks.
+SIGN_ID="Performac Dev"
+security find-certificate -c "$SIGN_ID" >/dev/null 2>&1 || SIGN_ID="-"
+codesign --force --sign "$SIGN_ID" "$APP"
 echo "built $APP (ad-hoc signed)"
 
 # Install to ~/Applications so the Dock has a stable target: build/ is wiped on every
@@ -51,5 +58,5 @@ echo "built $APP (ad-hoc signed)"
 INSTALL="$HOME/Applications/Performac.app"
 mkdir -p "$HOME/Applications"
 rsync -a --delete "$APP/" "$INSTALL/"
-codesign --force --sign - "$INSTALL"
+codesign --force --sign "$SIGN_ID" "$INSTALL"
 echo "installed $INSTALL"
