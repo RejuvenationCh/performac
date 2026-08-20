@@ -313,6 +313,9 @@ export function idleLoaded(procSamples, frontEvents, cfg, now) {
   const matches = (e, name) => e.key === name || name.startsWith(e.key) || e.key.startsWith(name);
   const out = [];
   for (const [name, s] of latest) {
+    // helpers are not apps: plugin-container and "* Helper (…)" belong to their parent
+    // app, which gets its own card — a card naming plugin-container is noise to the user
+    if (name === 'plugin-container' || / Helper(?: \(|$)/.test(name)) continue;
     if (fronts.some(e => matches(e, name) && now - e.ts < cfg.idle.hours * 3600000)) continue;
     const last = fronts.filter(e => matches(e, name)).sort((a, b) => b.ts - a.ts)[0];
     const display = name.split(' ').filter(w => !/^\d{4}$/.test(w)).slice(0, 2).join(' ');
