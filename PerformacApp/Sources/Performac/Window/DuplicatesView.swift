@@ -14,6 +14,8 @@ struct DuplicatesView: View {
                 HStack(spacing: PC.gutter) {
                     Text("Last scan: 3 hours ago").font(.pcSmall).foregroundStyle(PC.meta)
                     Button("Scan Again") {}.controlSize(.small)
+                        .disabled(true)
+                        .help("Duplicate scanning arrives with the Clean phase — showing your last scan.")
                 })) {
             ScrollView {
                 VStack(spacing: PC.gutter) {

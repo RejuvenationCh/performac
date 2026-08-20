@@ -11,6 +11,7 @@ final class MutBox<T>: @unchecked Sendable {
 
 final class FakeStream: StreamChild, @unchecked Sendable {
     var onLine: (@Sendable (String) -> Void)?
+    var onExit: (@Sendable () -> Void)?
     let bin: String
     let args: [String]
     init(bin: String, args: [String]) { self.bin = bin; self.args = args }

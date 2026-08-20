@@ -5,12 +5,26 @@ struct SettingsView: View {
     @State private var launchAtLogin = false
     @State private var showInMenuBar = true
     @State private var menuBarShows = "Worst finding"
-    @State private var staleDays = 21
-    @State private var weeksLeft = 8
-    @State private var cycles = 2
-    @State private var cpuMinutes = 30
-    @State private var dupMinMB = 100
-    @State private var historyDays = 180
+    @State private var staleDays: Int
+    @State private var weeksLeft: Int
+    @State private var cycles: Int
+    @State private var cpuMinutes: Int
+    @State private var dupMinMB: Int
+    @State private var historyDays: Int
+    var fdaGranted: Bool = false
+    var onSave: (String, JSONValue) -> Void = { _, _ in }
+
+    init(config: Config = .defaults, fdaGranted: Bool = false,
+         onSave: @escaping (String, JSONValue) -> Void = { _, _ in }) {
+        _staleDays = State(initialValue: config.cacheRules.staleDays)
+        _weeksLeft = State(initialValue: config.storage.warnWeeksLeft)
+        _cycles = State(initialValue: config.drive.cycles24h)
+        _cpuMinutes = State(initialValue: config.hog.minMinutes)
+        _dupMinMB = State(initialValue: Int(config.dup.minMb))
+        _historyDays = State(initialValue: config.retentionDays.cache)
+        self.fdaGranted = fdaGranted
+        self.onSave = onSave
+    }
 
     var body: some View {
         Page(title: "Settings") {
@@ -19,7 +33,9 @@ struct SettingsView: View {
                     SettingsGroup(header: "Permissions") {
                         Row("Full Disk Access") {
                             HStack(spacing: PC.s2) {
-                                Pill(text: "Not granted", tint: PC.amber, soft: PC.amberSoft)
+                                Pill(text: fdaGranted ? "Granted" : "Not granted",
+                                     tint: fdaGranted ? PC.green : PC.amber,
+                                     soft: fdaGranted ? PC.greenSoft : PC.amberSoft)
                                 Button("Open System Settings") {}.controlSize(.small)
                             }
                         }
@@ -40,15 +56,20 @@ struct SettingsView: View {
                     }
                     SettingsGroup(header: "Thresholds") {
                         Stepper2("Warn when a cache is unused for", $staleDays, "days")
+                            .onChange(of: staleDays) { v in onSave("cacheRules", .object(["staleDays": .number(Double(v))])) }
                         Divider().overlay(PC.hairline)
                         Stepper2("Warn when free space drops below", $weeksLeft, "weeks remaining")
+                            .onChange(of: weeksLeft) { v in onSave("storage", .object(["warnWeeksLeft": .number(Double(v))])) }
                         Divider().overlay(PC.hairline)
                         Stepper2("Drive reconnect cycles before warning", $cycles, "")
+                            .onChange(of: cycles) { v in onSave("drive", .object(["cycles24h": .number(Double(v))])) }
                         Divider().overlay(PC.hairline)
                         Stepper2("Sustained CPU warning after", $cpuMinutes, "minutes")
+                            .onChange(of: cpuMinutes) { v in onSave("hog", .object(["minMinutes": .number(Double(v))])) }
                     }
                     SettingsGroup(header: "Scanning") {
                         Stepper2("Duplicate scan minimum file size", $dupMinMB, "MB")
+                            .onChange(of: dupMinMB) { v in onSave("dup", .object(["minMb": .number(Double(v))])) }
                         Divider().overlay(PC.hairline)
                         Row("Folders to skip") {
                             HStack(spacing: PC.s1) {
@@ -60,6 +81,7 @@ struct SettingsView: View {
                     }
                     SettingsGroup(header: "Data") {
                         Stepper2("History kept", $historyDays, "days")
+                            .onChange(of: historyDays) { v in onSave("retentionDays", .object(["cache": .number(Double(v)), "disk": .number(Double(v))])) }
                         Divider().overlay(PC.hairline)
                         Row("Database") {
                             HStack(spacing: PC.s2) {

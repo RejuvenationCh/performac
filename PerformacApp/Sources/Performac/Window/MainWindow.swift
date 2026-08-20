@@ -15,18 +15,30 @@ enum Route: String, CaseIterable, Identifiable {
 }
 
 struct MainWindow: View {
+    @ObservedObject var store = EngineStore.shared
     @State private var route: Route = .today
     var body: some View {
         HStack(spacing: 0) {
             Rail(route: $route)
             Group {
                 switch route {
-                case .today: TodayView()
-                case .digest: DigestView()
-                case .disk: DiskView()
-                case .clean: CleanView()
-                case .duplicates: DuplicatesView()
-                case .settings: SettingsView()
+                case .today: TodayView(findings: store.live)
+                case .digest: DigestView(findings: store.digest)
+                case .disk: DiskView(
+                    entries: store.diskEntries,
+                    scanning: store.scanning,
+                    scanFiles: store.scanFiles,
+                    scanBytes: store.scanBytes,
+                    scanElapsed: store.scanElapsed,
+                    scanPath: store.scanPath,
+                    onScan: { store.startDiskScan() },
+                    onCancel: { store.cancelDiskScan() })
+                case .clean: CleanView(caches: store.cacheEntries)
+                case .duplicates: DuplicatesView(groups: store.dupGroups)
+                case .settings: SettingsView(
+                    config: store.config,
+                    fdaGranted: store.fdaGranted,
+                    onSave: { key, value in _ = store.saveSetting(key, value) })
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

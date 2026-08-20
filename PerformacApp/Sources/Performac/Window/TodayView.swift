@@ -59,6 +59,7 @@ private struct QuietTile: View {
 }
 
 struct DigestView: View {
+    var findings: [Finding] = Sample.findings
     var body: some View {
         Page(title: "Digest", subtitle: "Weekly read — the trends behind the cards.") {
             ScrollView {
@@ -80,7 +81,7 @@ struct DigestView: View {
                     }
                     .padding(PC.gutter).frame(maxWidth: .infinity, alignment: .leading).pcCard()
 
-                    ForEach(Sample.findings) { CoachCardView(finding: $0) }
+                    ForEach(findings) { CoachCardView(finding: $0) }
                 }
                 .padding(.horizontal, PC.stack).padding(.bottom, PC.stack)
             }

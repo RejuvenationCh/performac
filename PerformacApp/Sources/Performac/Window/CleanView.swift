@@ -2,8 +2,12 @@
 import SwiftUI
 
 struct CleanView: View {
-    @State private var caches: [CacheEntry] = Sample.caches
+    @State private var caches: [CacheEntry]
     @State private var confirming = false
+
+    init(caches: [CacheEntry] = Sample.caches) {
+        _caches = State(initialValue: caches)
+    }
     private var selected: [CacheEntry] { caches.filter(\.selected) }
     private var selectedBytes: Int64 { selected.reduce(0) { $0 + $1.bytes } }
 

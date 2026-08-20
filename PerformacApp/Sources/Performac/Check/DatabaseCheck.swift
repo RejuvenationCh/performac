@@ -18,6 +18,12 @@ enum DatabaseCheck {
         let got = getSetting(db, "hog")
         c.eq("settings roundtrip: hog.cpuPct", got?.objectVal?["cpuPct"]?.doubleVal ?? 0, 95)
         c.check("settings roundtrip: missing key → nil", getSetting(db, "nope") == nil)
+        // bare-string settings (v1 stores JSON.stringify of any value — the app crashed
+        // here once; NSJSONSerialization refuses bare strings as top-level objects)
+        setSetting(db, "premiere-sidebyside", .string("1"))
+        c.eq("settings roundtrip: bare string", getSetting(db, "premiere-sidebyside")?.stringVal, "1")
+        setSetting(db, "tickSec", .number(60))
+        c.eq("settings roundtrip: bare number", getSetting(db, "tickSec")?.doubleVal, 60)
 
         // sweep: retention per table
         let now: Int64 = 1_756_000_000_000

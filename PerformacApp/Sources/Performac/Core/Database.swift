@@ -52,6 +52,10 @@ CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 
 final class DB: @unchecked Sendable {
     let handle: OpaquePointer
+    /// One connection is shared by the sampler (utility pool) and the store (main actor).
+    /// SQLite serializes individual API calls, but a prepare/finalize interleaving across
+    /// threads aborts with SQLITE_MISUSE — so all statement work holds this lock.
+    let lock = NSLock()
 
     init(path: String) {
         var h: OpaquePointer?
@@ -65,21 +69,37 @@ final class DB: @unchecked Sendable {
 
     deinit { sqlite3_close(handle) }
 
-    func prepare(_ sql: String) -> Stmt { Stmt(db: handle, sql: sql) }
+    func prepare(_ sql: String) -> Stmt {
+        lock.lock()
+        defer { lock.unlock() }
+        return Stmt(db: self, sql: sql)
+    }
 }
 
 final class Stmt: @unchecked Sendable {
     private let stmt: OpaquePointer
+    private let db: DB    // strong: the connection must outlive every statement
 
-    init(db: OpaquePointer, sql: String) {
+    init(db: DB, sql: String) {
+        self.db = db
         var s: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &s, nil) == SQLITE_OK, let s else {
+        guard sqlite3_prepare_v2(db.handle, sql, -1, &s, nil) == SQLITE_OK, let s else {
             fatalError("prepare failed: \(sql)")
         }
         stmt = s
     }
 
-    deinit { sqlite3_finalize(stmt) }
+    deinit {
+        db.lock.lock()
+        sqlite3_finalize(stmt)
+        db.lock.unlock()
+    }
+
+    private func withLock<T>(_ body: () -> T) -> T {
+        db.lock.lock()
+        defer { db.lock.unlock() }
+        return body()
+    }
 
     private func bind(_ args: [SQLValue]) {
         sqlite3_reset(stmt)
@@ -111,21 +131,27 @@ final class Stmt: @unchecked Sendable {
 
     /// execute without reading rows
     func run(_ args: [SQLValue] = []) {
-        bind(args)
-        _ = sqlite3_step(stmt)
+        withLock {
+            bind(args)
+            _ = sqlite3_step(stmt)
+        }
     }
 
     func get(_ args: [SQLValue] = []) -> DBRow? {
-        bind(args)
-        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
-        return readRow()
+        withLock {
+            bind(args)
+            guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+            return readRow()
+        }
     }
 
     func all(_ args: [SQLValue] = []) -> [DBRow] {
-        bind(args)
-        var out: [DBRow] = []
-        while sqlite3_step(stmt) == SQLITE_ROW { out.append(readRow()) }
-        return out
+        withLock {
+            bind(args)
+            var out: [DBRow] = []
+            while sqlite3_step(stmt) == SQLITE_ROW { out.append(readRow()) }
+            return out
+        }
     }
 }
 
@@ -191,8 +217,9 @@ extension JSONValue {
         case .bool(let v):
             return v ? "true" : "false"
         case .string(let v):
-            let data = try! JSONSerialization.data(withJSONObject: v)
-            return String(data: data, encoding: .utf8)!
+            let escaped = v.replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+            return "\"" + escaped + "\""
         case .array(let v):
             return "[" + v.map { $0.jsonString }.joined(separator: ",") + "]"
         case .object(let v):

@@ -3,7 +3,7 @@
 import SwiftUI
 
 struct PopoverView: View {
-    var findings: [Finding] = Sample.findings
+    @ObservedObject var store = EngineStore.shared
     var onOpenWindow: () -> Void = {}
 
     var body: some View {
@@ -22,7 +22,7 @@ struct PopoverView: View {
 
             ScrollView {
                 VStack(spacing: PC.gutter) {
-                    ForEach(findings) { CoachCardView(finding: $0) }
+                    ForEach(store.live) { CoachCardView(finding: $0) }
                 }
                 .padding(PC.gutter)
             }

@@ -1,5 +1,9 @@
 // AppDelegate.swift — the shell: a status item that states the worst finding, a popover for
 // the glance, and a window for the work. LSUIElement, so no Dock icon unless the window opens.
+//
+// Phase 1 wiring: owns the EngineStore, boots the Sampler with real deps, schedules the
+// tick/hourly loops off the main actor, and stops everything on quit so the child
+// processes never outlive the app.
 import AppKit
 import SwiftUI
 
@@ -9,11 +13,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let popover = NSPopover()
     private var window: NSWindow?
 
+    let store = EngineStore.shared
+    private var engineTasks: [Task<Void, Never>] = []
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Light only, by user decision — the app does not follow the system appearance.
         // Every token in Tokens.swift still carries a dark value, so dropping this line
         // is all that is needed to restore automatic light/dark.
         NSApp.appearance = NSAppearance(named: .aqua)
+
+        startEngine()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         configureStatusButton()
@@ -30,21 +39,90 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openWindow()
     }
 
+    // MARK: engine — off-main sampling loops, main-actor store refreshes
+
+    private func startEngine() {
+        let db = store.db
+        let cfg = loadConfig(db)
+        let deps = LiveDeps()
+        let sampler = Sampler(db: db, cfg: cfg, deps: deps)
+        store.sampler = sampler
+        let store = store
+
+        // 30s tick: samples + streams + refreshFindings (rules + findings table + notify)
+        engineTasks.append(Task.detached(priority: .utility) { [sampler, store] in
+            while !Task.isCancelled {
+                await sampler.tick()
+                await MainActor.run { store.refreshFromDatabase() }
+                try? await Task.sleep(for: .seconds(Double(cfg.tickSec)))
+            }
+        })
+        // 5min disk tick
+        engineTasks.append(Task.detached(priority: .utility) { [sampler, store] in
+            while !Task.isCancelled {
+                await sampler.diskTick()
+                try? await Task.sleep(for: .seconds(Double(cfg.diskTickSec)))
+            }
+        })
+        // hourly: caches, backup state, drift walk, retention sweep, digest ping
+        engineTasks.append(Task.detached(priority: .utility) { [sampler, store] in
+            while !Task.isCancelled {
+                await cacheTick(db, cfg, deps)
+                await backupTick(db, cfg, deps)
+                await driftTick(db, cfg, deps)
+                sweep(db, cfg, deps.now())
+                await mondayDigestCheck(db, cfg, deps.now(), { bin, args in try await deps.execFile(bin, args) })
+                await MainActor.run { store.refreshFromDatabase() }
+                try? await Task.sleep(for: .seconds(3600))
+            }
+        })
+        // daily: battery (tier3-gated inside)
+        engineTasks.append(Task.detached(priority: .utility) { [sampler, store] in
+            while !Task.isCancelled {
+                await batteryTick(db, cfg, deps)
+                try? await Task.sleep(for: .seconds(86_400))
+            }
+        })
+
+        // first refresh so the UI has real data before the first tick lands
+        Task { [store] in
+            await MainActor.run { store.refreshFromDatabase() }
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        store.sampler?.stop()
+        store.cancelDiskScan()
+        for t in engineTasks { t.cancel() }
+    }
+
     /// The title states the most severe finding, or stays a bare glyph when all is quiet.
     private func configureStatusButton() {
         guard let b = statusItem.button else { return }
-        let worst = Sample.findings.first { $0.severity == .red }
-            ?? Sample.findings.first { $0.severity == .amber }
-        b.image = NSImage(systemSymbolName: worst == nil ? "gauge.with.dots.needle.33percent"
-                                                         : "exclamationmark.triangle.fill",
+        b.image = NSImage(systemSymbolName: "gauge.with.dots.needle.33percent",
                           accessibilityDescription: "Performac")
         b.image?.isTemplate = true
         b.imagePosition = .imageLeading
         b.font = .systemFont(ofSize: 12, weight: .medium)
-        b.title = worst == nil ? "" : " T7 flapped 2×"
-        b.toolTip = worst?.headline ?? "Performac — nothing worth doing"
+        b.title = ""
+        b.toolTip = "Performac — nothing worth doing"
         b.target = self
         b.action = #selector(togglePopover)
+        // live observation: severity icon + worst-finding title, quiet → bare glyph
+        Task { [weak self, store] in
+            for await _ in store.$live.values {
+                guard let self else { return }
+                await MainActor.run {
+                    let worst = store.worst
+                    self.statusItem.button?.image = NSImage(systemSymbolName: worst == nil
+                        ? "gauge.with.dots.needle.33percent" : "exclamationmark.triangle.fill",
+                        accessibilityDescription: "Performac")
+                    self.statusItem.button?.image?.isTemplate = true
+                    self.statusItem.button?.title = store.worstTitle
+                    self.statusItem.button?.toolTip = worst?.headline ?? "Performac — nothing worth doing"
+                }
+            }
+        }
     }
 
     @objc private func togglePopover() {

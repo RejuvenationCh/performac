@@ -4,7 +4,13 @@ import SwiftUI
 
 struct DiskView: View {
     var entries: [SizeEntry] = Sample.disk
-    @State private var scanning = false
+    var scanning: Bool = false
+    var scanFiles: Int = 0
+    var scanBytes: Int64 = 0
+    var scanElapsed: TimeInterval = 0
+    var scanPath: String = ""
+    var onScan: () -> Void = {}
+    var onCancel: () -> Void = {}
     private var maxBytes: Int64 { entries.map(\.bytes).max() ?? 1 }
 
     var body: some View {
@@ -17,7 +23,10 @@ struct DiskView: View {
             .padding(.horizontal, PC.stack).padding(.vertical, PC.gutter)
             .background(PC.surface).pcHairline(.bottom)
 
-            if scanning { ScanProgress { scanning = false } }
+            if scanning {
+                ScanProgress(files: scanFiles, bytes: scanBytes, elapsed: scanElapsed,
+                             currentPath: scanPath, onCancel: onCancel)
+            }
 
             HSplitView {
                 VStack(spacing: 0) {
@@ -43,7 +52,7 @@ struct DiskView: View {
                     HStack {
                         Text("\(entries.count) items").font(.pcSmall).foregroundStyle(PC.meta)
                         Spacer()
-                        Button("Scan Again") { scanning = true }
+                        Button("Scan Again", action: onScan)
                             .buttonStyle(.link).font(.pcLabel)
                     }
                     .padding(.horizontal, PC.gutter).padding(.vertical, PC.s2)
@@ -80,17 +89,23 @@ struct Breadcrumb: View {
 
 /// Streaming scan state — this is what you look at most while using Disk.
 struct ScanProgress: View {
-    var onCancel: () -> Void
+    var files: Int = 0
+    var bytes: Int64 = 0
+    var elapsed: TimeInterval = 0
+    var currentPath: String = ""
+    var onCancel: () -> Void = {}
     var body: some View {
         VStack(alignment: .leading, spacing: PC.s1) {
             HStack {
-                Text("Scanning… 412,308 items · 289.4 GB so far").font(.pcBody).foregroundStyle(PC.ink)
+                Text("Scanning… \(Fmt.count(files)) items · \(Fmt.bytes(bytes)) so far")
+                    .font(.pcBody).foregroundStyle(PC.ink)
                 Spacer()
-                Text("0:31").font(.pcNum).foregroundStyle(PC.meta)
+                Text("\(Int(elapsed) / 60):\(String(format: "%02d", Int(elapsed) % 60))")
+                    .font(.pcNum).foregroundStyle(PC.meta)
                 Button("Cancel", action: onCancel).buttonStyle(.link).font(.pcLabel)
             }
             ProgressView().progressViewStyle(.linear).tint(PC.accentFill)
-            Text("…/Data C (General)/UC/Projects/Oweek")
+            Text(currentPath)
                 .font(.pcSmall).foregroundStyle(PC.meta).lineLimit(1).truncationMode(.head)
         }
         .padding(.horizontal, PC.stack).padding(.vertical, PC.s2 + 2)

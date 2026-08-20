@@ -14,6 +14,7 @@ struct StatFs: Sendable {
 /// A spawned stream child: `onLine` receives complete lines; kill() stops it.
 protocol StreamChild: AnyObject, Sendable {
     var onLine: (@Sendable (String) -> Void)? { get set }
+    var onExit: (@Sendable () -> Void)? { get set }
     func kill()
 }
 
@@ -339,17 +340,25 @@ final class Sampler: @unchecked Sendable {
 
     // MARK: streams
 
-    /// Port of startStream: spawn, feed complete lines to the handler, respawn on exit.
+    /// Port of startStream: spawn, feed complete lines to the handler, respawn on exit
+    /// with the same 60s backoff v1 uses.
     func startStream(_ bin: String, _ args: [String], _ onLine: @escaping @Sendable (String) -> Void) {
-        func spawnNow() {
-            if stopped { return }
-            let child = deps.spawn(bin, args)
-            child.onLine = { line in
-                onLine(line)
+        spawnChild(bin, args, onLine)
+    }
+
+    private func spawnChild(_ bin: String, _ args: [String], _ onLine: @escaping @Sendable (String) -> Void) {
+        if stopped { return }
+        let child = deps.spawn(bin, args)
+        child.onLine = { line in onLine(line) }
+        child.onExit = { [weak self] in
+            guard let self, !self.stopped else { return }
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(60))
+                guard let self, !self.stopped else { return }
+                self.spawnChild(bin, args, onLine)
             }
-            streams.append(child)
         }
-        spawnNow()
+        streams.append(child)
     }
 
     /// diskutil activity stream handler — ported exactly (async verdict + dedupe + line ts)
