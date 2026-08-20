@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   parsePs, parseDf, parseFrontAppName, parseTherm, parseThermlogLine, parseBattery,
   parseTmDestinations, parseTmLatest, parseResolveConfig, parseDiskutilActivity, parseLoginItems,
+  parseDiskutilInfo, parsePower,
 } from '../collectors.js';
 
 const PS = `  PID  %CPU    RSS COMM
@@ -42,9 +43,43 @@ const RESOLVE_CFG = `Site.1.FS.1.Root = /Users/you/Movies
 Site.1.FS.2.Root = /Volumes
 RenderCaching.CacheDir = CacheClip`;
 
-// NOTE: reconstructed from documented format — Task 8 Step 4 replaces these with lines captured live.
-const DU_APPEAR = `***DiskAppeared ('disk4s2', DAVolumeKind = 'apfs', DAVolumeName = 'T7')`;
-const DU_GONE   = `***DiskDisappeared ('disk4s2', DAVolumeKind = 'apfs', DAVolumeName = 'T7')`;
+// real lines captured live from `diskutil activity` on this machine 2026-08-20 (no drive attached):
+const DU_REAL_VM = `***DiskAppeared ('disk3s6', DAVolumePath = 'file:///System/Volumes/VM/', DAVolumeKind = 'apfs', DAVolumeName = 'VM') Time=20260820-18:07:36.1557`;
+const DU_REAL_NULL = `***DiskAppeared ('disk0', DAVolumePath = '<null>', DAVolumeKind = '<null>', DAVolumeName = '<null>') Time=20260820-18:07:36.1554`;
+// same format for external volumes (DAVolumeName = '<null>' is the literal string, not a JSON null):
+const DU_APPEAR = `***DiskAppeared ('disk4s2', DAVolumePath = 'file:///Volumes/T7/', DAVolumeKind = 'apfs', DAVolumeName = 'T7') Time=20260820-18:07:36.1551`;
+const DU_GONE   = `***DiskDisappeared ('disk4s2', DAVolumePath = 'file:///Volumes/T7/', DAVolumeKind = 'apfs', DAVolumeName = 'T7') Time=20260820-18:07:40.0001`;
+
+// real `diskutil info -plist` shape (booleans as XML tags), captured on this machine:
+const DU_INFO_INTERNAL = `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+	<key>BusProtocol</key>
+	<string>Apple Fabric</string>
+	<key>Ejectable</key>
+	<false/>
+	<key>Internal</key>
+	<true/>
+	<key>VolumeName</key>
+	<string>Macintosh HD</string>
+</dict>
+</plist>`;
+const DU_INFO_EXTERNAL = `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+	<key>BusProtocol</key>
+	<string>Disk Image</string>
+	<key>Ejectable</key>
+	<true/>
+	<key>Internal</key>
+	<false/>
+	<key>VolumeName</key>
+	<string>PerformacTest</string>
+</dict>
+</plist>`;
+
+const POWER_AC = `Now drawing from 'AC Power'`;
+const POWER_BATT = `Now drawing from 'Battery Power'`;
 
 test('parsePs: header skipped, numeric fields split, name = rest (spaces/parens)', () => {
   const rows = parsePs(PS);
@@ -107,11 +142,30 @@ test('parseResolveConfig: FS.1.Root + CacheDir', () => {
     { fsRoot: '/Users/you/Movies', cacheDir: 'CacheClip' });
 });
 
-test('parseDiskutilActivity: appeared/disappeared; nameless/other lines → null', () => {
-  assert.deepEqual(parseDiskutilActivity(DU_APPEAR), { kind: 'appeared', volume: 'T7' });
-  assert.deepEqual(parseDiskutilActivity(DU_GONE), { kind: 'disappeared', volume: 'T7' });
+test('parseDiskutilActivity: real lines — kind/volume/ts; <null> and nameless → null', () => {
+  const local = (...a) => new Date(...a).getTime();
+  assert.deepEqual(parseDiskutilActivity(DU_APPEAR),
+    { kind: 'appeared', volume: 'T7', ts: local(2026, 7, 20, 18, 7, 36) });
+  assert.deepEqual(parseDiskutilActivity(DU_GONE),
+    { kind: 'disappeared', volume: 'T7', ts: local(2026, 7, 20, 18, 7, 40) });
+  assert.deepEqual(parseDiskutilActivity(DU_REAL_VM),
+    { kind: 'appeared', volume: 'VM', ts: local(2026, 7, 20, 18, 7, 36) });
+  // DAVolumeName = '<null>' is what real diskutil prints for unnamed disks — must not become a key
+  assert.equal(parseDiskutilActivity(DU_REAL_NULL), null);
   assert.equal(parseDiskutilActivity(`***DiskAppeared ('disk4s2', DAVolumeKind = 'apfs', DAVolumeName = '')`), null);
   assert.equal(parseDiskutilActivity('***StorageAttached (...)'), null);
+});
+
+test('parseDiskutilInfo: real plist — Internal/Ejectable booleans', () => {
+  assert.deepEqual(parseDiskutilInfo(DU_INFO_INTERNAL), { internal: true, ejectable: false });
+  assert.deepEqual(parseDiskutilInfo(DU_INFO_EXTERNAL), { internal: false, ejectable: true });
+  assert.equal(parseDiskutilInfo('garbage'), null);
+});
+
+test('parsePower: AC / battery / garbage', () => {
+  assert.equal(parsePower(POWER_AC), 'AC Power');
+  assert.equal(parsePower(POWER_BATT), 'Battery Power');
+  assert.equal(parsePower('nonsense'), null);
 });
 
 test('parseLoginItems: comma list → names', () => {

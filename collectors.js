@@ -66,10 +66,34 @@ export function parseResolveConfig(text) {
   return { fsRoot: root ? root[1].trim() : null, cacheDir: dir ? dir[1].trim() : null };
 }
 
+// real `diskutil activity` lines carry the literal string DAVolumeName = '<null>' for unnamed
+// disks (disk/container/scheme events) — that is NOT a name, return null so no event is written.
+// ts comes from the line's own Time=YYYYMMDD-HH:MM:SS (local), null when absent.
 export function parseDiskutilActivity(line) {
   const m = String(line ?? '').match(/\*\*\*Disk(Appeared|Disappeared).*DAVolumeName = '([^']*)'/);
-  if (!m || m[2] === '') return null;
-  return { kind: m[1].toLowerCase(), volume: m[2] };
+  if (!m || !m[2] || m[2] === '<null>') return null;
+  const t = String(line).match(/Time=(\d{4})(\d{2})(\d{2})-(\d{2}):(\d{2}):(\d{2})/);
+  const ts = t ? new Date(Number(t[1]), Number(t[2]) - 1, Number(t[3]), Number(t[4]), Number(t[5]), Number(t[6])).getTime() : null;
+  return { kind: m[1].toLowerCase(), volume: m[2], ts };
+}
+
+// `diskutil info -plist <vol>` — booleans render as <true/>/<false/> tags
+export function parseDiskutilInfo(text) {
+  const s = String(text ?? '');
+  const val = k => {
+    const m = s.match(new RegExp('<key>' + k + '</key>\\s*<(true|false)/>'));
+    return m ? m[1] === 'true' : null;
+  };
+  const internal = val('Internal');
+  const ejectable = val('Ejectable');
+  if (internal == null && ejectable == null) return null;
+  return { internal: internal ?? false, ejectable: ejectable ?? false };
+}
+
+// `pmset -g batt -o` → "Now drawing from 'AC Power'" / "'Battery Power'"
+export function parsePower(text) {
+  const m = String(text ?? '').match(/Now drawing from '([^']+)'/);
+  return m ? m[1] : null;
 }
 
 export function parseLoginItems(text) {

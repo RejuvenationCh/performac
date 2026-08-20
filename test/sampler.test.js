@@ -116,6 +116,16 @@ test('volumes reconcile emits mount/unmount on set diff', async () => {
   s.stop();
 });
 
+test('stream line with DAVolumeName <null> → no event row (real diskutil emits the literal <null>)', async () => {
+  const db = openDb(':memory:');
+  const deps = makeDeps();
+  const s = startSampler(db, { ...DEFAULTS }, deps);
+  const duStream = deps.spawned.find(c => c.bin === 'diskutil');
+  duStream.stdout.emit('data', `***DiskAppeared ('disk0', DAVolumePath = '<null>', DAVolumeKind = '<null>', DAVolumeName = '<null>') Time=20260820-18:07:36.1554\n`);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM events').get().n, 0, 'nameless disk event must never write a row');
+  s.stop();
+});
+
 test('stream mount event deduped against reconcile within 5s', async () => {
   const db = openDb(':memory:');
   let vols = [];
