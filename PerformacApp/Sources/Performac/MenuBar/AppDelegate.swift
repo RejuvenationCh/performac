@@ -1,5 +1,5 @@
 // AppDelegate.swift — the shell: a status item that states the worst finding, a popover for
-// the glance, and a window for the work. LSUIElement, so no Dock icon unless the window opens.
+// the glance, and a window for the work. Regular activation policy: Dock icon + menu bar item.
 //
 // Phase 1 wiring: owns the EngineStore, boots the Sampler with real deps, schedules the
 // tick/hourly loops off the main actor, and stops everything on quit so the child
@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         startEngine()
 
+        installMainMenu()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         configureStatusButton()
 
@@ -89,6 +90,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { [store] in
             await MainActor.run { store.refreshFromDatabase() }
         }
+    }
+
+    /// Clicking the Dock icon (or the pinned tile) must bring the window back. Without this
+    /// a closed window was unrecoverable without quitting and relaunching.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { openWindow() }
+        return true
+    }
+
+    /// A regular app with no main menu has no Quit and no Cmd-W. Build a minimal one.
+    private func installMainMenu() {
+        let main = NSMenu()
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "About Performac", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Hide Performac", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "Quit Performac", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+        main.addItem(appItem)
+
+        let winItem = NSMenuItem()
+        let winMenu = NSMenu(title: "Window")
+        winMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        winMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        winItem.submenu = winMenu
+        main.addItem(winItem)
+        NSApp.mainMenu = main
     }
 
     func applicationWillTerminate(_ notification: Notification) {

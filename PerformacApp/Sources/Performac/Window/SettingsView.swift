@@ -1,5 +1,6 @@
 // SettingsView.swift — macOS System Settings idiom: grouped rows, label left, control right.
 import SwiftUI
+import AppKit
 
 struct SettingsView: View {
     @State private var launchAtLogin = false
@@ -36,7 +37,12 @@ struct SettingsView: View {
                                 Pill(text: fdaGranted ? "Granted" : "Not granted",
                                      tint: fdaGranted ? PC.green : PC.amber,
                                      soft: fdaGranted ? PC.greenSoft : PC.amberSoft)
-                                Button("Open System Settings") {}.controlSize(.small)
+                                Button("Open System Settings") {
+                                    // Deep-links straight to Privacy → Full Disk Access.
+                                    if let u = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+                                        NSWorkspace.shared.open(u)
+                                    }
+                                }.controlSize(.small)
                             }
                         }
                         Note("Without it, Performac can only measure 736 GB of your 889 GB — folders it cannot read are silently missing from totals.")

@@ -1,5 +1,5 @@
 // main.swift — CLI scan mode (the Phase 2 go/no-go measurement) and the menu bar app.
-// No arguments: NSApplication bootstrap, LSUIElement menu bar shell (Phase 0).
+// No arguments: NSApplication bootstrap — Dock icon plus a menu bar item.
 // `Performac scan <path>`: headless scan with timings (Phase 2 prototype measurement).
 import AppKit
 import Foundation
@@ -27,5 +27,7 @@ if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "check" {
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
-app.setActivationPolicy(.accessory)   // menu bar only, no Dock icon
+// A regular app, not .accessory: it is pinned to the Dock, so it needs a Dock icon with a
+// running indicator and a Cmd-Tab entry. The menu bar item stays — an app can have both.
+app.setActivationPolicy(.regular)
 app.run()
