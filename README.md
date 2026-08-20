@@ -72,15 +72,37 @@ Thresholds apply to new findings immediately; sampler cadence changes need an ag
 
 The Digest view's intro paragraph is templated by default. To get a warmer, Claude-written intro
 (Money Dashboard's pattern), install `insights/refresh_digest.js` as its own LaunchAgent —
-mirroring `com.example.finance-insights`:
+mirroring `com.example.finance-insights`. Save as
+`~/Library/LaunchAgents/com.example.performac-insights.plist`, then
+`launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.example.performac-insights.plist`:
 
 ```xml
-<key>ProgramArguments</key>
-<array>
-  <string>/opt/homebrew/bin/node</string>
-  <string>/Users/you/Data C (General)/Projects/Personal/Performac/insights/refresh_digest.js</string>
-</array>
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.performac-insights</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>/Users/you/Data C (General)/Projects/Personal/Performac/insights/refresh_digest.js</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key><integer>1</integer>
+    <key>Hour</key><integer>9</integer>
+    <key>Minute</key><integer>5</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/tmp/performac-insights.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/performac-insights.err</string>
+</dict>
+</plist>
 ```
 
-The script calls the Claude CLI headlessly, writes `seed/digest.json`, and the app adopts it when
-it is less than 8 days old. Without it, nothing calls the network — ever.
+Runs Monday 09:05 (adjust Weekday/Hour/Minute as you like). The script calls the Claude CLI
+headlessly (`claude -p` — log in once with `claude` then `/login`), writes `seed/digest.json`,
+and the app adopts it while it is less than 8 days old. Without this opt-in agent, nothing
+calls the network — ever.
