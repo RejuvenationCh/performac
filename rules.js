@@ -17,6 +17,59 @@ function ageText(ageDays) {
   return `${Math.round(ageDays)} days`;
 }
 
+// a "cycle" = unmount followed by reappearance (mount) within 30 min; user ejects don't count
+export function driveInstability(events, cfg, now) {
+  const byVol = new Map();
+  for (const e of events) {
+    if (e.kind !== 'mount' && e.kind !== 'unmount') continue;
+    if (!byVol.has(e.key)) byVol.set(e.key, []);
+    byVol.get(e.key).push(e);
+  }
+  const out = [];
+  for (const [vol, list] of byVol) {
+    list.sort((a, b) => a.ts - b.ts);
+    const cycles = [];
+    let i = 0;
+    while (i < list.length) {
+      if (list[i].kind !== 'unmount') { i += 1; continue; }
+      const u = list[i].ts;
+      let j = i + 1;
+      let paired = false;
+      while (j < list.length && list[j].ts - u <= 30 * 60000) {
+        if (list[j].kind === 'mount') { cycles.push(u); paired = true; break; }
+        j += 1;
+      }
+      i = paired ? j + 1 : i + 1;
+    }
+    const in24 = cycles.filter(u => now - u <= 24 * 3600000).length;
+    const in7 = cycles.filter(u => now - u <= 7 * 86400000).length;
+    if (in24 > cfg.drive.cycles24h) {
+      out.push({
+        id: `drive-${slug(vol)}`,
+        kind: 'drive',
+        severity: 'red',
+        headline: `${vol} disconnected and reconnected ${in24} times in the last 24 hours`,
+        why: 'A loose cable, failing port, or failing drive shows up as surprise unmount cycles — check the connection before your next shoot',
+        detail: '',
+        linkKind: null,
+        linkTarget: null,
+      });
+    } else if (in7 > cfg.drive.cycles7d) {
+      out.push({
+        id: `drive-${slug(vol)}`,
+        kind: 'drive',
+        severity: 'amber',
+        headline: `${vol} disconnected and reconnected ${in7} times in the last 7 days`,
+        why: 'Repeated disconnects spread over the week point at a loose cable or a failing port — keep an eye on it before your next shoot.',
+        detail: '',
+        linkKind: null,
+        linkTarget: null,
+      });
+    }
+  }
+  return out;
+}
+
 // export windows (≥ export.cpuPct sustained ≥ export.minMinutes, gaps < 2 min merged)
 // × elevated intervals from thermlog level events (1/2 opens, 0 closes, open at now stays open)
 export function thermalDuringExport(procSamples, thermalEvents, cfg, now) {

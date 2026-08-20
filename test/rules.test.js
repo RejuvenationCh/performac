@@ -1,7 +1,7 @@
 // rules tests — cacheGrowth, thermalDuringExport (further rules arrive per-feature)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cacheGrowth, thermalDuringExport } from '../rules.js';
+import { cacheGrowth, thermalDuringExport, driveInstability } from '../rules.js';
 
 const DAY = 86400000;
 const NOW = 1756000000000;
@@ -141,4 +141,54 @@ test('gap < 2 min merges segments into one window', () => {
   const fs = thermalDuringExport([...a, ...b], therm, tcfg, T0 + 25 * 60000);
   assert.equal(fs.length, 1);
   assert.ok(fs[0].headline.includes('18 min'), fs[0].headline);
+});
+
+const dcfg = { drive: { cycles24h: 2, cycles7d: 3 } };
+const H = 3600000;
+
+function driveEvent(ts, kind, vol) {
+  return { ts, kind, key: vol, detail: '' };
+}
+
+function pair(ts, vol = 'T7', gapMin = 5) {
+  return [driveEvent(ts, 'unmount', vol), driveEvent(ts + gapMin * 60000, 'mount', vol)];
+}
+
+test('3 reconnect cycles in 24h → red, exact headline and why', () => {
+  const events = [
+    driveEvent(NOW - 26 * H, 'mount', 'Macintosh HD'),   // boot noise, no unmount → ignored
+    ...pair(NOW - 20 * H), ...pair(NOW - 6 * H), ...pair(NOW - 1 * H),
+  ];
+  const fs = driveInstability(events, dcfg, NOW);
+  assert.equal(fs.length, 1);
+  assert.equal(fs[0].severity, 'red');
+  assert.equal(fs[0].headline, 'T7 disconnected and reconnected 3 times in the last 24 hours');
+  assert.equal(fs[0].why, 'A loose cable, failing port, or failing drive shows up as surprise unmount cycles — check the connection before your next shoot');
+  assert.equal(fs[0].linkKind, null);
+});
+
+test('2 cycles spread over 7 days → no finding (under cycles7d)', () => {
+  const events = [...pair(NOW - 6 * 86400000), ...pair(NOW - 3 * 86400000)];
+  assert.deepEqual(driveInstability(events, dcfg, NOW), []);
+});
+
+test('single unmount, no remount → no finding (user ejected and left)', () => {
+  const events = [driveEvent(NOW - 2 * H, 'unmount', 'T7')];
+  assert.deepEqual(driveInstability(events, dcfg, NOW), []);
+});
+
+test('unmount + mount 40 min later → not a cycle (reappearance must be within 30 min)', () => {
+  const events = [driveEvent(NOW - 2 * H, 'unmount', 'T7'), driveEvent(NOW - 2 * H + 40 * 60000, 'mount', 'T7')];
+  assert.deepEqual(driveInstability(events, dcfg, NOW), []);
+});
+
+test('4+ cycles over 7 days (≤ 24h threshold) → amber', () => {
+  const events = [
+    ...pair(NOW - 6 * 86400000), ...pair(NOW - 5 * 86400000),
+    ...pair(NOW - 4 * 86400000), ...pair(NOW - 3 * 86400000),
+  ];
+  const fs = driveInstability(events, dcfg, NOW);
+  assert.equal(fs.length, 1);
+  assert.equal(fs[0].severity, 'amber');
+  assert.ok(fs[0].headline.includes('in the last 7 days'));
 });
