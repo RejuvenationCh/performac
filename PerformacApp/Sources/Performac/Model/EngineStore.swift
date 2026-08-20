@@ -33,10 +33,15 @@ final class EngineStore: ObservableObject {
     var sampler: Sampler?
     private var scanTask: Task<Void, Never>?
     private var scanStart: Date?
+    /// When the persisted results were produced. nil = never scanned on this machine.
+    @Published var lastScanAt: Int64? = nil
+    /// Only meaningful once a scan exists; persisted so it survives relaunch.
+    @Published var autoRefreshScan = false
 
     init(db: DB? = nil) {
         let path = db == nil ? copyV1DatabaseIfNeeded(v1Path: V1_DATABASE_PATH) : nil
         self.db = db ?? DB(path: path!)
+        loadPersistedScan()   // reopening shows the last result, labelled as a snapshot
     }
 
     // MARK: worst finding for the menu bar (red > amber > info; empty → quiet)
@@ -168,6 +173,7 @@ final class EngineStore: ObservableObject {
                             kind: Self.fileKind(forPath: d.path))
                     }
                     self.scanning = false
+                    self.persistScan(sum.topDirectories.isEmpty ? nil : Date())
                 }
             }
         }
@@ -176,6 +182,49 @@ final class EngineStore: ObservableObject {
     func cancelDiskScan() {
         scanTask?.cancel()
         scanning = false
+    }
+
+    /// The Disk view is on screen. A scan only starts here when the user has opted in —
+    /// scanning ~900 GB is minutes of sustained I/O and must never be something the app
+    /// does merely because a window opened.
+    func diskViewAppeared() {
+        if autoRefreshScan && !scanning { startDiskScan() }
+    }
+
+    /// Leaving the view stops the scan. Nothing keeps reading the disk in the background.
+    func diskViewDisappeared() {
+        if scanning { cancelDiskScan() }
+    }
+
+    func setAutoRefreshScan(_ on: Bool) {
+        autoRefreshScan = on
+        setSetting(db, "diskScanAutoRefresh", JSONValue.from(["on": on]))
+        if on && !scanning { startDiskScan() }
+    }
+
+    /// Persist the entry list so reopening the view shows the last result instead of a
+    /// blank screen — labelled as of its scan time, never presented as current.
+    private func persistScan(_ when: Date?) {
+        let ts = Int64((when ?? Date()).timeIntervalSince1970 * 1000)
+        lastScanAt = ts
+        let entries: [[String: Any]] = diskEntries.map {
+            ["name": $0.name, "items": $0.items, "bytes": Double($0.bytes), "kind": $0.kind.rawValue]
+        }
+        setSetting(db, "lastDiskScan", JSONValue.from(["ts": Double(ts), "entries": entries]))
+    }
+
+    func loadPersistedScan() {
+        autoRefreshScan = getSetting(db, "diskScanAutoRefresh")?.objectVal?["on"]?.boolVal ?? false
+        guard let o = getSetting(db, "lastDiskScan")?.objectVal else { return }
+        lastScanAt = o["ts"]?.doubleVal.map { Int64($0) }
+        diskEntries = (o["entries"]?.arrayVal ?? []).compactMap { v in
+            guard let e = v.objectVal, let name = e["name"]?.stringVal else { return nil }
+            return SizeEntry(
+                name: name,
+                items: Int(e["items"]?.doubleVal ?? 0),
+                bytes: Int64(e["bytes"]?.doubleVal ?? 0),
+                kind: FileKind(rawValue: e["kind"]?.stringVal ?? "") ?? .other)
+        }
     }
 
     /// Heuristic file-kind buckets for the treemap legend — folder-name based.

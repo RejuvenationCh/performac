@@ -10,6 +10,11 @@ struct DiskView: View {
     var scanElapsed: TimeInterval = 0
     var scanPath: String = ""
     var onScan: () -> Void = {}
+    var lastScanAt: Int64? = nil
+    var autoRefresh: Bool = false
+    var onToggleAutoRefresh: (Bool) -> Void = { _ in }
+    var onAppear: () -> Void = {}
+    var onDisappear: () -> Void = {}
     var onCancel: () -> Void = {}
     private var maxBytes: Int64 { entries.map(\.bytes).max() ?? 1 }
 
@@ -26,6 +31,8 @@ struct DiskView: View {
             if scanning {
                 ScanProgress(files: scanFiles, bytes: scanBytes, elapsed: scanElapsed,
                              currentPath: scanPath, onCancel: onCancel)
+            } else if let at = lastScanAt, !entries.isEmpty {
+                StaleBanner(at: at)
             }
 
             HSplitView {
@@ -49,10 +56,18 @@ struct DiskView: View {
                         }
                     }
                     Spacer(minLength: 0)
-                    HStack {
+                    HStack(spacing: PC.gutter) {
                         Text("\(entries.count) items").font(.pcSmall).foregroundStyle(PC.meta)
                         Spacer()
-                        Button("Scan Again", action: onScan)
+                        // Only offered once a scan exists: before that there is nothing to
+                        // keep fresh, and the choice would be meaningless.
+                        if lastScanAt != nil {
+                            Toggle("Always refresh on open", isOn: Binding(
+                                get: { autoRefresh }, set: onToggleAutoRefresh))
+                                .toggleStyle(.checkbox).font(.pcSmall).foregroundStyle(PC.ink2)
+                                .help("Rescan every time this view opens. A full scan is minutes of disk activity.")
+                        }
+                        Button(entries.isEmpty ? "Scan" : "Scan Again", action: onScan)
                             .buttonStyle(.link).font(.pcLabel)
                     }
                     .padding(.horizontal, PC.gutter).padding(.vertical, PC.s2)
@@ -69,6 +84,33 @@ struct DiskView: View {
                 .background(PC.canvas)
             }
         }
+        .onAppear(perform: onAppear)
+        .onDisappear(perform: onDisappear)
+    }
+}
+
+/// Persisted results are shown so reopening the view is not a blank screen — but they are
+/// a snapshot, and the app must never let a stale number pass as a current one.
+struct StaleBanner: View {
+    let at: Int64
+    private var age: String {
+        let secs = Int(Date().timeIntervalSince1970 - Double(at) / 1000)
+        if secs < 90 { return "just now" }
+        if secs < 5400 { return "\(secs / 60) minutes ago" }
+        if secs < 172_800 { return "\(secs / 3600) hours ago" }
+        return "\(secs / 86_400) days ago"
+    }
+    var body: some View {
+        HStack(spacing: PC.s2) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 12)).foregroundStyle(PC.amber)
+            Text("Showing the last scan from \(age) — not live.")
+                .font(.pcSmall).foregroundStyle(PC.ink2)
+            Spacer()
+        }
+        .padding(.horizontal, PC.stack).padding(.vertical, PC.s2)
+        .background(PC.amberSoft)
+        .pcHairline(.bottom)
     }
 }
 

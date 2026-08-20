@@ -32,6 +32,11 @@ struct MainWindow: View {
                     scanElapsed: store.scanElapsed,
                     scanPath: store.scanPath,
                     onScan: { store.startDiskScan() },
+                    lastScanAt: store.lastScanAt,
+                    autoRefresh: store.autoRefreshScan,
+                    onToggleAutoRefresh: { store.setAutoRefreshScan($0) },
+                    onAppear: { store.diskViewAppeared() },
+                    onDisappear: { store.diskViewDisappeared() },
                     onCancel: { store.cancelDiskScan() })
                 case .clean: CleanView(caches: store.cacheEntries)
                 case .duplicates: DuplicatesView(groups: store.dupGroups)
