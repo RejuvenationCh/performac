@@ -10,6 +10,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Light only, by user decision — the app does not follow the system appearance.
+        // Every token in Tokens.swift still carries a dark value, so dropping this line
+        // is all that is needed to restore automatic light/dark.
+        NSApp.appearance = NSAppearance(named: .aqua)
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         configureStatusButton()
 
@@ -18,6 +23,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.contentViewController = NSHostingController(
             rootView: PopoverView(onOpenWindow: { [weak self] in self?.openWindow() })
         )
+
+        // Dev builds open the window on launch: on a notched MacBook with a full menu bar
+        // the status item can be pushed under the notch and become unreachable, and there
+        // would then be no way to see the UI at all. Gate this behind a setting at Phase 4.
+        openWindow()
     }
 
     /// The title states the most severe finding, or stays a bare glyph when all is quiet.

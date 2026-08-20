@@ -111,7 +111,7 @@ The one irreversible-feeling moment, and the artifact gets it right. Do not "fix
 | `rgba(0,0,0,0.1)` hairlines | `Divider()` / `.separatorColor` |
 | px | pt, 1:1 at these sizes |
 | flat popover background | **`NSVisualEffectView`, `.popover` material** — a flat popover reads as a screenshot pasted on the desktop |
-| `html class="light"` only | **light *and* dark both first-class.** The artifact is light-only; the hexes above are the light values. Map each role to its macOS semantic colour so dark mode follows the system. |
+| `html class="light"` only | **Light only, by user decision.** `NSApp.appearance = .aqua` is pinned in `AppDelegate`, so the app does not follow the system appearance. Every token in `Tokens.swift` still carries a dark value — deleting that one line restores automatic light/dark if this is ever revisited. |
 
 ## Do not carry over
 
@@ -141,5 +141,5 @@ Present in the artifact, wrong for this app:
    action is always and only **"Move to Trash"**, never "Clean", "Optimize", or "Free up".
 7. **Destructive confirmations stay blue, with Cancel focused**, and always state recoverability.
 8. **Cards do not nest.**
-9. **Light and dark are both first-class.** Nothing hard-codes a hex where a semantic colour exists.
+9. **Light only** (pinned in `AppDelegate`), but keep both values on every token — never hard-code a bare hex at a call site.
 10. **Never state a status the app cannot evidence.**
