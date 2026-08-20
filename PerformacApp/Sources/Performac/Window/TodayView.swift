@@ -2,13 +2,14 @@ import SwiftUI
 
 struct TodayView: View {
     var findings: [Finding] = Sample.findings
+    var quitAction: (String) -> Void = { _ in }
     var body: some View {
         Page(title: "Today", subtitle: "Live view — drives, thermals, and anything time-sensitive.") {
             if findings.isEmpty { QuietState() }
             else {
                 ScrollView {
                     VStack(spacing: PC.gutter) {
-                        ForEach(findings) { CoachCardView(finding: $0) }
+                        ForEach(findings) { CoachCardView(finding: $0, onQuit: quitAction) }
                     }
                     .padding(.horizontal, PC.stack).padding(.bottom, PC.stack)
                 }
@@ -60,6 +61,7 @@ private struct QuietTile: View {
 
 struct DigestView: View {
     var findings: [Finding] = Sample.findings
+    var quitAction: (String) -> Void = { _ in }
     var body: some View {
         Page(title: "Digest", subtitle: "Weekly read — the trends behind the cards.") {
             ScrollView {
@@ -81,7 +83,7 @@ struct DigestView: View {
                     }
                     .padding(PC.gutter).frame(maxWidth: .infinity, alignment: .leading).pcCard()
 
-                    ForEach(findings) { CoachCardView(finding: $0) }
+                    ForEach(findings) { CoachCardView(finding: $0, onQuit: quitAction) }
                 }
                 .padding(.horizontal, PC.stack).padding(.bottom, PC.stack)
             }

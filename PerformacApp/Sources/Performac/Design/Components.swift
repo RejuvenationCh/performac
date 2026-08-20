@@ -17,6 +17,8 @@ struct VisualEffect: NSViewRepresentable {
 /// The load-bearing component. Headline + evidence + at most one link-out that never acts.
 struct CoachCardView: View {
     let finding: Finding
+    var onQuit: (String) -> Void = { _ in }
+    @State private var confirming = false
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
             Rectangle().fill(finding.severity.tint).frame(width: 4)   // severity spine
@@ -29,16 +31,61 @@ struct CoachCardView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Text(finding.why).font(.pcBody).foregroundStyle(PC.ink2)
                         .fixedSize(horizontal: false, vertical: true)
-                    if let link = finding.link {
-                        Button(link) {}.buttonStyle(.plain)
-                            .font(.pcLabel).foregroundStyle(PC.accent).padding(.top, 2)
+                    HStack(spacing: PC.gutter) {
+                        if let link = finding.link {
+                            Button(link) {}.buttonStyle(.plain)
+                                .font(.pcLabel).foregroundStyle(PC.accent)
+                        }
+                        // Offered only when the process is live and passes every refusal.
+                        if let target = finding.quitTarget {
+                            Button("Quit \(target)") { confirming = true }
+                                .buttonStyle(.plain)
+                                .font(.pcLabel).foregroundStyle(PC.red)
+                        }
                     }
+                    .padding(.top, 2)
                 }
                 Spacer(minLength: 0)
             }
             .padding(PC.gutter)
         }
         .pcCard()
+        .sheet(isPresented: $confirming) {
+            if let target = finding.quitTarget {
+                QuitSheet(name: target,
+                          onCancel: { confirming = false },
+                          onQuit: { confirming = false; onQuit(target) })
+            }
+        }
+    }
+}
+
+/// The confirmation. Quitting is not deletion, but it can still lose work that was never
+/// saved, so the sheet says exactly that rather than implying it is free.
+struct QuitSheet: View {
+    let name: String
+    var onCancel: () -> Void
+    var onQuit: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Quit \(name)?").font(.pcHeadline).foregroundStyle(PC.ink)
+                .padding(.horizontal, 24).padding(.top, 20).padding(.bottom, PC.s2)
+            HStack(alignment: .top, spacing: PC.gutter) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 14)).foregroundStyle(PC.amber)
+                Text("Performac asks the app to quit, the same way Cmd-Q does — if it has unsaved work it will prompt you first. It is not forced.")
+                    .font(.pcSmall).foregroundStyle(PC.ink2).lineSpacing(2)
+            }
+            .padding(.horizontal, 24).padding(.bottom, PC.stack)
+            HStack(spacing: PC.s2 + 2) {
+                Spacer()
+                Button("Cancel", action: onCancel).keyboardShortcut(.cancelAction)
+                Button("Quit \(name)", action: onQuit).buttonStyle(.borderedProminent)
+            }
+            .padding(.horizontal, 24).padding(.bottom, 20)
+        }
+        .frame(width: 460)
+        .background(PC.surface)
     }
 }
 

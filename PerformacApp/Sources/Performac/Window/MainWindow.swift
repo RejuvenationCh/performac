@@ -22,8 +22,8 @@ struct MainWindow: View {
             Rail(route: $route)
             Group {
                 switch route {
-                case .today: TodayView(findings: store.live)
-                case .digest: DigestView(findings: store.digest)
+                case .today: TodayView(findings: store.live, quitAction: { store.requestQuit($0) })
+                case .digest: DigestView(findings: store.digest, quitAction: { store.requestQuit($0) })
                 case .disk: DiskView(
                     entries: store.diskEntries,
                     scanning: store.scanning,

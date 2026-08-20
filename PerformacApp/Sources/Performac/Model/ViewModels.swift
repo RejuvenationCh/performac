@@ -21,6 +21,9 @@ struct Finding: Identifiable, Sendable {
     var headline: String
     var why: String
     var link: String? = nil       // link-out label; at most one, never performs the fix
+    /// Process this card is about, when it is safe to offer quitting it. Set by the store,
+    /// never by the engine — the rules stay advisory and parity with v1 is unaffected.
+    var quitTarget: String? = nil
 }
 
 struct SizeEntry: Identifiable, Sendable {

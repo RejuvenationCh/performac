@@ -76,12 +76,22 @@ final class EngineStore: ObservableObject {
             case "open_activity_monitor": link = "Open Activity Monitor"
             default: link = nil
             }
+            let headline = row["headline"]?.stringVal ?? ""
+            let kind = row["kind"]?.stringVal ?? ""
+            // These cards are about one process, and its name opens the headline. Only offer
+            // quitting when the process is actually live and passes ProcessControl's refusals.
+            var quitTarget: String? = nil
+            if kind == "hog" || kind == "idle", let name = Self.leadingProcessName(headline),
+               case .success = ProcessControl.target(named: name) {
+                quitTarget = name
+            }
             findings.append(Finding(
                 severity: severity == "red" ? .red : severity == "amber" ? .amber : .info,
-                headline: row["headline"]?.stringVal ?? "",
+                headline: headline,
                 why: row["why"]?.stringVal ?? "",
-                link: link))
-            kinds.append(row["kind"]?.stringVal ?? "")
+                link: link,
+                quitTarget: quitTarget))
+            kinds.append(kind)
         }
         // v1's split: live = time-sensitive kinds, digest = everything
         let liveKinds: Set<String> = ["drive", "thermal", "backup"]
@@ -137,6 +147,36 @@ final class EngineStore: ObservableObject {
             else { return nil }
             let name = (paths.first as NSString?)?.lastPathComponent ?? "file"
             return DupGroup(bytes: (row["size_mb"]?.intVal ?? 0) * 1_000_000, name: name, paths: paths)
+        }
+    }
+
+    /// "RobloxPlayer has averaged 99% CPU…" → "RobloxPlayer". Matched against processes we
+    /// have actually sampled, so a headline can never be parsed into an arbitrary name.
+    static func leadingProcessName(_ headline: String) -> String? {
+        guard let cut = headline.range(of: " has ") ?? headline.range(of: " is ") else { return nil }
+        let name = String(headline[headline.startIndex..<cut.lowerBound])
+        return name.isEmpty ? nil : name
+    }
+
+    @Published var quitResult: String? = nil
+
+    /// Stage one: ask the app to quit, so it can prompt to save.
+    func requestQuit(_ name: String) {
+        switch ProcessControl.target(named: name) {
+        case .failure(let r): quitResult = r.rawValue
+        case .success(let t):
+            quitResult = ProcessControl.quit(t)
+                ? "Asked \(t.name) to quit. If it has unsaved work it will prompt you."
+                : "\(t.name) did not accept the quit request."
+        }
+    }
+
+    /// Stage two: explicit escalation. Unsaved work is lost.
+    func forceQuit(_ name: String) {
+        switch ProcessControl.target(named: name) {
+        case .failure(let r): quitResult = r.rawValue
+        case .success(let t):
+            quitResult = ProcessControl.force(t) ? "Force quit \(t.name)." : "Could not force quit \(t.name)."
         }
     }
 

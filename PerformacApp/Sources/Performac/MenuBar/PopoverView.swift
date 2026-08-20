@@ -22,7 +22,7 @@ struct PopoverView: View {
 
             ScrollView {
                 VStack(spacing: PC.gutter) {
-                    ForEach(store.live) { CoachCardView(finding: $0) }
+                    ForEach(store.live) { CoachCardView(finding: $0, onQuit: { store.requestQuit($0) }) }
                 }
                 .padding(PC.gutter)
             }
