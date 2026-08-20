@@ -1,7 +1,7 @@
 // rules tests — cacheGrowth, thermalDuringExport (further rules arrive per-feature)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cacheGrowth, thermalDuringExport, driveInstability, backupStaleness } from '../rules.js';
+import { cacheGrowth, thermalDuringExport, driveInstability, backupStaleness, dupFindings } from '../rules.js';
 
 const DAY = 86400000;
 const NOW = 1756000000000;
@@ -244,4 +244,26 @@ test('watched backup path over its age limit → amber with reveal link', () => 
 test('watched path fresh → no finding', () => {
   const watchStats = [{ path: '/x', newestMtime: NOW - DAY, maxAgeDays: 14 }];
   assert.deepEqual(backupStaleness({ configured: true, names: [], backupISO: new Date(NOW).toISOString() }, watchStats, bcfg, NOW), []);
+});
+
+test('dupFindings: 2 copies → info; 3 copies → amber; sorted by wasted bytes', () => {
+  const groups = [
+    { hash: 'a'.repeat(64), sizeMb: 300, paths: ['/x/1', '/y/2'] },
+    { hash: 'b'.repeat(64), sizeMb: 4301, paths: ['/x/a', '/y/b', '/z/c'] },   // 4.2 GB × 3
+    { hash: 'c'.repeat(64), sizeMb: 50, paths: ['/x/i', '/y/j'] },
+  ];
+  const fs = dupFindings(groups, { dup: { minMb: 100 } });
+  assert.equal(fs.length, 3);
+  assert.ok(fs[0].headline.includes('4.2 GB file exists in 3 places'), fs[0].headline);
+  assert.equal(fs[0].severity, 'amber');
+  assert.ok(fs[0].why.includes('byte-for-byte match (SHA-256)'), fs[0].why);
+  assert.equal(fs[0].linkKind, 'reveal');
+  assert.equal(fs[0].linkTarget, '/x/a');
+  assert.equal(fs[1].headline, 'The same 300 MB file exists in 2 places');
+  assert.equal(fs[1].severity, 'info');
+  assert.ok(fs[0].detail.includes('/z/c'), fs[0].detail);
+});
+
+test('dupFindings: empty → empty', () => {
+  assert.deepEqual(dupFindings([], { dup: { minMb: 100 } }), []);
 });

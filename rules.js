@@ -17,6 +17,30 @@ function ageText(ageDays) {
   return `${Math.round(ageDays)} days`;
 }
 
+// groups = [{hash, sizeMb, paths:[...]}] — deliberately exact-only, no fuzzy matching
+export function dupFindings(groups, cfg) {
+  return groups
+    .slice()
+    .sort((a, b) => b.sizeMb * (b.paths.length - 1) - a.sizeMb * (a.paths.length - 1))
+    .map(g => {
+      const copies = g.paths.length;
+      const wastedMb = g.sizeMb * (copies - 1);
+      // ponytail: 1 GB / 3 copies amber lines are plan-literal, not DEFAULTS knobs
+      const severity = wastedMb >= 1024 || copies >= 3 ? 'amber' : 'info';
+      const sizeText = g.sizeMb >= 1024 ? `${(g.sizeMb / 1024).toFixed(1)} GB` : `${g.sizeMb} MB`;
+      return {
+        id: `dup-${g.hash.slice(0, 12)}`,
+        kind: 'dup',
+        severity,
+        headline: `The same ${sizeText} file exists in ${copies} places`,
+        why: `${g.paths[0]} and ${g.paths[1]} are an exact byte-for-byte match (SHA-256).`,
+        detail: g.paths.length > 2 ? `Also: ${g.paths.slice(2).join(', ')}` : '',
+        linkKind: 'reveal',
+        linkTarget: g.paths[0],
+      };
+    });
+}
+
 // tmState = {configured, names, backupISO|null}; watchStats = [{path, newestMtime, maxAgeDays}]
 export function backupStaleness(tmState, watchStats, cfg, now) {
   const out = [];

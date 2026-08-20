@@ -9,6 +9,7 @@ import { execFile, spawn } from 'node:child_process';
 import { openDb } from './db.js';
 import { loadConfig } from './config.js';
 import { startSampler, lastTick, findingsGeneratedAt } from './sampler.js';
+import { startScan, scanStatus } from './dedupe.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 7420;
@@ -91,6 +92,7 @@ const server = http.createServer(async (req, res) => {
         digest: rows,
         generatedAt: findingsGeneratedAt(),
         coachIntro: null,
+        dupScan: db.prepare('SELECT MAX(scan_ts) m FROM dup_groups').get().m ?? null,
       });
     }
     if (req.method === 'GET' && p === '/api/trends') {
@@ -102,6 +104,56 @@ const server = http.createServer(async (req, res) => {
         caches: db.prepare('SELECT ts, cache_id, size_mb FROM cache_samples WHERE ts > ? ORDER BY ts').all(since)
           .map(r => ({ ts: r.ts, cacheId: r.cache_id, sizeMb: r.size_mb })),
       });
+    }
+    if (req.method === 'GET' && p === '/api/dedupe') {
+      const st = scanStatus();
+      const rows = st.state === 'idle'
+        ? db.prepare('SELECT hash, size_mb, paths FROM dup_groups').all()
+        : null;
+      return json(res, 200, {
+        state: st.state,
+        scanned: st.scanned,
+        groups: rows ? rows.map(r => ({ hash: r.hash, sizeMb: r.size_mb, paths: JSON.parse(r.paths) })) : st.groups,
+        startedAt: st.startedAt,
+        lastScan: db.prepare('SELECT MAX(scan_ts) m FROM dup_groups').get().m ?? null,
+        roots: ['~', ...(fs.existsSync('/Volumes') ? fs.readdirSync('/Volumes').map(v => `/Volumes/${v}`) : [])],
+      });
+    }
+    if (req.method === 'POST' && p === '/api/dedupe') {
+      const origin = req.headers.origin;
+      if (origin && !['http://localhost:7420', 'http://127.0.0.1:7420'].includes(origin)) {
+        return json(res, 403, { error: 'bad origin' });
+      }
+      if (!(req.headers['content-type'] || '').includes('application/json')) {
+        return json(res, 415, { error: 'expected application/json' });
+      }
+      let body;
+      try {
+        body = await readJson(req);
+      } catch (err) {
+        return json(res, 400, { error: err.message });
+      }
+      if (!Array.isArray(body.roots) || !body.roots.length) {
+        return json(res, 400, { error: 'roots must be a non-empty array' });
+      }
+      const roots = [];
+      for (let r of body.roots) {
+        if (typeof r !== 'string' || !r.trim()) return json(res, 400, { error: 'bad root' });
+        if (r.startsWith('~')) r = path.join(os.homedir(), r.slice(1));
+        if (!path.isAbsolute(r)) return json(res, 400, { error: 'root must be absolute' });
+        try {
+          fs.statSync(r);
+        } catch {
+          return json(res, 400, { error: `not found: ${r}` });
+        }
+        roots.push(r);
+      }
+      try {
+        const jobId = startScan(roots, cfg, { db });
+        return json(res, 200, { started: true, jobId });
+      } catch (err) {
+        return json(res, 409, { error: err.message });
+      }
     }
     if (req.method === 'POST' && (p === '/api/reveal' || p === '/api/open')) {
       const origin = req.headers.origin;

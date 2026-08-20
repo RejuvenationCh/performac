@@ -79,12 +79,111 @@ function renderDigest(f) {
   const cards = $('#digest-cards');
   intro.textContent = f.coachIntro || '3 things worth doing this week, biggest first.';
   cards.replaceChildren();
+  cards.append(el('p', 'card-why', f.dupScan
+    ? `Duplicate scan: last run ${fmtAgo(f.dupScan)}`
+    : 'Duplicate scan: never run.'));
   const all = (f.digest || []).slice().sort((a, b) => SEV_RANK[b.severity] - SEV_RANK[a.severity]);
   if (!all.length) {
     cards.append(el('p', 'card-why', 'Nothing worth doing — Performac is watching.'));
     return;
   }
   for (const item of all) cards.append(renderCard(item));
+}
+
+function fmtAgo(ts) {
+  const days = (Date.now() - ts) / 86400000;
+  if (days < 1) return 'today';
+  if (days < 7) return `${Math.round(days)} days ago`;
+  if (days < 60) return `${Math.round(days / 7)} weeks ago`;
+  return `${Math.round(days / 30)} months ago`;
+}
+
+// Duplicates view — roots picker, Start, progress, groups with per-path reveal
+let dupePoll = null;
+
+async function refreshDuplicates() {
+  let d;
+  try {
+    d = await (await fetch('/api/dedupe')).json();
+  } catch {
+    return;
+  }
+  $('#dupe-hint').textContent = d.lastScan
+    ? `Duplicate scan: last run ${fmtAgo(d.lastScan)}`
+    : 'Duplicate scan: never run.';
+  const controls = $('#dupe-controls');
+  controls.replaceChildren();
+  for (const root of d.roots) {
+    const label = el('label', 'check-row');
+    label.style.marginBottom = '6px';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = root;
+    cb.checked = true;
+    label.append(cb, root === '~' ? 'Home folder' : root);
+    controls.append(label);
+  }
+  const start = el('button', 'btn', 'Start scan');
+  start.addEventListener('click', () => {
+    const roots = [...controls.querySelectorAll('input:checked')].map(i => i.value);
+    fetch('/api/dedupe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roots }),
+    }).then(r => {
+      if (r.status === 409) $('#dupe-hint').textContent = 'A scan is already running.';
+    }).catch(() => {});
+    if (dupePoll) clearInterval(dupePoll);
+    dupePoll = setInterval(pollDuplicates, 2000);
+  });
+  controls.append(start);
+  renderDupGroups(d);
+  if (d.state === 'running' && !dupePoll) {
+    dupePoll = setInterval(pollDuplicates, 2000);
+  }
+}
+
+async function pollDuplicates() {
+  let d;
+  try {
+    d = await (await fetch('/api/dedupe')).json();
+  } catch {
+    return;
+  }
+  renderDupGroups(d);
+  $('#dupe-hint').textContent = d.state === 'running'
+    ? `Scanning… ${d.scanned} files checked so far`
+    : `Duplicate scan: last run ${fmtAgo(d.lastScan)}`;
+  if (d.state !== 'running' && dupePoll) {
+    clearInterval(dupePoll);
+    dupePoll = null;
+  }
+}
+
+function renderDupGroups(d) {
+  const box = $('#dupe-groups');
+  box.replaceChildren();
+  for (const g of d.groups ?? []) {
+    const sizeText = g.sizeMb >= 1024 ? `${(g.sizeMb / 1024).toFixed(1)} GB` : `${g.sizeMb} MB`;
+    const card = el('div', 'tile');
+    card.append(el('h3', 'card-headline', `The same ${sizeText} file exists in ${g.paths.length} places`));
+    for (const p of g.paths) {
+      const row = el('div', 'check-row');
+      row.style.marginTop = '6px';
+      const b = el('button', 'btn ghost', 'Show in Finder');
+      b.style.marginTop = '0';
+      b.addEventListener('click', () => {
+        fetch('/api/reveal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: p }),
+        }).catch(() => {});
+      });
+      row.append(el('span', 'num', p), b);
+      card.append(row);
+    }
+    box.append(card);
+  }
 }
 
 function fmtTick(ts) {
@@ -120,6 +219,7 @@ function router() {
   }
   document.querySelectorAll('.rail a').forEach(a => a.classList.toggle('active', a.dataset.view === view));
   $('#page-title').textContent = TITLES[view];
+  if (view === 'duplicates') refreshDuplicates();
 }
 window.addEventListener('hashchange', router);
 
