@@ -364,7 +364,10 @@ export function startSampler(db, cfg, deps) {
     }
 
     const { stdout: frontText } = await execFile('lsappinfo', ['front']);
-    const asn = String(frontText).match(/0x[0-9a-f]+-[0-9a-f]+/i)?.[0];
+    // real `lsappinfo info -only name` needs the ASN: prefix — a bare ASN returns
+    // nothing, which silently recorded zero front_app events since day one.
+    // ASN shape is ASN:0x<hex>-0x<hex> — both halves carry the 0x prefix.
+    const asn = String(frontText).match(/ASN:0x[0-9a-f]+-0x[0-9a-f]+/i)?.[0];
     let frontName = null;
     if (asn) {
       const { stdout: infoText } = await execFile('lsappinfo', ['info', '-only', 'name', asn]);

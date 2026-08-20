@@ -7,11 +7,13 @@
 // Requires the Claude CLI to be logged in once:  claude  then  /login
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const execFileP = promisify(execFile);
-const HERE = path.dirname(new URL(import.meta.url).pathname);
+const SELF = fileURLToPath(import.meta.url);   // decoded path — import.meta.url is %-encoded
+const HERE = path.dirname(SELF);
 const APP = path.dirname(HERE);
 const SEED = path.join(APP, 'seed');
 const MAX_WORDS = 120;
@@ -59,6 +61,6 @@ async function main() {
   console.log(`OK findings=${summary.length} words=${text.split(/\s+/).filter(Boolean).length}`);
 }
 
-if (process.argv[1] === new URL(import.meta.url).pathname) {
+if (process.argv[1] === SELF) {
   main().catch(err => { console.error('refresh_digest:', err.message); process.exit(1); });
 }

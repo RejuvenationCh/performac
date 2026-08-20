@@ -56,7 +56,8 @@ function makeDeps({ ps = PS, volumes = () => [], diskutilInfo = () => PLIST_EXTE
     calls.push([bin, args]);
     if (bin === 'ps') return { stdout: ps };
     if (bin === 'lsappinfo') {
-      if (args[0] === 'front') return { stdout: '{"LSASN"={0x0-0x17017}; }' };
+      // real output captured on this machine: `lsappinfo front` → "ASN:0x0-0x6d06d:\n"
+      if (args[0] === 'front') return { stdout: 'ASN:0x0-0x6d06d:\n' };
       return { stdout: FRONT };
     }
     if (bin === 'pmset') {
@@ -103,6 +104,11 @@ test('two ticks: filtered ps rows, single front_app event (unchanged), thermlog 
   const fronts = db.prepare("SELECT * FROM events WHERE kind = 'front_app'").all();
   assert.equal(fronts.length, 1, 'second identical tick must not re-emit');
   assert.equal(fronts[0].key, 'Zen');
+  // the name query needs the full ASN token, prefix included — anything less returns
+  // nothing on the real machine (verified: bare ASN and truncated 0x0-0 both fail)
+  const infoCall = deps.calls.find(([bin, args]) => bin === 'lsappinfo' && args[0] === 'info');
+  assert.deepEqual(infoCall[1], ['info', '-only', 'name', 'ASN:0x0-0x6d06d'],
+    'lsappinfo info -only name must receive the full ASN token');
 
   const thermStream = deps.spawned.find(c => c.bin === 'pmset');
   thermStream.stdout.emit('data', THERMLOG + '\n');
