@@ -48,6 +48,18 @@ function rowCount(table) {
   return db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n; // table names are literals here
 }
 
+// Money Dashboard's digest pattern: seed/digest.json adopted when fresh (< 8 d),
+// silently absent otherwise (the insights script itself is opt-in, see README)
+function freshCoachIntro() {
+  try {
+    const d = JSON.parse(fs.readFileSync(path.join(ROOT, 'seed/digest.json'), 'utf8'));
+    if (d && typeof d.text === 'string' && d.generatedAt && Date.now() - d.generatedAt < 8 * 86400000) {
+      return d.text;
+    }
+  } catch { /* no seed, no intro */ }
+  return null;
+}
+
 function serveStatic(req, res, pathname) {
   if (pathname.includes('.db')) return json(res, 404, { error: 'not found' });
   const publicDir = path.join(ROOT, 'public');
@@ -94,7 +106,7 @@ const server = http.createServer(async (req, res) => {
         live: rows.filter(r => liveKinds.has(r.kind)),
         digest: rows,
         generatedAt: findingsGeneratedAt(),
-        coachIntro: null,
+        coachIntro: freshCoachIntro(),
         dupScan: db.prepare('SELECT MAX(scan_ts) m FROM dup_groups').get().m ?? null,
       });
     }

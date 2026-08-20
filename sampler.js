@@ -175,6 +175,22 @@ export async function cacheTick(db, cfg, deps) {
   await refreshFindings(db, loadConfig(db), t, deps.execFile).catch(err => console.error('refreshFindings', err));
 }
 
+// Monday 09:00–10:00 local, once per week (settings.lastDigestNotify): one native ping.
+// The Digest view IS the digest — no separate document.
+function mondayDigestCheck(db, cfg, now, execFile) {
+  if (!cfg.weeklyDigestNotify || cfg.notifyEnabled === false) return;
+  const d = new Date(now);
+  if (d.getDay() !== 1 || d.getHours() < 9) return;
+  const monday9 = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 9, 0, 0).getTime();
+  if (now - monday9 > 3600000) return;
+  if ((getSetting(db, 'lastDigestNotify') ?? 0) >= monday9) return;
+  const n = db.prepare("SELECT COUNT(*) n FROM findings WHERE severity != 'info'").get().n;
+  execFile('osascript', ['-e',
+    `display notification "Your weekly Mac digest is ready — ${n} thing${n === 1 ? '' : 's'} worth doing" with title "Performac"`
+  ]).catch(() => {});
+  setSetting(db, 'lastDigestNotify', now);
+}
+
 // daily, tier3-gated: one ioreg read → battery event (detail = JSON {cycleCount, healthPct})
 export async function batteryTick(db, cfg, deps) {
   if (!cfg.tier3 || !cfg.tier3.battery) return;
@@ -385,6 +401,7 @@ export function startSampler(db, cfg, deps) {
   setInterval(() => batteryTick(db, cfg, deps).catch(err => console.error('batteryTick', err)), 86400000).unref();
   setInterval(() => {
     try { sweep(db, cfg, now()); } catch (err) { console.error('sweep', err); }
+    try { mondayDigestCheck(db, loadConfig(db), now(), execFile); } catch (err) { console.error('digest', err); }
     refreshFindings(db, loadConfig(db), now(), execFile).catch(err => console.error('refreshFindings', err));
   }, 3600000).unref();
 
