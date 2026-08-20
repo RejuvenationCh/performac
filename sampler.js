@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   parsePs, parseFrontAppName, parseTherm, parseThermlogLine, parseDiskutilActivity,
-  parseTmDestinations, parseTmLatest, parseBattery,
+  parseTmDestinations, parseTmLatest, parseBattery, parseDiskutilInfo, parsePower,
 } from './collectors.js';
 import { sweep, getSetting, setSetting } from './db.js';
 import { loadConfig } from './config.js';
@@ -303,15 +303,32 @@ export function startSampler(db, cfg, deps) {
   let stopped = false;
   let lastFront = null;
   let lastCpuLimit = null;
-  let lastVolumes = new Set();
+  let lastPower = null;
+  let lastVolumes = new Set(listVolumes());   // seeded: the first tick is not a spurious diff
   const streams = [];
 
   const insertEvent = db.prepare('INSERT INTO events(ts, kind, key, detail) VALUES(?,?,?,?)');
   const insertProc = db.prepare('INSERT INTO proc_samples(ts, pid, name, cpu, rss_mb) VALUES(?,?,?,?,?)');
   const insertDisk = db.prepare('INSERT INTO disk_samples(ts, volume, free_gb, total_gb) VALUES(?,?,?,?)');
 
-  function addEvent(kind, key, detail) {
-    insertEvent.run(now(), kind, key, detail);
+  function addEvent(kind, key, detail, ts) {
+    insertEvent.run(ts ?? now(), kind, key, detail);
+  }
+
+  // external-only: macOS mounts internal APFS system volumes (Recovery/Update/VM/…)
+  // constantly and the feature is about external drives. Verdict cached per volume
+  // name — one diskutil info call per name per session, never one per event.
+  const verdicts = new Map();
+  function isExternal(name) {
+    if (!verdicts.has(name)) {
+      verdicts.set(name, execFile('diskutil', ['info', '-plist', `/Volumes/${name}`])
+        .then(({ stdout }) => {
+          const info = parseDiskutilInfo(stdout);
+          return info !== null && (!info.internal || info.ejectable);
+        })
+        .catch(() => false));
+    }
+    return verdicts.get(name);
   }
 
   // a reconcile event is skipped if the stream already reported it moments ago
@@ -347,8 +364,12 @@ export function startSampler(db, cfg, deps) {
     if (therm.cpuSpeedLimit !== null) lastCpuLimit = therm.cpuSpeedLimit;
 
     const vols = new Set(listVolumes());
-    for (const v of vols) if (!lastVolumes.has(v) && !recentEvent('mount', v)) addEvent('mount', v, '');
-    for (const v of lastVolumes) if (!vols.has(v) && !recentEvent('unmount', v)) addEvent('unmount', v, '');
+    for (const v of vols) {
+      if (!lastVolumes.has(v) && !recentEvent('mount', v) && (await isExternal(v))) addEvent('mount', v, '');
+    }
+    for (const v of lastVolumes) {
+      if (!vols.has(v) && !recentEvent('unmount', v) && (await isExternal(v))) addEvent('unmount', v, '');
+    }
     lastVolumes = vols;
 
     lastTickAt = t;
@@ -407,7 +428,13 @@ export function startSampler(db, cfg, deps) {
 
   startStream('diskutil', ['activity'], line => {
     const p = parseDiskutilActivity(line);
-    if (p) addEvent(p.kind === 'appeared' ? 'mount' : 'unmount', p.volume, '');
+    if (!p) return;
+    const kind = p.kind === 'appeared' ? 'mount' : 'unmount';
+    isExternal(p.volume).then(ext => {
+      // intra-stream dedupe: the initial dump can emit the same volume twice (volume + snapshot)
+      if (!ext || recentEvent(kind, p.volume)) return;
+      addEvent(kind, p.volume, '', p.ts);   // line's own Time= stamp, not the insert time
+    });
   });
   startStream('pmset', ['-g', 'thermlog'], line => {
     const p = parseThermlogLine(line);

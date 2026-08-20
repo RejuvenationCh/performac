@@ -15,11 +15,35 @@ const FRONT = `"LSDisplayName"="Zen"`;
 
 const THERMLOG = `2026-08-20 13:11:08 +0700 Thermal Warning Level = 1`;
 
-const DU_APPEAR = `***DiskAppeared ('disk4s2', DAVolumeKind = 'apfs', DAVolumeName = 'T7')`;
+const DU_APPEAR = `***DiskAppeared ('disk4s2', DAVolumePath = 'file:///Volumes/T7/', DAVolumeKind = 'apfs', DAVolumeName = 'T7') Time=20260820-18:07:36.1551`;
+
+// real diskutil info -plist shapes (booleans as XML tags)
+const PLIST_INTERNAL = `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+	<key>Ejectable</key>
+	<false/>
+	<key>Internal</key>
+	<true/>
+	<key>VolumeName</key>
+	<string>Macintosh HD</string>
+</dict>
+</plist>`;
+const PLIST_EXTERNAL = `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+	<key>Ejectable</key>
+	<true/>
+	<key>Internal</key>
+	<false/>
+	<key>VolumeName</key>
+	<string>T7</string>
+</dict>
+</plist>`;
 
 const NOW = 1755000000000;
 
-function makeDeps({ ps = PS, volumes = () => [] } = {}) {
+function makeDeps({ ps = PS, volumes = () => [], diskutilInfo = () => PLIST_EXTERNAL } = {}) {
   const calls = [];
   const execFile = async (bin, args) => {
     calls.push([bin, args]);
@@ -29,6 +53,7 @@ function makeDeps({ ps = PS, volumes = () => [] } = {}) {
       return { stdout: FRONT };
     }
     if (bin === 'pmset') return { stdout: 'Note: No CPU power status has been recorded' };
+    if (bin === 'diskutil' && args[0] === 'info') return { stdout: diskutilInfo(args) };
     throw new Error(`unexpected execFile ${bin}`);
   };
   const spawned = [];
@@ -106,8 +131,9 @@ test('diskTick writes one row per volume (root + each external)', async () => {
 
 test('volumes reconcile emits mount/unmount on set diff', async () => {
   const db = openDb(':memory:');
-  let vols = ['T7'];
+  let vols = [];   // boot state: the reconcile seeds from whatever is mounted at start
   const s = startSampler(db, { ...DEFAULTS }, makeDeps({ volumes: () => vols }));
+  vols = ['T7'];   // drive plugged in after boot
   await s.tick();
   assert.equal(db.prepare("SELECT COUNT(*) n FROM events WHERE kind = 'mount'").get().n, 1);
   vols = [];
@@ -126,6 +152,51 @@ test('stream line with DAVolumeName <null> → no event row (real diskutil emits
   s.stop();
 });
 
+test('stream: internal APFS system volumes → zero events (real boot-dump noise)', async () => {
+  const db = openDb(':memory:');
+  const info = () => PLIST_INTERNAL;
+  const deps = makeDeps({ diskutilInfo: info });
+  const s = startSampler(db, { ...DEFAULTS }, deps);
+  const duStream = deps.spawned.find(c => c.bin === 'diskutil');
+  for (const name of ['Recovery', 'Update', 'VM', 'Preboot', 'Macintosh HD']) {
+    duStream.stdout.emit('data',
+      `***DiskAppeared ('x', DAVolumePath = 'file:///System/Volumes/x/', DAVolumeKind = 'apfs', DAVolumeName = '${name}') Time=20260820-18:07:36.1551\n`);
+  }
+  await s.tick();   // settle async verdicts
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM events WHERE kind IN ('mount','unmount')").get().n, 0,
+    'internal volumes must never produce drive events');
+  s.stop();
+});
+
+test('stream: external volume → one mount; verdict cached (no second diskutil call)', async () => {
+  const db = openDb(':memory:');
+  const deps = makeDeps();
+  const s = startSampler(db, { ...DEFAULTS }, deps);
+  const duStream = deps.spawned.find(c => c.bin === 'diskutil');
+  // the initial dump can carry the same name twice (volume + its snapshot) — both must dedupe
+  duStream.stdout.emit('data', DU_APPEAR + '\n');
+  duStream.stdout.emit('data', DU_APPEAR + '\n');
+  await s.tick();
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM events WHERE kind = 'mount'").get().n, 1);
+  const infoCalls = deps.calls.filter(([bin, args]) => bin === 'diskutil' && args[0] === 'info');
+  assert.equal(infoCalls.length, 1, 'verdict must be cached per volume name');
+  s.stop();
+});
+
+test('reconcile: internal volume in set diff → no event (external still emits)', async () => {
+  const db = openDb(':memory:');
+  // the sampler queries the full mount path — the fake must compare paths
+  const info = args => args.some(a => a.includes('Macintosh HD')) ? PLIST_INTERNAL : PLIST_EXTERNAL;
+  let vols = [];
+  const deps = makeDeps({ volumes: () => vols, diskutilInfo: info });
+  const s = startSampler(db, { ...DEFAULTS }, deps);
+  vols = ['Macintosh HD', 'T7'];
+  await s.tick();
+  const mounts = db.prepare("SELECT key FROM events WHERE kind = 'mount'").all().map(r => r.key);
+  assert.deepEqual(mounts, ['T7'], 'only external volumes pass the reconcile');
+  s.stop();
+});
+
 test('stream mount event deduped against reconcile within 5s', async () => {
   const db = openDb(':memory:');
   let vols = [];
@@ -133,6 +204,7 @@ test('stream mount event deduped against reconcile within 5s', async () => {
   const s = startSampler(db, { ...DEFAULTS }, deps);
   const duStream = deps.spawned.find(c => c.bin === 'diskutil');
   duStream.stdout.emit('data', DU_APPEAR + '\n');
+  await s.tick();   // the stream insert is async (external verdict) — settle it first
   assert.equal(db.prepare("SELECT COUNT(*) n FROM events WHERE kind = 'mount'").get().n, 1);
   vols = ['T7'];
   await s.tick();   // reconcile sees T7 already reported by the stream → no duplicate
