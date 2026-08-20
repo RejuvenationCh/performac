@@ -413,22 +413,33 @@ test('idle-loaded: stale samples ignored', () => {
   assert.deepEqual(idleLoaded(procs, [], hcfg, NOW), []);
 });
 
-test('idle-loaded: no front event ever → plain fallback copy (the live bug: "since the last 12 hours")', () => {
+test('idle-loaded: no recent front event but in front history → since-copy with timestamp', () => {
   const procs = [{ ts: NOW - 60000, pid: 1, name: 'Adobe Premiere Pro 2026', cpu: 5, rss_mb: 6144 }];
-  const fs = idleLoaded(procs, [], hcfg, NOW);
+  const fronts = [{ ts: NOW - 30 * 3600000, kind: 'front_app', key: 'Adobe Premiere Pro 2026', detail: '' }];
+  const fs = idleLoaded(procs, fronts, hcfg, NOW);
   assert.equal(fs.length, 1);
-  assert.ok(fs[0].headline.includes("hasn't been in front in the last 12 hours"), fs[0].headline);
-  assert.ok(!fs[0].headline.includes('since the last'), fs[0].headline);
+  assert.ok(fs[0].headline.includes("hasn't been in front since yesterday"), fs[0].headline);
+  assert.ok(!fs[0].headline.includes('the last 12 hours'), fs[0].headline);
 });
 
-test('idle-loaded: browser helper processes are not apps → no card (plugin-container, * Helper)', () => {
+test('idle-loaded: process never seen as front_app → no card (system services are not apps)', () => {
+  // the live bug: com.apple.Virtualization.VirtualMachine is never "in front"
+  const procs = [
+    { ts: NOW - 60000, pid: 1, name: 'com.apple.Virtualization.VirtualMachine', cpu: 5, rss_mb: 950 },
+  ];
+  const fronts = [{ ts: NOW - 3600000, kind: 'front_app', key: 'Zen', detail: '' }];
+  assert.deepEqual(idleLoaded(procs, fronts, hcfg, NOW), []);
+});
+
+test('idle-loaded: admission is the exact front name — helpers and prefix lookalikes get no card', () => {
   const procs = [
     { ts: NOW - 60000, pid: 1, name: 'plugin-container', cpu: 5, rss_mb: 900 },
     { ts: NOW - 60000, pid: 2, name: 'Zen Helper (Renderer)', cpu: 5, rss_mb: 1200 },
     { ts: NOW - 60000, pid: 3, name: 'Zen', cpu: 5, rss_mb: 2500 },
   ];
-  const fs = idleLoaded(procs, [], hcfg, NOW);
-  assert.equal(fs.length, 1, 'only the parent app may produce a card');
+  const fronts = [{ ts: NOW - 30 * 3600000, kind: 'front_app', key: 'Zen', detail: '' }];
+  const fs = idleLoaded(procs, fronts, hcfg, NOW);
+  assert.equal(fs.length, 1, 'only Zen itself has ever been front_app');
   assert.ok(fs[0].headline.includes('Zen'), fs[0].headline);
 });
 

@@ -313,20 +313,23 @@ export function idleLoaded(procSamples, frontEvents, cfg, now) {
     if (!latest.has(s.name) || s.ts > latest.get(s.name).ts) latest.set(s.name, s);
   }
   const fronts = (frontEvents ?? []).filter(e => e.kind === 'front_app');
-  const matches = (e, name) => e.key === name || name.startsWith(e.key) || e.key.startsWith(name);
+  // Positive test, not a denylist: surface only a process whose exact name has appeared
+  // as a front_app in recorded history. A real app has been in front at some point; a
+  // system service (com.apple.*, plugin-container, * Helper) never has — and a denylist
+  // keeps leaking new ones. Trade-off: cards stay quiet until front history accumulates
+  // after a fresh install; silent beats wrong.
+  const everFront = new Set(fronts.map(e => e.key));
   const out = [];
   for (const [name, s] of latest) {
-    // helpers are not apps: plugin-container and "* Helper (…)" belong to their parent
-    // app, which gets its own card — a card naming plugin-container is noise to the user
-    if (name === 'plugin-container' || / Helper(?: \(|$)/.test(name)) continue;
-    if (fronts.some(e => matches(e, name) && now - e.ts < cfg.idle.hours * 3600000)) continue;
-    const last = fronts.filter(e => matches(e, name)).sort((a, b) => b.ts - a.ts)[0];
+    if (!everFront.has(name)) continue;
+    if (fronts.some(e => e.key === name && now - e.ts < cfg.idle.hours * 3600000)) continue;
+    const last = fronts.filter(e => e.key === name).sort((a, b) => b.ts - a.ts)[0];
     const display = name.split(' ').filter(w => !/^\d{4}$/.test(w)).slice(0, 2).join(' ');
     out.push({
       id: `idle-${slug(name)}`,
       kind: 'idle',
       severity: 'info',
-      headline: `${display} is holding ${(s.rss_mb / 1024).toFixed(1)} GB of RAM and hasn't been in front ${last ? `since ${sinceText(last.ts, now)}` : 'in the last 12 hours'}`,
+      headline: `${display} is holding ${(s.rss_mb / 1024).toFixed(1)} GB of RAM and hasn't been in front since ${sinceText(last.ts, now)}`,
       why: 'macOS reclaims memory from background apps under pressure on its own — free RAM for its own sake does nothing.',
       detail: 'Worth quitting only if things actually feel slow.',
       linkKind: null,
