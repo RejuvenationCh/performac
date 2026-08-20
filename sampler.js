@@ -7,12 +7,12 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   parsePs, parseFrontAppName, parseTherm, parseThermlogLine, parseDiskutilActivity,
-  parseTmDestinations, parseTmLatest,
+  parseTmDestinations, parseTmLatest, parseBattery,
 } from './collectors.js';
 import { sweep, getSetting, setSetting } from './db.js';
 import { loadConfig } from './config.js';
 import { cacheTargets, measure } from './paths.js';
-import { cacheGrowth, thermalDuringExport, driveInstability, backupStaleness, sustainedHogs, idleLoaded, storageTrend, drift, loginItemsAudit } from './rules.js';
+import { cacheGrowth, thermalDuringExport, driveInstability, backupStaleness, sustainedHogs, idleLoaded, storageTrend, drift, loginItemsAudit, batteryTrend, browserBloat } from './rules.js';
 import { maybeNotify } from './notify.js';
 
 let lastTickAt = null;
@@ -59,6 +59,16 @@ export async function refreshFindings(db, cfg, now, exec) {
       getSetting(db, 'loginItems')?.items ?? [],
       getSetting(db, 'loginAgents')?.agents ?? [],
       db.prepare('SELECT DISTINCT name FROM proc_samples WHERE ts > ?').all(now - 30 * 86400000).map(r => r.name),
+      cfg, now
+    ),
+    ...batteryTrend(
+      db.prepare("SELECT * FROM events WHERE kind = 'battery' ORDER BY ts").all()
+        .map(r => { try { return { ts: r.ts, ...JSON.parse(r.detail) }; } catch { return null; } })
+        .filter(Boolean),
+      cfg, now
+    ),
+    ...browserBloat(
+      db.prepare('SELECT * FROM proc_samples WHERE ts > ?').all(now - 24 * 3600000),
       cfg, now
     ),
   ];
@@ -162,6 +172,21 @@ export async function cacheTick(db, cfg, deps) {
     const m = tg.measurement ?? await measure(tg.path);
     ins.run(t, tg.id, tg.path, Math.round(m.sizeMb), m.newestMtime, m.fileCount);
   }
+  await refreshFindings(db, loadConfig(db), t, deps.execFile).catch(err => console.error('refreshFindings', err));
+}
+
+// daily, tier3-gated: one ioreg read → battery event (detail = JSON {cycleCount, healthPct})
+export async function batteryTick(db, cfg, deps) {
+  if (!cfg.tier3 || !cfg.tier3.battery) return;
+  const t = deps.now();
+  try {
+    const { stdout } = await deps.execFile('ioreg', ['-rn', 'AppleSmartBattery']);
+    const b = parseBattery(String(stdout));
+    if (b) {
+      db.prepare('INSERT INTO events(ts, kind, key, detail) VALUES(?,?,?,?)')
+        .run(t, 'battery', 'battery', JSON.stringify({ cycleCount: b.cycleCount, healthPct: b.healthPct }));
+    }
+  } catch { /* no battery, or ioreg failed */ }
   await refreshFindings(db, loadConfig(db), t, deps.execFile).catch(err => console.error('refreshFindings', err));
 }
 
@@ -357,6 +382,7 @@ export function startSampler(db, cfg, deps) {
   setInterval(() => cacheTick(db, cfg, deps).catch(err => console.error('cacheTick', err)), cfg.cacheTickSec * 1000).unref();
   setInterval(() => backupTick(db, cfg, deps).catch(err => console.error('backupTick', err)), 3600000).unref();
   setInterval(() => driftTick(db, cfg, deps).catch(err => console.error('driftTick', err)), 3600000).unref();
+  setInterval(() => batteryTick(db, cfg, deps).catch(err => console.error('batteryTick', err)), 86400000).unref();
   setInterval(() => {
     try { sweep(db, cfg, now()); } catch (err) { console.error('sweep', err); }
     refreshFindings(db, loadConfig(db), now(), execFile).catch(err => console.error('refreshFindings', err));
@@ -376,5 +402,5 @@ export function startSampler(db, cfg, deps) {
     for (const c of streams) { try { c.kill(); } catch { /* already gone */ } }
   }
 
-  return { tick, diskTick, cacheTick: () => cacheTick(db, cfg, deps), backupTick: () => backupTick(db, cfg, deps), driftTick: () => driftTick(db, cfg, deps), stop };
+  return { tick, diskTick, cacheTick: () => cacheTick(db, cfg, deps), backupTick: () => backupTick(db, cfg, deps), driftTick: () => driftTick(db, cfg, deps), batteryTick: () => batteryTick(db, cfg, deps), stop };
 }

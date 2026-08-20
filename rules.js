@@ -111,6 +111,81 @@ export function loginItemsAudit(items, agents, procNames, cfg, now) {
   return out;
 }
 
+// tier-3 gated: [] unless cfg.tier3.battery. Samples = [{ts, cycleCount, healthPct}]
+export function batteryTrend(batterySamples, cfg, now) {
+  if (!cfg.tier3 || !cfg.tier3.battery) return [];
+  const rows = batterySamples.slice().sort((a, b) => a.ts - b.ts);
+  if (!rows.length) return [];
+  const latest = rows[rows.length - 1];
+  const old = rows.filter(r => latest.ts - r.ts >= 30 * DAY).sort((a, b) => a.ts - b.ts)[0];
+  let severity = 'info';
+  let trend = '';
+  if (old) {
+    const months = (latest.ts - old.ts) / (30 * DAY);
+    const declinePerMonth = (old.healthPct - latest.healthPct) / months;
+    if (latest.healthPct < 85 || declinePerMonth > 1.5) severity = 'amber';
+    trend = ` Down ${(old.healthPct - latest.healthPct).toFixed(1)}% since ${new Date(old.ts).toLocaleDateString()} (${declinePerMonth.toFixed(1)}% per month).`;
+  } else if (latest.healthPct < 85) {
+    severity = 'amber';
+  }
+  return [{
+    id: 'battery-health',
+    kind: 'battery',
+    severity,
+    headline: `Battery health ${latest.healthPct.toFixed(1)}% after ${latest.cycleCount} cycles`,
+    why: `macOS reports this from the battery controller.${trend}`,
+    detail: 'Health declines naturally with charge cycles; a faster slide is worth a look at Apple service.',
+    linkKind: null,
+    linkTarget: null,
+  }];
+}
+
+// tier-3 gated: [] unless cfg.tier3.browserBloat. Sums RSS across browser procs per tick,
+// requires the total ≥ rssGb sustained ≥ minMinutes (same gap rule as hogs).
+export function browserBloat(procSamples, cfg, now) {
+  if (!cfg.tier3 || !cfg.tier3.browserBloat) return [];
+  const b = cfg.browser;
+  const tickMs = (cfg.tickSec || 30) * 1000;
+  const byTick = new Map();
+  for (const s of procSamples) {
+    if (!b.procs.some(p => s.name.startsWith(p))) continue;
+    if (!byTick.has(s.ts)) byTick.set(s.ts, { total: 0, byProc: new Map() });
+    const t = byTick.get(s.ts);
+    t.total += s.rss_mb;
+    t.byProc.set(s.name, (t.byProc.get(s.name) ?? 0) + s.rss_mb);
+  }
+  let start = null;
+  let end = null;
+  const inWindow = [];
+  for (const [ts, t] of [...byTick.entries()].sort((a, b) => a[0] - b[0])) {
+    if (t.total < b.rssGb * 1024 || (start !== null && ts - end > 2 * tickMs)) {
+      start = ts;
+      inWindow.length = 0;
+    }
+    if (start === null) start = ts;
+    end = ts;
+    inWindow.push(t);
+    if (end - start >= b.minMinutes * 60000) break;
+  }
+  if (end === null || end - start < b.minMinutes * 60000) return [];
+  const totals = new Map();
+  for (const t of inWindow) {
+    for (const [n, mb] of t.byProc) totals.set(n, (totals.get(n) ?? 0) + mb);
+  }
+  const top = [...totals.entries()].sort((a, b) => b[1] - a[1])[0][0];
+  const peakGb = Math.max(...inWindow.map(t => t.total)) / 1024;
+  return [{
+    id: 'browser-bloat',
+    kind: 'browser',
+    severity: 'info',
+    headline: `Your browsers are holding ${peakGb.toFixed(1)} GB of RAM (mostly ${top})`,
+    why: `Total browser memory stayed above ${b.rssGb} GB for at least ${b.minMinutes} minutes.`,
+    detail: 'A tab audit usually beats quitting browsers — heavy tabs are the real users. macOS reclaims what it needs under pressure.',
+    linkKind: null,
+    linkTarget: null,
+  }];
+}
+
 // per-volume least-squares fit over fitDays; weeks-left math from the slope.
 // Requires ≥ 4 days of history — a shorter fit is noise, not a trend.
 export function storageTrend(diskSamples, cfg, now) {

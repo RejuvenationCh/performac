@@ -1,7 +1,7 @@
 // rules tests — cacheGrowth, thermalDuringExport (further rules arrive per-feature)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cacheGrowth, thermalDuringExport, driveInstability, backupStaleness, dupFindings, sustainedHogs, idleLoaded, storageTrend, drift, loginItemsAudit } from '../rules.js';
+import { cacheGrowth, thermalDuringExport, driveInstability, backupStaleness, dupFindings, sustainedHogs, idleLoaded, storageTrend, drift, loginItemsAudit, batteryTrend, browserBloat } from '../rules.js';
 
 const DAY = 86400000;
 const NOW = 1756000000000;
@@ -461,4 +461,74 @@ test('loginItemsAudit: unmatched items and agents → info findings with honest 
 
 test('loginItemsAudit: all matched → empty', () => {
   assert.deepEqual(loginItemsAudit(['AltTab'], [], ['AltTab'], {}, NOW), []);
+});
+
+const b16cfg = {
+  tier3: { battery: true, browserBloat: true },
+  browser: { procs: ['Zen', 'Google Chrome', 'Brave Browser', 'Safari', 'Chromium'], rssGb: 4, minMinutes: 60 },
+  tickSec: 30,
+};
+
+test('battery: gated off → []', () => {
+  const rows = [{ ts: NOW, cycleCount: 78, healthPct: 96.4 }];
+  assert.deepEqual(batteryTrend(rows, { tier3: { battery: false } }, NOW), []);
+});
+
+test('battery: single sample → info card with real fixture values', () => {
+  const rows = [{ ts: NOW, cycleCount: 78, healthPct: 96.4 }];
+  const fs = batteryTrend(rows, b16cfg, NOW);
+  assert.equal(fs.length, 1);
+  assert.equal(fs[0].severity, 'info');
+  assert.equal(fs[0].headline, 'Battery health 96.4% after 78 cycles');
+});
+
+test('battery: 60 days apart → trend sentence; >1.5%/month decline → amber', () => {
+  const slow = [
+    { ts: NOW - 60 * DAY, cycleCount: 40, healthPct: 98 },
+    { ts: NOW, cycleCount: 78, healthPct: 96.4 },
+  ];
+  const f1 = batteryTrend(slow, b16cfg, NOW)[0];
+  assert.equal(f1.severity, 'info');
+  assert.ok(f1.why.includes('0.8% per month'), f1.why);
+  const fast = [
+    { ts: NOW - 60 * DAY, cycleCount: 40, healthPct: 100 },
+    { ts: NOW, cycleCount: 78, healthPct: 96 },
+  ];
+  assert.equal(batteryTrend(fast, b16cfg, NOW)[0].severity, 'amber');
+});
+
+test('battery: health below 85 → amber', () => {
+  const rows = [{ ts: NOW, cycleCount: 200, healthPct: 80 }];
+  assert.equal(batteryTrend(rows, b16cfg, NOW)[0].severity, 'amber');
+});
+
+test('browserBloat: gated off → []', () => {
+  const rows = [{ ts: NOW, pid: 1, name: 'Zen', cpu: 5, rss_mb: 5000 }];
+  assert.deepEqual(browserBloat(rows, { tier3: { browserBloat: false }, browser: b16cfg.browser, tickSec: 30 }, NOW), []);
+});
+
+test('browserBloat: 5.5 GB across Zen + helpers for 60 min → info, mostly-Zen', () => {
+  const rows = [];
+  for (let i = 0; i * 30000 <= 60 * 60000; i++) {
+    const ts = NOW - 60 * 60000 + i * 30000;
+    rows.push({ ts, pid: 1, name: 'Zen', cpu: 5, rss_mb: 3072 });
+    rows.push({ ts, pid: 2, name: 'Google Chrome Helper (Renderer)', cpu: 5, rss_mb: 2560 });
+  }
+  const fs = browserBloat(rows, b16cfg, NOW);
+  assert.equal(fs.length, 1);
+  assert.equal(fs[0].severity, 'info');
+  assert.ok(fs[0].headline.includes('5.5 GB'), fs[0].headline);
+  assert.ok(fs[0].headline.includes('mostly Zen'), fs[0].headline);
+  assert.equal(fs[0].linkKind, null);
+  assert.ok(fs[0].detail.toLowerCase().includes('tab'), fs[0].detail);
+});
+
+test('browserBloat: under threshold or too short → []', () => {
+  const small = [{ ts: NOW, pid: 1, name: 'Zen', cpu: 5, rss_mb: 2000 }];
+  assert.deepEqual(browserBloat(small, b16cfg, NOW), []);
+  const short = [];
+  for (let i = 0; i * 30000 <= 30 * 60000; i++) {
+    short.push({ ts: NOW - 30 * 60000 + i * 30000, pid: 1, name: 'Zen', cpu: 5, rss_mb: 5000 });
+  }
+  assert.deepEqual(browserBloat(short, b16cfg, NOW), []);
 });
