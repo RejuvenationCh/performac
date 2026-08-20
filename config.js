@@ -13,7 +13,7 @@ export const DEFAULTS = {
   export: { cpuPct: 150, minMinutes: 10 },
   thermal:{ minElevatedMinutes: 10 },
   drive:  { cycles24h: 2, cycles7d: 3 },
-  backup: { maxAgeDays: 7, watchPaths: [] },               // watchPaths: [{path, maxAgeDays}]
+  backup: { maxAgeDays: 7, watchPaths: [], checkTimeMachine: true },               // watchPaths: [{path, maxAgeDays}]
   storage:{ fitDays: 14, warnWeeksLeft: 8, redWeeksLeft: 3 },
   cacheRules: { amberGb: 5, redGb: 20, staleDays: 21 },
   drift:  { paths: ['~/Downloads','~/Desktop'], minAgeDays: 60, minMb: 100, maxItems: 8 },

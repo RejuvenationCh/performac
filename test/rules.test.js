@@ -607,3 +607,16 @@ test('browserBloat: under threshold or too short → []', () => {
   }
   assert.deepEqual(browserBloat(short, b16cfg, NOW), []);
 });
+
+test('Time Machine reporting off → no TM card; watched paths still checked', () => {
+  const off = { backup: { maxAgeDays: 7, checkTimeMachine: false } };
+  const watchStats = [{
+    path: '/Users/you/Movies/Resolve Project Backups',
+    newestMtime: NOW - 20 * DAY,
+    maxAgeDays: 14,
+  }];
+  const fs = backupStaleness({ configured: false, names: [], backupISO: null }, watchStats, off, NOW);
+  assert.equal(fs.filter(f => f.kind === 'backup' && f.id.startsWith('backup-')).length, 1,
+    'the only card may be the watched path, never a Time Machine card');
+  assert.ok(fs[0].headline.includes('Resolve Project Backups'), fs[0].headline);
+});

@@ -372,7 +372,11 @@ export function dupFindings(groups, cfg) {
 // tmState = {configured, names, backupISO|null}; watchStats = [{path, newestMtime, maxAgeDays}]
 export function backupStaleness(tmState, watchStats, cfg, now) {
   const out = [];
-  if (!tmState.configured) {
+  // Time Machine reporting is opt-out per machine (backup.checkTimeMachine). With no
+  // destination and none planned, the red card is noise rather than news — the watched
+  // paths below are the honest signal instead, and are unaffected by this flag.
+  const tmOn = cfg.backup.checkTimeMachine !== false;
+  if (tmOn && !tmState.configured) {
     out.push({
       id: 'backup-no-destination',
       kind: 'backup',
@@ -383,7 +387,7 @@ export function backupStaleness(tmState, watchStats, cfg, now) {
       linkKind: null,
       linkTarget: null,
     });
-  } else if (tmState.backupISO) {
+  } else if (tmOn && tmState.backupISO) {
     const ageDays = (now - Date.parse(tmState.backupISO)) / DAY;
     if (ageDays > cfg.backup.maxAgeDays) {
       const dest = tmState.names[0] ?? 'your backup destination';
@@ -398,7 +402,7 @@ export function backupStaleness(tmState, watchStats, cfg, now) {
         linkTarget: null,
       });
     }
-  } else {
+  } else if (tmOn) {
     out.push({
       id: 'backup-unreadable',
       kind: 'backup',
