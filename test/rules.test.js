@@ -1,7 +1,7 @@
 // rules tests — cacheGrowth, thermalDuringExport (further rules arrive per-feature)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cacheGrowth, thermalDuringExport, driveInstability, backupStaleness, dupFindings, sustainedHogs, idleLoaded, storageTrend } from '../rules.js';
+import { cacheGrowth, thermalDuringExport, driveInstability, backupStaleness, dupFindings, sustainedHogs, idleLoaded, storageTrend, drift, loginItemsAudit } from '../rules.js';
 
 const DAY = 86400000;
 const NOW = 1756000000000;
@@ -413,4 +413,52 @@ test('storage: < 4 days of history → insufficient fit, no finding', () => {
 test('storage: slow drain under warnWeeksLeft → no finding', () => {
   const rows = diskSamples('Macintosh HD', 15, d => 500 - d * 0.1);   // ~0.05 GB/week
   assert.deepEqual(storageTrend(rows, scfg, NOW), []);
+});
+
+const dcfg2 = { drift: { paths: ['~/Downloads', '~/Desktop'], minAgeDays: 60, minMb: 100, maxItems: 8 } };
+
+function driftEntry(folder, name, sizeMb, ageDays) {
+  return { path: `${folder}/${name}`, folder, sizeMb, mtime: NOW - ageDays * DAY };
+}
+
+test('drift: 4 old big files → info card with per-item why, reveal on the folder', () => {
+  const DL = '/Users/testuser/Downloads';
+  const entries = [
+    driftEntry(DL, 'Setup.dmg', 5325, 180),
+    driftEntry(DL, 'Export_v1.mp4', 3072, 190),
+    driftEntry(DL, 'Footage.mov', 2048, 200),
+    driftEntry(DL, 'Installer.pkg', 1024, 150),
+    driftEntry(DL, 'fresh.zip', 2048, 2),   // fresh → excluded
+    driftEntry(DL, 'tiny.txt', 1, 300),     // small → excluded
+  ];
+  const fs = drift(entries, dcfg2, NOW);
+  assert.equal(fs.length, 1);
+  assert.equal(fs[0].severity, 'info');
+  assert.equal(fs[0].headline, '4 old installers and exports are sitting in Downloads (11.2 GB)');
+  assert.ok(fs[0].why.includes('Setup.dmg') && fs[0].why.includes('untouched 6 months'), fs[0].why);
+  assert.equal(fs[0].linkKind, 'reveal');
+  assert.equal(fs[0].linkTarget, DL);
+});
+
+test('drift: one card per folder; empty → none', () => {
+  const DL = '/Users/testuser/Downloads';
+  const DT = '/Users/testuser/Desktop';
+  const entries = [driftEntry(DL, 'a.dmg', 500, 100), driftEntry(DT, 'b.zip', 600, 100)];
+  assert.equal(drift(entries, dcfg2, NOW).length, 2);
+  assert.deepEqual(drift([], dcfg2, NOW), []);
+  assert.deepEqual(drift([driftEntry(DL, 'fresh.zip', 500, 2)], dcfg2, NOW), []);
+});
+
+test('loginItemsAudit: unmatched items and agents → info findings with honest caveat', () => {
+  const fs = loginItemsAudit(['Ice', 'AltTab', 'OneDrive'], ['com.ice.menu'], ['AltTab', 'OneDrive'], {}, NOW);
+  assert.equal(fs.length, 2);
+  assert.equal(fs[0].severity, 'info');
+  assert.ok(fs[0].headline.includes('Ice') && fs[0].headline.includes('hasn'), fs[0].headline);
+  assert.ok(fs[0].detail.includes('System Settings'), fs[0].detail);
+  assert.ok(fs[0].detail.includes('30-second'), fs[0].detail);
+  assert.ok(fs[1].headline.includes('com.ice.menu'), fs[1].headline);
+});
+
+test('loginItemsAudit: all matched → empty', () => {
+  assert.deepEqual(loginItemsAudit(['AltTab'], [], ['AltTab'], {}, NOW), []);
 });

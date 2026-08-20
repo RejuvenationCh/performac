@@ -6,10 +6,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { execFile, spawn } from 'node:child_process';
-import { openDb } from './db.js';
+import { openDb, setSetting } from './db.js';
 import { loadConfig } from './config.js';
-import { startSampler, lastTick, findingsGeneratedAt } from './sampler.js';
+import { startSampler, lastTick, findingsGeneratedAt, refreshFindings } from './sampler.js';
 import { startScan, scanStatus } from './dedupe.js';
+import { parseLoginItems } from './collectors.js';
+
+const execFileAsync = promisify(execFile);
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 7420;
@@ -155,6 +158,30 @@ const server = http.createServer(async (req, res) => {
         return json(res, 409, { error: err.message });
       }
     }
+    if (req.method === 'POST' && p === '/api/login-scan') {
+      const origin = req.headers.origin;
+      if (origin && !['http://localhost:7420', 'http://127.0.0.1:7420'].includes(origin)) {
+        return json(res, 403, { error: 'bad origin' });
+      }
+      if (!(req.headers['content-type'] || '').includes('application/json')) {
+        return json(res, 415, { error: 'expected application/json' });
+      }
+      await readJson(req).catch(() => {});   // no body needed — drain it
+      try {
+        const { stdout } = await execFileAsync('osascript', ['-e', 'tell application "System Events" to get the name of every login item']);
+        setSetting(db, 'loginItems', { ts: Date.now(), items: parseLoginItems(String(stdout)) });
+        let agents = [];
+        try {
+          agents = fs.readdirSync(path.join(os.homedir(), 'Library/LaunchAgents'))
+            .filter(f => f.endsWith('.plist')).map(f => f.replace(/\.plist$/, ''));
+        } catch { /* no agents dir */ }
+        setSetting(db, 'loginAgents', { ts: Date.now(), agents });
+        await refreshFindings(db, cfg, Date.now(), execFileAsync);
+        return json(res, 200, { ok: true });
+      } catch (err) {
+        return json(res, 500, { error: String(err && err.message || err) });   // e.g. Automation denied
+      }
+    }
     if (req.method === 'POST' && (p === '/api/reveal' || p === '/api/open')) {
       const origin = req.headers.origin;
       if (origin && !['http://localhost:7420', 'http://127.0.0.1:7420'].includes(origin)) {
@@ -202,7 +229,7 @@ server.listen(PORT, '127.0.0.1', () => {
 
 const cfg = loadConfig(db);
 const sampler = startSampler(db, cfg, {
-  execFile: promisify(execFile),
+  execFile: execFileAsync,
   spawn,
   statfs: promisify(fs.statfs),
   listVolumes: () => { try { return fs.readdirSync('/Volumes'); } catch { return []; } },

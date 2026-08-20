@@ -44,6 +44,73 @@ function ageText(ageDays) {
   return `${Math.round(ageDays)} days`;
 }
 
+// flag only — never move. entries = [{path, folder, sizeMb, mtime}] from the depth-2 walk
+export function drift(entries, cfg, now) {
+  const byFolder = new Map();
+  for (const e of entries) {
+    const ageDays = (now - e.mtime) / DAY;
+    if (e.sizeMb < cfg.drift.minMb || ageDays < cfg.drift.minAgeDays) continue;
+    if (!byFolder.has(e.folder)) byFolder.set(e.folder, []);
+    byFolder.get(e.folder).push({ ...e, ageDays });
+  }
+  const out = [];
+  for (const [folder, items] of byFolder) {
+    items.sort((a, b) => b.sizeMb - a.sizeMb);
+    const totalGb = items.reduce((a, i) => a + i.sizeMb, 0) / 1024;
+    const name = folder.split('/').filter(Boolean).pop() ?? folder;
+    out.push({
+      id: `drift-${slug(folder)}`,
+      kind: 'drift',
+      severity: 'info',
+      headline: `${items.length} old installers and exports are sitting in ${name} (${totalGb.toFixed(1)} GB)`,
+      why: items.slice(0, cfg.drift.maxItems)
+        .map(i => `${i.path.split('/').pop()} — ${sizeTextMb(i.sizeMb)}, untouched ${Math.round(i.ageDays / 30)} months`)
+        .join(' · '),
+      detail: 'Flagging only — moving or deleting is yours to decide.',
+      linkKind: 'reveal',
+      linkTarget: folder,
+    });
+  }
+  return out;
+}
+
+function sizeTextMb(mb) {
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
+}
+
+// cross-ref login items + LaunchAgent labels against proc names seen in the last 30 d
+export function loginItemsAudit(items, agents, procNames, cfg, now) {
+  const out = [];
+  const seen = (label) => procNames.some(n => label === n || label.startsWith(n) || n.startsWith(label));
+  for (const item of items) {
+    if (seen(item)) continue;
+    out.push({
+      id: `login-${slug(item)}`,
+      kind: 'login',
+      severity: 'info',
+      headline: `${item} launches at login but hasn't shown up in a month of process samples`,
+      why: 'It may be doing nothing, or doing something you never asked it to.',
+      detail: 'Short-lived helpers can slip between 30-second ticks — review it in System Settings → General → Login Items.',
+      linkKind: null,
+      linkTarget: null,
+    });
+  }
+  for (const agent of agents) {
+    if (seen(agent)) continue;
+    out.push({
+      id: `login-${slug(agent)}`,
+      kind: 'login',
+      severity: 'info',
+      headline: `${agent} launches at login but hasn't shown up in a month of process samples`,
+      why: 'It may be doing nothing, or doing something you never asked it to.',
+      detail: 'Short-lived helpers can slip between 30-second ticks — review it in System Settings → General → Login Items.',
+      linkKind: null,
+      linkTarget: null,
+    });
+  }
+  return out;
+}
+
 // per-volume least-squares fit over fitDays; weeks-left math from the slope.
 // Requires ≥ 4 days of history — a shorter fit is noise, not a trend.
 export function storageTrend(diskSamples, cfg, now) {

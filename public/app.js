@@ -273,6 +273,24 @@ window.addEventListener('hashchange', router);
 
 router();
 refresh();
+renderSettings();
 setInterval(() => {
   if (view === 'today' || view === 'digest') refresh();
 }, 60000);
+
+// Settings — the login-items scan button lives here now; the full form arrives with Task 15
+async function renderSettings() {
+  const box = $('#settings-form');
+  box.replaceChildren();
+  const scan = el('button', 'btn', 'Scan login items');
+  scan.addEventListener('click', () => {
+    fetch('/api/login-scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    }).then(r => {
+      if (!r.ok) alert('Scan failed — macOS may have denied the one-time Automation permission.');
+    }).catch(() => {});
+  });
+  box.append(scan, el('p', 'card-why', 'On-demand only: asks macOS for a one-time Automation permission, cross-checks login items against a month of process samples.'));
+}

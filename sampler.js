@@ -11,7 +11,7 @@ import {
 } from './collectors.js';
 import { sweep, getSetting, setSetting } from './db.js';
 import { cacheTargets, measure } from './paths.js';
-import { cacheGrowth, thermalDuringExport, driveInstability, backupStaleness, sustainedHogs, idleLoaded, storageTrend } from './rules.js';
+import { cacheGrowth, thermalDuringExport, driveInstability, backupStaleness, sustainedHogs, idleLoaded, storageTrend, drift, loginItemsAudit } from './rules.js';
 import { maybeNotify } from './notify.js';
 
 let lastTickAt = null;
@@ -53,7 +53,25 @@ export async function refreshFindings(db, cfg, now, exec) {
       cfg, now
     ),
     ...storageTrend(db.prepare('SELECT * FROM disk_samples').all(), cfg, now),
+    ...drift(getSetting(db, 'driftEntries') ?? [], cfg, now),
+    ...loginItemsAudit(
+      getSetting(db, 'loginItems')?.items ?? [],
+      getSetting(db, 'loginAgents')?.agents ?? [],
+      db.prepare('SELECT DISTINCT name FROM proc_samples WHERE ts > ?').all(now - 30 * 86400000).map(r => r.name),
+      cfg, now
+    ),
   ];
+  const eperm = getSetting(db, 'driftEperm') ?? [];
+  if (eperm.length) {
+    findings.push({
+      id: 'perm-drift', kind: 'perm', severity: 'info',
+      headline: 'macOS blocked Performac from checking some folders',
+      why: `Performac could not read ${eperm.join(', ')} — grant Files & Folders access in System Settings → Privacy & Security, then restart Performac.`,
+      detail: '',
+      linkKind: null,
+      linkTarget: null,
+    });
+  }
   if (getSetting(db, 'premiere-sidebyside') === '1') {
     findings.push({
       id: 'cache-premiere-sidebyside', kind: 'cache', severity: 'info',
@@ -143,6 +161,43 @@ export async function cacheTick(db, cfg, deps) {
     const m = tg.measurement ?? await measure(tg.path);
     ins.run(t, tg.id, tg.path, Math.round(m.sizeMb), m.newestMtime, m.fileCount);
   }
+  await refreshFindings(db, cfg, t, deps.execFile).catch(err => console.error('refreshFindings', err));
+}
+
+// hourly: depth-2 walk of drift.paths → settings; EPERM → permission-explainer card path
+export async function driftTick(db, cfg, deps) {
+  const t = deps.now();
+  const entries = [];
+  const eperm = [];
+  for (const p of cfg.drift.paths) {
+    const dir = p.startsWith('~/') ? path.join(os.homedir(), p.slice(2)) : p;
+    try {
+      for (const top of await fs.promises.readdir(dir, { withFileTypes: true })) {
+        if (top.isFile()) {
+          try {
+            const st = await fs.promises.stat(path.join(dir, top.name));
+            entries.push({ path: path.join(dir, top.name), folder: dir, sizeMb: st.size / 1048576, mtime: Math.round(st.mtimeMs) });
+          } catch { /* raced */ }
+        } else if (top.isDirectory()) {
+          try {
+            for (const f of await fs.promises.readdir(path.join(dir, top.name), { withFileTypes: true })) {
+              if (!f.isFile()) continue;
+              try {
+                const st = await fs.promises.stat(path.join(dir, top.name, f.name));
+                entries.push({ path: path.join(dir, top.name, f.name), folder: dir, sizeMb: st.size / 1048576, mtime: Math.round(st.mtimeMs) });
+              } catch { /* raced */ }
+            }
+          } catch (err) {
+            if (err.code === 'EPERM' || err.code === 'EACCES') eperm.push(path.join(dir, top.name));
+          }
+        }
+      }
+    } catch (err) {
+      if (err.code === 'EPERM' || err.code === 'EACCES') eperm.push(dir);
+    }
+  }
+  setSetting(db, 'driftEntries', entries);
+  setSetting(db, 'driftEperm', eperm);
   await refreshFindings(db, cfg, t, deps.execFile).catch(err => console.error('refreshFindings', err));
 }
 
@@ -300,6 +355,7 @@ export function startSampler(db, cfg, deps) {
   setInterval(() => diskTick().catch(err => console.error('diskTick', err)), cfg.diskTickSec * 1000).unref();
   setInterval(() => cacheTick(db, cfg, deps).catch(err => console.error('cacheTick', err)), cfg.cacheTickSec * 1000).unref();
   setInterval(() => backupTick(db, cfg, deps).catch(err => console.error('backupTick', err)), 3600000).unref();
+  setInterval(() => driftTick(db, cfg, deps).catch(err => console.error('driftTick', err)), 3600000).unref();
   setInterval(() => {
     try { sweep(db, cfg, now()); } catch (err) { console.error('sweep', err); }
     refreshFindings(db, cfg, now(), execFile).catch(err => console.error('refreshFindings', err));
@@ -319,5 +375,5 @@ export function startSampler(db, cfg, deps) {
     for (const c of streams) { try { c.kill(); } catch { /* already gone */ } }
   }
 
-  return { tick, diskTick, cacheTick: () => cacheTick(db, cfg, deps), backupTick: () => backupTick(db, cfg, deps), stop };
+  return { tick, diskTick, cacheTick: () => cacheTick(db, cfg, deps), backupTick: () => backupTick(db, cfg, deps), driftTick: () => driftTick(db, cfg, deps), stop };
 }
