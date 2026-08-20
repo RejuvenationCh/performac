@@ -4,6 +4,13 @@ import SwiftUI
 
 struct DuplicatesView: View {
     var groups: [DupGroup] = Sample.dups
+    var scanning: Bool = false
+    var hashed: Int = 0
+    var candidates: Int = 0
+    var currentPath: String = ""
+    var onScan: () -> Void = {}
+    var onCancel: () -> Void = {}
+    var onDisappear: () -> Void = {}
     private var recoverable: Int64 {
         groups.reduce(0) { $0 + $1.bytes * Int64(max($1.paths.count - 1, 0)) }
     }
@@ -13,10 +20,28 @@ struct DuplicatesView: View {
              trailing: AnyView(
                 HStack(spacing: PC.gutter) {
                     Text("Last scan: 3 hours ago").font(.pcSmall).foregroundStyle(PC.meta)
-                    Button("Scan Again") {}.controlSize(.small)
-                        .disabled(true)
-                        .help("Duplicate scanning arrives with the Clean phase — showing your last scan.")
+                    if scanning {
+                        Button("Cancel", action: onCancel).controlSize(.small)
+                    } else {
+                        Button(groups.isEmpty ? "Scan" : "Scan Again", action: onScan)
+                            .controlSize(.small)
+                            .help("Hashes files over the size threshold. Exact matches only.")
+                    }
                 })) {
+            if scanning {
+                HStack(spacing: PC.s2) {
+                    ProgressView().controlSize(.small)
+                    Text(candidates > 0
+                         ? "Hashing \(Fmt.count(hashed)) of \(Fmt.count(candidates)) candidates…"
+                         : "Looking for same-size files…")
+                        .font(.pcSmall).foregroundStyle(PC.ink2)
+                    Text(currentPath).font(.pcSmall).foregroundStyle(PC.meta)
+                        .lineLimit(1).truncationMode(.head)
+                    Spacer()
+                }
+                .padding(.horizontal, PC.stack).padding(.vertical, PC.s2)
+                .background(PC.fill1).pcHairline(.bottom)
+            }
             ScrollView {
                 VStack(spacing: PC.gutter) {
                     ForEach(groups) { g in DupGroupCard(group: g) }
@@ -24,6 +49,7 @@ struct DuplicatesView: View {
                 .padding(.horizontal, PC.stack).padding(.bottom, PC.stack)
             }
         }
+        .onDisappear(perform: onDisappear)
     }
 }
 

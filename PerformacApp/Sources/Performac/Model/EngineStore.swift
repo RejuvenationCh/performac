@@ -138,6 +138,53 @@ final class EngineStore: ObservableObject {
         }
     }
 
+    // MARK: duplicate scan — on-demand, cancels when you leave, like the disk scan
+
+    @Published var dupScanning = false
+    @Published var dupHashed = 0
+    @Published var dupCandidates = 0
+    @Published var dupPath = ""
+    private var dupTask: Task<Void, Never>?
+
+    func startDupScan() {
+        guard !dupScanning else { return }
+        dupTask?.cancel()
+        dupScanning = true; dupHashed = 0; dupCandidates = 0; dupPath = ""
+        let cfg = loadConfig(db)
+        let roots = [NSHomeDirectory()]
+        dupTask = Task { [weak self] in
+            guard let self else { return }
+            for await ev in DupScanner().scan(roots: roots, minMb: Int64(cfg.dup.minMb)) {
+                if Task.isCancelled { return }
+                switch ev {
+                case .progress(let hashed, let candidates, let path):
+                    self.dupHashed = hashed; self.dupCandidates = candidates; self.dupPath = path
+                case .finished(let groups):
+                    self.persistDupGroups(groups)
+                    self.dupScanning = false
+                    self.refreshDupGroups()
+                }
+            }
+        }
+    }
+
+    func cancelDupScan() {
+        dupTask?.cancel()
+        dupScanning = false
+    }
+
+    /// Replaces the previous scan wholesale, matching v1: dup_groups holds one scan.
+    private func persistDupGroups(_ groups: [DupGroupResult]) {
+        let ts = Int64(Date().timeIntervalSince1970 * 1000)
+        db.prepare("DELETE FROM dup_groups").run([])
+        let ins = db.prepare("INSERT INTO dup_groups(scan_ts, hash, size_mb, paths) VALUES(?,?,?,?)")
+        for g in groups {
+            let json = (try? JSONSerialization.data(withJSONObject: g.paths))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+            ins.run([.int(ts), .text(g.hash), .int(g.sizeMb), .text(json)])
+        }
+    }
+
     // MARK: the cleaner — the only place the app removes anything
 
     @Published var lastTrashSummary: String? = nil

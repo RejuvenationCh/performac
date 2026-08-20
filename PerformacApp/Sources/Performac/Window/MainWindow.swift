@@ -39,7 +39,15 @@ struct MainWindow: View {
                     onDisappear: { store.diskViewDisappeared() },
                     onCancel: { store.cancelDiskScan() })
                 case .clean: CleanView(caches: store.cacheEntries, onTrash: { store.trashSelected($0) })
-                case .duplicates: DuplicatesView(groups: store.dupGroups)
+                case .duplicates: DuplicatesView(
+                    groups: store.dupGroups,
+                    scanning: store.dupScanning,
+                    hashed: store.dupHashed,
+                    candidates: store.dupCandidates,
+                    currentPath: store.dupPath,
+                    onScan: { store.startDupScan() },
+                    onCancel: { store.cancelDupScan() },
+                    onDisappear: { store.cancelDupScan() })
                 case .settings: SettingsView(
                     config: store.config,
                     fdaGranted: store.fdaGranted,
