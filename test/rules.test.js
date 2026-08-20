@@ -1,7 +1,7 @@
 // rules tests — cacheGrowth, thermalDuringExport (further rules arrive per-feature)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cacheGrowth, thermalDuringExport, driveInstability } from '../rules.js';
+import { cacheGrowth, thermalDuringExport, driveInstability, backupStaleness } from '../rules.js';
 
 const DAY = 86400000;
 const NOW = 1756000000000;
@@ -191,4 +191,57 @@ test('4+ cycles over 7 days (≤ 24h threshold) → amber', () => {
   assert.equal(fs.length, 1);
   assert.equal(fs[0].severity, 'amber');
   assert.ok(fs[0].headline.includes('in the last 7 days'));
+});
+
+const bcfg = { backup: { maxAgeDays: 7 } };
+
+test('no TM destination → red, the machine\'s real day-one card', () => {
+  const fs = backupStaleness({ configured: false, names: [], backupISO: null }, [], bcfg, NOW);
+  assert.equal(fs.length, 1);
+  assert.equal(fs[0].severity, 'red');
+  assert.equal(fs[0].headline, 'No Time Machine destination is configured on this Mac');
+  assert.equal(fs[0].why, 'Your event and campus footage has no re-shoot option — a Mac that has never been backed up is one drive failure from losing all of it');
+  assert.equal(fs[0].linkKind, null);
+  assert.ok(fs[0].detail.includes('System Settings'), fs[0].detail);
+});
+
+test('last backup 12 days old → red with destination cited', () => {
+  const iso = new Date(NOW - 12 * DAY).toISOString();
+  const fs = backupStaleness({ configured: true, names: ['T7 Backup'], backupISO: iso }, [], bcfg, NOW);
+  assert.equal(fs.length, 1);
+  assert.equal(fs[0].severity, 'red');
+  assert.equal(fs[0].headline, 'Your last Time Machine backup is 12 days old');
+  assert.ok(fs[0].why.includes('T7 Backup'), fs[0].why);
+});
+
+test('backup 3 days old → no finding', () => {
+  const iso = new Date(NOW - 3 * DAY).toISOString();
+  assert.deepEqual(backupStaleness({ configured: true, names: ['T7 Backup'], backupISO: iso }, [], bcfg, NOW), []);
+});
+
+test('destination exists but history unreadable → honest info card with manual check', () => {
+  const fs = backupStaleness({ configured: true, names: ['T7 Backup'], backupISO: null }, [], bcfg, NOW);
+  assert.equal(fs.length, 1);
+  assert.equal(fs[0].severity, 'info');
+  assert.ok(fs[0].detail.includes('tmutil latestbackup'), fs[0].detail);
+  assert.ok(fs[0].detail.includes('does not request'), fs[0].detail);
+});
+
+test('watched backup path over its age limit → amber with reveal link', () => {
+  const watchStats = [{
+    path: '/Users/you/Movies/Resolve Project Backups',
+    newestMtime: NOW - 20 * DAY,
+    maxAgeDays: 14,
+  }];
+  const fs = backupStaleness({ configured: true, names: ['T7 Backup'], backupISO: new Date(NOW - 3 * DAY).toISOString() }, watchStats, bcfg, NOW);
+  assert.equal(fs.length, 1);
+  assert.equal(fs[0].severity, 'amber');
+  assert.ok(fs[0].headline.includes('Resolve Project Backups') && fs[0].headline.includes('20 days'), fs[0].headline);
+  assert.equal(fs[0].linkKind, 'reveal');
+  assert.equal(fs[0].linkTarget, '/Users/you/Movies/Resolve Project Backups');
+});
+
+test('watched path fresh → no finding', () => {
+  const watchStats = [{ path: '/x', newestMtime: NOW - DAY, maxAgeDays: 14 }];
+  assert.deepEqual(backupStaleness({ configured: true, names: [], backupISO: new Date(NOW).toISOString() }, watchStats, bcfg, NOW), []);
 });

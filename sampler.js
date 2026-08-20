@@ -7,10 +7,11 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   parsePs, parseFrontAppName, parseTherm, parseThermlogLine, parseDiskutilActivity,
+  parseTmDestinations, parseTmLatest,
 } from './collectors.js';
 import { sweep, getSetting, setSetting } from './db.js';
 import { cacheTargets, measure } from './paths.js';
-import { cacheGrowth, thermalDuringExport, driveInstability } from './rules.js';
+import { cacheGrowth, thermalDuringExport, driveInstability, backupStaleness } from './rules.js';
 import { maybeNotify } from './notify.js';
 
 let lastTickAt = null;
@@ -35,6 +36,11 @@ export async function refreshFindings(db, cfg, now, exec) {
     ),
     ...driveInstability(
       db.prepare("SELECT * FROM events WHERE kind IN ('mount','unmount') ORDER BY ts").all(),
+      cfg, now
+    ),
+    ...backupStaleness(
+      getSetting(db, 'tmState') ?? { configured: false, names: [], backupISO: null },
+      getSetting(db, 'watchStats') ?? [],
       cfg, now
     ),
   ];
@@ -111,6 +117,38 @@ export async function cacheTick(db, cfg, deps) {
     const m = await measure(tg.path);
     ins.run(t, tg.id, tg.path, Math.round(m.sizeMb), m.newestMtime, m.fileCount);
   }
+  await refreshFindings(db, cfg, t, deps.execFile).catch(err => console.error('refreshFindings', err));
+}
+
+// hourly: tmutil state + measured watch paths into settings, then refresh findings
+export async function backupTick(db, cfg, deps) {
+  const t = deps.now();
+  let tmState = { ts: t, configured: false, names: [], backupISO: null };
+  try {
+    const { stdout } = await deps.execFile('tmutil', ['destinationinfo']);
+    const d = parseTmDestinations(String(stdout));
+    tmState.configured = d.configured;
+    tmState.names = d.names;
+    if (d.configured) {
+      try {
+        const { stdout: out } = await deps.execFile('tmutil', ['latestbackup', '-t']);
+        tmState.backupISO = parseTmLatest(String(out))?.backupISO ?? null;
+      } catch {
+        tmState.backupISO = null;   // error text → history unreadable
+      }
+    }
+  } catch {
+    // tmutil unavailable → configured:false (the machine's true state today)
+  }
+  setSetting(db, 'tmState', tmState);
+
+  const stats = [];
+  for (const w of cfg.backup.watchPaths) {
+    const p = w.path.startsWith('~/') ? path.join(os.homedir(), w.path.slice(2)) : w.path;
+    const m = await measure(p);
+    stats.push({ path: p, newestMtime: m.newestMtime, maxAgeDays: w.maxAgeDays });
+  }
+  setSetting(db, 'watchStats', stats);
   await refreshFindings(db, cfg, t, deps.execFile).catch(err => console.error('refreshFindings', err));
 }
 
@@ -235,6 +273,7 @@ export function startSampler(db, cfg, deps) {
   setInterval(() => tick().catch(err => console.error('tick', err)), cfg.tickSec * 1000).unref();
   setInterval(() => diskTick().catch(err => console.error('diskTick', err)), cfg.diskTickSec * 1000).unref();
   setInterval(() => cacheTick(db, cfg, deps).catch(err => console.error('cacheTick', err)), cfg.cacheTickSec * 1000).unref();
+  setInterval(() => backupTick(db, cfg, deps).catch(err => console.error('backupTick', err)), 3600000).unref();
   setInterval(() => {
     try { sweep(db, cfg, now()); } catch (err) { console.error('sweep', err); }
     refreshFindings(db, cfg, now(), execFile).catch(err => console.error('refreshFindings', err));
@@ -254,5 +293,5 @@ export function startSampler(db, cfg, deps) {
     for (const c of streams) { try { c.kill(); } catch { /* already gone */ } }
   }
 
-  return { tick, diskTick, cacheTick: () => cacheTick(db, cfg, deps), stop };
+  return { tick, diskTick, cacheTick: () => cacheTick(db, cfg, deps), backupTick: () => backupTick(db, cfg, deps), stop };
 }

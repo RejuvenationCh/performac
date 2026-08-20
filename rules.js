@@ -17,6 +17,66 @@ function ageText(ageDays) {
   return `${Math.round(ageDays)} days`;
 }
 
+// tmState = {configured, names, backupISO|null}; watchStats = [{path, newestMtime, maxAgeDays}]
+export function backupStaleness(tmState, watchStats, cfg, now) {
+  const out = [];
+  if (!tmState.configured) {
+    out.push({
+      id: 'backup-no-destination',
+      kind: 'backup',
+      severity: 'red',
+      headline: 'No Time Machine destination is configured on this Mac',
+      why: 'Your event and campus footage has no re-shoot option — a Mac that has never been backed up is one drive failure from losing all of it',
+      detail: 'Set one up in System Settings → General → Time Machine.',
+      linkKind: null,
+      linkTarget: null,
+    });
+  } else if (tmState.backupISO) {
+    const ageDays = (now - Date.parse(tmState.backupISO)) / DAY;
+    if (ageDays > cfg.backup.maxAgeDays) {
+      const dest = tmState.names[0] ?? 'your backup destination';
+      out.push({
+        id: 'backup-stale',
+        kind: 'backup',
+        severity: 'red',
+        headline: `Your last Time Machine backup is ${Math.round(ageDays)} days old`,
+        why: `The newest backup on ${dest} is from ${tmState.backupISO.slice(0, 10)} — everything shot since then has no copy anywhere.`,
+        detail: '',
+        linkKind: null,
+        linkTarget: null,
+      });
+    }
+  } else {
+    out.push({
+      id: 'backup-unreadable',
+      kind: 'backup',
+      severity: 'info',
+      headline: 'A Time Machine destination exists, but its backup history is unreadable',
+      why: `Performac can see ${tmState.names[0] ?? 'the destination'} but could not read the latest backup timestamp.`,
+      detail: `If this persists with the drive attached, tmutil latestbackup may need Full Disk Access — which Performac deliberately does not request. Check manually: run 'tmutil latestbackup' in Terminal.`,
+      linkKind: null,
+      linkTarget: null,
+    });
+  }
+  for (const w of watchStats) {
+    if (w.newestMtime == null) continue;
+    const ageDays = (now - w.newestMtime) / DAY;
+    if (ageDays > w.maxAgeDays) {
+      out.push({
+        id: `backup-watch-${slug(w.path)}`,
+        kind: 'backup',
+        severity: 'amber',
+        headline: `${w.path.split('/').filter(Boolean).pop() ?? w.path} hasn't seen a new backup in ${Math.round(ageDays)} days`,
+        why: `The newest file there is ${Math.round(ageDays)} days old and you set a ${w.maxAgeDays}-day limit.`,
+        detail: '',
+        linkKind: 'reveal',
+        linkTarget: w.path,
+      });
+    }
+  }
+  return out;
+}
+
 // a "cycle" = unmount followed by reappearance (mount) within 30 min; user ejects don't count
 export function driveInstability(events, cfg, now) {
   const byVol = new Map();
