@@ -40,6 +40,9 @@ struct MainWindow: View {
                     scanRoot: store.scanRoot,
                     targets: store.scanTargets,
                     onPickRoot: { store.setScanRoot($0) },
+                    crumbs: store.breadcrumb,
+                    onOpen: { store.browse(into: $0) },
+                    onCrumb: { store.browse(to: $0) },
                     onCancel: { store.cancelDiskScan() })
                 case .clean: CleanView(caches: store.cacheEntries, onTrash: { store.trashSelected($0) })
                 case .duplicates: DuplicatesView(

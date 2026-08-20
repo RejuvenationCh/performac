@@ -33,6 +33,11 @@ final class EngineStore: ObservableObject {
     var sampler: Sampler?
     private var scanTask: Task<Void, Never>?
     private var scanStart: Date?
+    /// The whole scanned tree, keyed by parent path, so descending is instant and never
+    /// rescans. Built once per scan.
+    private var treeByParent: [String: [SizeEntry]] = [:]
+    /// Where the browser currently is. Starts at the scan root; clicking a folder descends.
+    @Published var browsePath: String = NSHomeDirectory()
     /// What gets scanned. Never assumed: the user picks home, a mounted volume, or any folder.
     @Published var scanRoot: String = NSHomeDirectory()
     /// When the persisted results were produced. nil = never scanned on this machine.
@@ -280,13 +285,9 @@ final class EngineStore: ObservableObject {
                     self.scanElapsed = Date().timeIntervalSince(self.scanStart ?? Date())
                     self.scanPath = s.currentPath
                 case .finished(let sum):
-                    self.diskEntries = sum.topDirectories.map { d in
-                        SizeEntry(
-                            name: (d.path as NSString).lastPathComponent,
-                            items: d.files,
-                            bytes: d.bytes,
-                            kind: Self.fileKind(forPath: d.path))
-                    }
+                    self.buildTree(sum)
+                    self.browsePath = sum.root
+                    self.diskEntries = self.childrenOf(sum.root)
                     self.scanning = false
                     self.persistScan(sum.topDirectories.isEmpty ? nil : Date())
                 }
@@ -310,6 +311,55 @@ final class EngineStore: ObservableObject {
     func setScanRoot(_ path: String) {
         scanRoot = path
         setSetting(db, "diskScanRoot", JSONValue.from(["path": path]))
+    }
+
+    /// Group every entry under its parent, biggest first — the browser reads straight from
+    /// this, so descending a folder is a dictionary lookup, not another walk.
+    private func buildTree(_ sum: ScanSummary) {
+        var byParent: [String: [SizeEntry]] = [:]
+        for e in sum.entries {
+            byParent[e.parent, default: []].append(SizeEntry(
+                name: e.name,
+                items: e.isDirectory ? e.files : 0,
+                bytes: e.bytes,
+                symbol: e.isDirectory ? "folder.fill" : "doc.fill",
+                kind: Self.fileKind(forPath: e.path)))
+        }
+        for k in byParent.keys { byParent[k]?.sort { $0.bytes > $1.bytes } }
+        treeByParent = byParent
+    }
+
+    func childrenOf(_ path: String) -> [SizeEntry] { treeByParent[path] ?? [] }
+
+    /// Descend into a folder. Files and empty folders are not navigable.
+    func browse(into name: String) {
+        let next = (browsePath as NSString).appendingPathComponent(name)
+        guard !childrenOf(next).isEmpty else { return }
+        browsePath = next
+        diskEntries = childrenOf(next)
+    }
+
+    /// Jump to any ancestor from the breadcrumb.
+    func browse(to path: String) {
+        guard treeByParent[path] != nil else { return }
+        browsePath = path
+        diskEntries = childrenOf(path)
+    }
+
+    /// Breadcrumb components from the scan root down to where we are.
+    var breadcrumb: [(name: String, path: String)] {
+        let rootPath = (scanRoot as NSString).expandingTildeInPath
+        guard browsePath.hasPrefix(rootPath) else {
+            return [((rootPath as NSString).lastPathComponent, rootPath)]
+        }
+        var out: [(String, String)] = [((rootPath as NSString).lastPathComponent, rootPath)]
+        let rest = String(browsePath.dropFirst(rootPath.count)).split(separator: "/")
+        var acc = rootPath
+        for part in rest {
+            acc = (acc as NSString).appendingPathComponent(String(part))
+            out.append((String(part), acc))
+        }
+        return out
     }
 
     func cancelDiskScan() {

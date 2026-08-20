@@ -50,13 +50,35 @@ public struct DirTotal: Sendable {
     }
 }
 
+/// One row a browser can show: a directory (with its rolled-up total) or a large file.
+/// Files below this never appear as their own row — they are counted in their folder's
+/// total. Without a floor a home directory would produce ~900k rows.
+let largeFileMin: Int64 = 10 * 1_048_576
+
+public struct ScanEntry: Sendable {
+    public let path: String
+    public let files: Int
+    public let bytes: Int64
+    public let isDirectory: Bool
+    public init(path: String, files: Int, bytes: Int64, isDirectory: Bool) {
+        self.path = path; self.files = files; self.bytes = bytes; self.isDirectory = isDirectory
+    }
+    public var parent: String { (path as NSString).deletingLastPathComponent }
+    public var name: String { (path as NSString).lastPathComponent }
+}
+
 public struct ScanSummary: Sendable {
     public let root: String
     public let files: Int
     public let bytes: Int64
     public let elapsed: TimeInterval
     public let topDirectories: [DirTotal]   // immediate children of root, biggest first
-    public init(root: String, files: Int, bytes: Int64, elapsed: TimeInterval, topDirectories: [DirTotal]) {
+    /// Every directory in the tree plus every file over `largeFileMin`, so the browser can
+    /// descend without rescanning. The roll-up is already computed; keeping it costs nothing.
+    public let entries: [ScanEntry]
+    public init(root: String, files: Int, bytes: Int64, elapsed: TimeInterval,
+                topDirectories: [DirTotal], entries: [ScanEntry] = []) {
+        self.entries = entries
         self.root = root
         self.files = files
         self.bytes = bytes
@@ -130,7 +152,7 @@ public struct DiskScanner: Sendable {
                 slices.append(Array(batch[i ..< min(i + sliceLen, batch.count)]))
                 i += sliceLen
             }
-            var increments: [(String, Int, Int64)] = []
+            var increments: [(String, String, Int64)] = []
             let lock = NSLock()
             DispatchQueue.concurrentPerform(iterations: slices.count) { idx in
                 let r = statSlice(slices[idx])
@@ -138,11 +160,12 @@ public struct DiskScanner: Sendable {
                 increments.append(contentsOf: r)
                 lock.unlock()
             }
-            for (dir, f, b) in increments {
+            for (dir, filePath, b) in increments {
                 let cur = totals[dir] ?? (0, 0)
-                totals[dir] = (cur.files + f, cur.bytes + b)
-                filesScanned += f
+                totals[dir] = (cur.files + 1, cur.bytes + b)
+                filesScanned += 1
                 bytes += b
+                if b >= largeFileMin { largeFiles.append(ScanEntry(path: filePath, files: 0, bytes: b, isDirectory: false)) }
             }
             emitProgress(force: false)
         }
@@ -159,6 +182,7 @@ public struct DiskScanner: Sendable {
             return
         }
 
+        var largeFiles: [ScanEntry] = []
         var batch: [URL] = []
         batch.reserveCapacity(512)
         for case let url as URL in enumerator {
@@ -194,18 +218,25 @@ public struct DiskScanner: Sendable {
             .map { DirTotal(path: $0.key, files: $0.value.files, bytes: $0.value.bytes) }
             .sorted { $0.bytes > $1.bytes }
 
+        var entries: [ScanEntry] = rolled.map {
+            ScanEntry(path: $0.key, files: $0.value.files, bytes: $0.value.bytes, isDirectory: true)
+        }
+        entries.append(contentsOf: largeFiles)
+
         continuation.yield(.finished(ScanSummary(
             root: root.path,
             files: filesScanned,
             bytes: bytes,
             elapsed: Date().timeIntervalSince(start),
-            topDirectories: top)))
+            topDirectories: top,
+            entries: entries)))
         continuation.finish()
     }
 
     /// Stat one slice of a batch; returns per-parent-dir increments.
-    private func statSlice(_ slice: [URL]) -> [(String, Int, Int64)] {
-        var out: [(String, Int, Int64)] = []
+    /// (parent directory, file path, allocated size)
+    private func statSlice(_ slice: [URL]) -> [(String, String, Int64)] {
+        var out: [(String, String, Int64)] = []
         out.reserveCapacity(slice.count)
         for url in slice {
             guard let vals = try? url.resourceValues(forKeys: [
@@ -213,7 +244,7 @@ public struct DiskScanner: Sendable {
             ]) else { continue }
             if vals.isSymbolicLink == true { continue }   // never count or follow links
             let size = Int64(vals.totalFileAllocatedSize ?? 0)
-            out.append((url.deletingLastPathComponent().path, 1, size))
+            out.append((url.deletingLastPathComponent().path, url.path, size))
         }
         return out
     }

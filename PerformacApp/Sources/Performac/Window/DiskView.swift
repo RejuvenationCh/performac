@@ -19,6 +19,9 @@ struct DiskView: View {
     var scanRoot: String = NSHomeDirectory()
     var targets: [(label: String, path: String)] = []
     var onPickRoot: (String) -> Void = { _ in }
+    var crumbs: [(name: String, path: String)] = []
+    var onOpen: (String) -> Void = { _ in }
+    var onCrumb: (String) -> Void = { _ in }
     var onCancel: () -> Void = {}
     private var maxBytes: Int64 { entries.map(\.bytes).max() ?? 1 }
 
@@ -45,6 +48,9 @@ struct DiskView: View {
             .padding(.horizontal, PC.stack).padding(.vertical, PC.gutter)
             .background(PC.surface).pcHairline(.bottom)
 
+            if !crumbs.isEmpty {
+                CrumbBar(crumbs: crumbs, onCrumb: onCrumb)
+            }
             if scanning {
                 ScanProgress(files: scanFiles, bytes: scanBytes, elapsed: scanElapsed,
                              currentPath: scanPath, onCancel: onCancel)
@@ -67,7 +73,7 @@ struct DiskView: View {
                     ScrollView {
                         LazyVStack(spacing: 0) {
                             ForEach(entries) { e in
-                                SizeRow(entry: e, maxBytes: maxBytes)
+                                SizeRow(entry: e, maxBytes: maxBytes, onOpen: { onOpen(e.name) })
                                 Divider().overlay(PC.hairline)
                             }
                         }
@@ -169,6 +175,31 @@ struct ScanTargetPicker: View {
         .menuStyle(.borderlessButton)
         .frame(width: 190)
         .help(root)
+    }
+}
+
+/// Live breadcrumb: every ancestor is clickable, so you can jump back up any number of
+/// levels the way OmniDiskSweeper and TreeSize do.
+struct CrumbBar: View {
+    let crumbs: [(name: String, path: String)]
+    let onCrumb: (String) -> Void
+    var body: some View {
+        HStack(spacing: PC.s1) {
+            Image(systemName: "folder").font(.system(size: 11)).foregroundStyle(PC.meta)
+            ForEach(Array(crumbs.enumerated()), id: \.offset) { i, c in
+                if i > 0 {
+                    Image(systemName: "chevron.right").font(.system(size: 8)).foregroundStyle(PC.meta)
+                }
+                Button(c.name) { onCrumb(c.path) }
+                    .buttonStyle(.plain)
+                    .font(.pcBody)
+                    .fontWeight(i == crumbs.count - 1 ? .semibold : .regular)
+                    .foregroundStyle(i == crumbs.count - 1 ? PC.ink : PC.accent)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, PC.stack).padding(.vertical, PC.s2)
+        .background(PC.canvas).pcHairline(.bottom)
     }
 }
 

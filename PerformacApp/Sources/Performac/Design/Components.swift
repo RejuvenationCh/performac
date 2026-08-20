@@ -135,12 +135,18 @@ struct StorageBar: View {
 /// One row of the disk browser: name, item count, size, proportional bar.
 struct SizeRow: View {
     let entry: SizeEntry, maxBytes: Int64
+    var onOpen: () -> Void = {}
     @State private var hover = false
+    private var isFolder: Bool { entry.symbol == "folder.fill" }
     var body: some View {
         HStack(spacing: PC.gutter) {
             Image(systemName: entry.symbol).font(.system(size: 13)).foregroundStyle(entry.kind.color)
                 .frame(width: 16)
             Text(entry.name).font(.pcBody).foregroundStyle(PC.ink).lineLimit(1)
+            if isFolder {
+                Image(systemName: "chevron.right").font(.system(size: 8))
+                    .foregroundStyle(hover ? PC.accent : PC.meta.opacity(0.5))
+            }
             Spacer(minLength: PC.s2)
             if hover {
                 HStack(spacing: 2) {
@@ -164,7 +170,10 @@ struct SizeRow: View {
         }
         .padding(.horizontal, PC.gutter).padding(.vertical, 7)
         .background(hover ? PC.fill1 : .clear)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { if isFolder { onOpen() } }
         .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
+        .help(isFolder ? "Double-click to open \(entry.name)" : entry.name)
     }
 }
 
