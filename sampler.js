@@ -323,12 +323,17 @@ export function startSampler(db, cfg, deps) {
   const verdicts = new Map();
   function isExternal(name) {
     if (!verdicts.has(name)) {
+      // The entry is set while the probe is in flight so concurrent events share one
+      // call, then dropped again if it failed. Caching a failure would write the volume
+      // off for the life of the process — and a drive with a loose connector is the
+      // likeliest to be slow to enumerate, i.e. exactly the drive we must not go blind to.
       verdicts.set(name, execFile('diskutil', ['info', '-plist', `/Volumes/${name}`])
         .then(({ stdout }) => {
           const info = parseDiskutilInfo(stdout);
-          return info !== null && (!info.internal || info.ejectable);
+          if (info === null) { verdicts.delete(name); return false; }
+          return !info.internal || info.ejectable;
         })
-        .catch(() => false));
+        .catch(() => { verdicts.delete(name); return false; }));
     }
     return verdicts.get(name);
   }

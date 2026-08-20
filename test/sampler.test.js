@@ -285,3 +285,30 @@ test('dedupe mirrors real timing: stream event, reconcile 30 s later → still o
   assert.equal(db.prepare("SELECT COUNT(*) n FROM events WHERE kind = 'mount'").get().n, 1);
   s.stop();
 });
+
+// A drive with a loose connector is the most likely to be slow to enumerate — i.e. the
+// exact drive this feature exists to watch is the one whose probe fails. A failed probe
+// must never write the volume off permanently.
+test('stream: a failed diskutil probe must not poison the verdict cache', async () => {
+  const db = openDb(':memory:');
+  let attempts = 0;
+  const info = () => {
+    attempts++;
+    if (attempts === 1) throw new Error('Could not find disk: /Volumes/T7');
+    return PLIST_EXTERNAL;
+  };
+  const deps = makeDeps({ diskutilInfo: info });
+  const s = startSampler(db, { ...DEFAULTS }, deps);
+  const duStream = deps.spawned.find(c => c.bin === 'diskutil');
+
+  duStream.stdout.emit('data', DU_APPEAR + '\n');   // probe #1 fails → no event, correctly
+  await s.tick();
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM events WHERE kind = 'mount'").get().n, 0);
+
+  // the same drive reappears — it must be re-probed, not treated as internal forever
+  duStream.stdout.emit('data', DU_APPEAR + '\n');
+  await s.tick();
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM events WHERE kind = 'mount'").get().n, 1,
+    'a transient probe failure must not make the drive permanently invisible');
+  s.stop();
+});
