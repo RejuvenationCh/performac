@@ -1,6 +1,7 @@
 // DiskView.swift — replaces OmniDiskSweeper (drill-down list) and GrandPerspective (treemap).
 // Layout follows the Stitch artifact: breadcrumb + storage bar above a 60/40 split.
 import SwiftUI
+import AppKit
 
 struct DiskView: View {
     var entries: [SizeEntry] = Sample.disk
@@ -15,13 +16,29 @@ struct DiskView: View {
     var onToggleAutoRefresh: (Bool) -> Void = { _ in }
     var onAppear: () -> Void = {}
     var onDisappear: () -> Void = {}
+    var scanRoot: String = NSHomeDirectory()
+    var targets: [(label: String, path: String)] = []
+    var onPickRoot: (String) -> Void = { _ in }
     var onCancel: () -> Void = {}
     private var maxBytes: Int64 { entries.map(\.bytes).max() ?? 1 }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Breadcrumb(parts: ["Macintosh HD", "Users", "rejuvenation"])
+            HStack(spacing: PC.gutter) {
+                ScanTargetPicker(root: scanRoot, targets: targets, onPick: onPickRoot)
+                if scanning {
+                    Button("Cancel", action: onCancel).controlSize(.large)
+                } else {
+                    Button {
+                        onScan()
+                    } label: {
+                        Label(entries.isEmpty ? "Scan" : "Rescan", systemImage: "magnifyingglass")
+                            .font(.pcTitle)
+                    }
+                    .buttonStyle(.borderedProminent).controlSize(.large)
+                    .keyboardShortcut("r", modifiers: .command)
+                    .help("Scan the selected location. Cmd-R")
+                }
                 Spacer()
                 StorageBar(freeBytes: 70_866_000_000, totalBytes: 1_068_000_000_000)
             }
@@ -67,8 +84,6 @@ struct DiskView: View {
                                 .toggleStyle(.checkbox).font(.pcSmall).foregroundStyle(PC.ink2)
                                 .help("Rescan every time this view opens. A full scan is minutes of disk activity.")
                         }
-                        Button(entries.isEmpty ? "Scan" : "Scan Again", action: onScan)
-                            .buttonStyle(.link).font(.pcLabel)
                     }
                     .padding(.horizontal, PC.gutter).padding(.vertical, PC.s2)
                     .pcHairline(.top)
@@ -111,6 +126,49 @@ struct StaleBanner: View {
         .padding(.horizontal, PC.stack).padding(.vertical, PC.s2)
         .background(PC.amberSoft)
         .pcHairline(.bottom)
+    }
+}
+
+/// Where to scan. Home, any mounted volume (the T7 shows up here when plugged in), or any
+/// folder you choose. Nothing is assumed.
+struct ScanTargetPicker: View {
+    let root: String
+    let targets: [(label: String, path: String)]
+    let onPick: (String) -> Void
+
+    private var currentLabel: String {
+        if let t = targets.first(where: { $0.path == root }) { return t.label }
+        return (root as NSString).lastPathComponent
+    }
+
+    var body: some View {
+        Menu {
+            ForEach(targets, id: \.path) { t in
+                Button {
+                    onPick(t.path)
+                } label: {
+                    if t.path == root { Label(t.label, systemImage: "checkmark") } else { Text(t.label) }
+                }
+            }
+            Divider()
+            Button("Choose Folder…") {
+                let panel = NSOpenPanel()
+                panel.canChooseDirectories = true
+                panel.canChooseFiles = false
+                panel.allowsMultipleSelection = false
+                panel.prompt = "Scan"
+                panel.directoryURL = URL(fileURLWithPath: root)
+                if panel.runModal() == .OK, let url = panel.url { onPick(url.path) }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "internaldrive").font(.system(size: 12))
+                Text(currentLabel).font(.pcBody).lineLimit(1)
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .frame(width: 190)
+        .help(root)
     }
 }
 

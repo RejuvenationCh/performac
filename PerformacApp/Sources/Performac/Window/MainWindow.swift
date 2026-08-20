@@ -37,6 +37,9 @@ struct MainWindow: View {
                     onToggleAutoRefresh: { store.setAutoRefreshScan($0) },
                     onAppear: { store.diskViewAppeared() },
                     onDisappear: { store.diskViewDisappeared() },
+                    scanRoot: store.scanRoot,
+                    targets: store.scanTargets,
+                    onPickRoot: { store.setScanRoot($0) },
                     onCancel: { store.cancelDiskScan() })
                 case .clean: CleanView(caches: store.cacheEntries, onTrash: { store.trashSelected($0) })
                 case .duplicates: DuplicatesView(

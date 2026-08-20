@@ -33,6 +33,8 @@ final class EngineStore: ObservableObject {
     var sampler: Sampler?
     private var scanTask: Task<Void, Never>?
     private var scanStart: Date?
+    /// What gets scanned. Never assumed: the user picks home, a mounted volume, or any folder.
+    @Published var scanRoot: String = NSHomeDirectory()
     /// When the persisted results were produced. nil = never scanned on this machine.
     @Published var lastScanAt: Int64? = nil
     /// Only meaningful once a scan exists; persisted so it survives relaunch.
@@ -226,10 +228,10 @@ final class EngineStore: ObservableObject {
         scanElapsed = 0
         scanPath = ""
         scanStart = Date()
-        let home = FileManager.default.homeDirectoryForCurrentUser
+        let root = URL(fileURLWithPath: (scanRoot as NSString).expandingTildeInPath)
         scanTask = Task { [weak self] in
             guard let self else { return }
-            for await event in DiskScanner().scan(home) {
+            for await event in DiskScanner().scan(root) {
                 if Task.isCancelled { return }
                 switch event {
                 case .progress(let s):
@@ -250,6 +252,24 @@ final class EngineStore: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Home plus every mounted volume. Externals appear here the moment they are plugged in.
+    var scanTargets: [(label: String, path: String)] {
+        var out: [(String, String)] = [("Home", NSHomeDirectory())]
+        let vols = (try? FileManager.default.contentsOfDirectory(atPath: "/Volumes")) ?? []
+        for v in vols.sorted() {
+            let p = "/Volumes/" + v
+            // the boot volume is already reachable as Home; listing it twice is noise
+            if (try? FileManager.default.destinationOfSymbolicLink(atPath: p)) == "/" { continue }
+            out.append((v, p))
+        }
+        return out
+    }
+
+    func setScanRoot(_ path: String) {
+        scanRoot = path
+        setSetting(db, "diskScanRoot", JSONValue.from(["path": path]))
     }
 
     func cancelDiskScan() {
@@ -283,11 +303,13 @@ final class EngineStore: ObservableObject {
         let entries: [[String: Any]] = diskEntries.map {
             ["name": $0.name, "items": $0.items, "bytes": Double($0.bytes), "kind": $0.kind.rawValue]
         }
-        setSetting(db, "lastDiskScan", JSONValue.from(["ts": Double(ts), "entries": entries]))
+        setSetting(db, "lastDiskScan",
+                   JSONValue.from(["ts": Double(ts), "entries": entries, "root": scanRoot]))
     }
 
     func loadPersistedScan() {
         autoRefreshScan = getSetting(db, "diskScanAutoRefresh")?.objectVal?["on"]?.boolVal ?? false
+        if let saved = getSetting(db, "diskScanRoot")?.objectVal?["path"]?.stringVal { scanRoot = saved }
         guard let o = getSetting(db, "lastDiskScan")?.objectVal else { return }
         lastScanAt = o["ts"]?.doubleVal.map { Int64($0) }
         diskEntries = (o["entries"]?.arrayVal ?? []).compactMap { v in
