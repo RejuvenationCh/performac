@@ -193,6 +193,37 @@ test('4+ cycles over 7 days (≤ 24h threshold) → amber', () => {
   assert.ok(fs[0].headline.includes('in the last 7 days'));
 });
 
+// sleep/wake: a nap makes the volume disappear and reappear — byte-for-byte the same
+// pattern as a failing cable. The sampler records a sleep_gap event {ts: wake tick,
+// detail: pre-sleep tick ms} when the wall clock jumps ≥ 3× tickSec between ticks.
+function sleepGap(start, end) {
+  return { ts: end, kind: 'sleep_gap', key: 'sleep_gap', detail: String(start) };
+}
+
+test('3 pairs straddling sleep gaps → all suppressed (MacBook nap, not a failing cable)', () => {
+  const gapStarts = [NOW - 20 * H, NOW - 6 * H, NOW - H];
+  const events = [
+    ...pair(gapStarts[0] + 1000, 'T7', 10),          // 10-min nap: fits the 30-min cycle window
+    sleepGap(gapStarts[0], gapStarts[0] + 10 * 60000 + 30000),
+    ...pair(gapStarts[1] + 1000, 'T7', 10),
+    sleepGap(gapStarts[1], gapStarts[1] + 10 * 60000 + 30000),
+    ...pair(gapStarts[2] + 1000, 'T7', 10),
+    sleepGap(gapStarts[2], gapStarts[2] + 10 * 60000 + 30000),
+  ];
+  assert.deepEqual(driveInstability(events, dcfg, NOW), []);
+});
+
+test('awake pair with a gap far in the past → still fires (gap only suppresses straddlers)', () => {
+  const oldGap = NOW - 24 * H;
+  const events = [
+    sleepGap(oldGap, oldGap + 600000),
+    ...pair(NOW - 20 * H), ...pair(NOW - 6 * H), ...pair(NOW - H),
+  ];
+  const fs = driveInstability(events, dcfg, NOW);
+  assert.equal(fs.length, 1, 'cable-jostle cycles while awake must still alarm');
+  assert.equal(fs[0].severity, 'red');
+});
+
 const bcfg = { backup: { maxAgeDays: 7 } };
 
 test('no TM destination → red, the machine\'s real day-one card', () => {

@@ -423,10 +423,14 @@ export function backupStaleness(tmState, watchStats, cfg, now) {
   return out;
 }
 
-// a "cycle" = unmount followed by reappearance (mount) within 30 min; user ejects don't count
+// a "cycle" = unmount followed by reappearance (mount) within 30 min; user ejects don't count.
+// sleep_gap events (ts = wake tick, detail = pre-sleep tick ms) mark machine sleep — a pair
+// whose window overlaps a gap is the Mac napping, not a failing cable. Awake pairs still fire.
 export function driveInstability(events, cfg, now) {
+  const gaps = [];
   const byVol = new Map();
   for (const e of events) {
+    if (e.kind === 'sleep_gap') { gaps.push({ start: Number(e.detail), end: e.ts }); continue; }
     if (e.kind !== 'mount' && e.kind !== 'unmount') continue;
     if (!byVol.has(e.key)) byVol.set(e.key, []);
     byVol.get(e.key).push(e);
@@ -442,7 +446,11 @@ export function driveInstability(events, cfg, now) {
       let j = i + 1;
       let paired = false;
       while (j < list.length && list[j].ts - u <= 30 * 60000) {
-        if (list[j].kind === 'mount') { cycles.push(u); paired = true; break; }
+        if (list[j].kind === 'mount') {
+          if (!gaps.some(g => u < g.end && list[j].ts > g.start)) cycles.push(u);
+          paired = true;
+          break;
+        }
         j += 1;
       }
       i = paired ? j + 1 : i + 1;

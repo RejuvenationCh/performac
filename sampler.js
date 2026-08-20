@@ -36,7 +36,7 @@ export async function refreshFindings(db, cfg, now, exec) {
       cfg, now
     ),
     ...driveInstability(
-      db.prepare("SELECT * FROM events WHERE kind IN ('mount','unmount') ORDER BY ts").all(),
+      db.prepare("SELECT * FROM events WHERE kind IN ('mount','unmount','sleep_gap') ORDER BY ts").all(),
       cfg, now
     ),
     ...backupStaleness(
@@ -303,6 +303,7 @@ export function startSampler(db, cfg, deps) {
   let lastFront = null;
   let lastCpuLimit = null;
   let lastPower = null;
+  let lastTickTs = null;                      // per-sampler: implicit sleep detection (tests isolate)
   let lastVolumes = new Set(listVolumes());   // seeded: the first tick is not a spurious diff
   const streams = [];
 
@@ -338,8 +339,15 @@ export function startSampler(db, cfg, deps) {
     return db.prepare('SELECT 1 FROM events WHERE kind = ? AND key = ? AND ts > ?').get(kind, key, now() - DEDUPE_MS) !== undefined;
   }
 
+  // implicit sleep detection — no pmset log parsing: if the wall clock jumped ≥ 3 ticks
+  // between samples, the machine slept. detail = pre-sleep tick ms, ts = the wake tick.
+  const GAP_MS = 3 * cfg.tickSec * 1000;
+
   async function tick() {
     const t = now();
+    if (lastTickTs !== null && t - lastTickTs >= GAP_MS) {
+      addEvent('sleep_gap', 'sleep_gap', String(lastTickTs));
+    }
     const { stdout: psText } = await execFile('ps', ['-Aceo', 'pid,pcpu,rss,comm', '-r']);
     const rows = parsePs(psText).sort((a, b) => b.cpu - a.cpu);
     for (const [i, r] of rows.entries()) {
@@ -374,6 +382,7 @@ export function startSampler(db, cfg, deps) {
     }
     lastVolumes = vols;
 
+    lastTickTs = t;
     lastTickAt = t;
     await refreshFindings(db, loadConfig(db), t, execFile).catch(err => console.error('refreshFindings', err));
   }

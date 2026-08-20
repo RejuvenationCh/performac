@@ -219,6 +219,35 @@ test('stream mount event deduped against reconcile within the dedupe window', as
   s.stop();
 });
 
+test('wall-clock gap ≥ 3× tickSec between ticks → sleep_gap event (implicit sleep detection)', async () => {
+  const db = openDb(':memory:');
+  let t = NOW;
+  const deps = makeDeps({ now: () => t });
+  const s = startSampler(db, { ...DEFAULTS }, deps);
+  await s.tick();
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM events WHERE kind = 'sleep_gap'").get().n, 0);
+  t += 3 * 30000;   // 90 s at tickSec 30 — the machine slept
+  await s.tick();
+  const gaps = db.prepare("SELECT * FROM events WHERE kind = 'sleep_gap'").all();
+  assert.equal(gaps.length, 1);
+  assert.equal(gaps[0].key, 'sleep_gap');
+  assert.equal(Number(gaps[0].detail), NOW, 'detail carries the pre-sleep tick time');
+  assert.equal(gaps[0].ts, NOW + 90000, 'recorded at the wake tick');
+  s.stop();
+});
+
+test('short tick gap (< 3× tickSec) → no sleep_gap', async () => {
+  const db = openDb(':memory:');
+  let t = NOW;
+  const deps = makeDeps({ now: () => t });
+  const s = startSampler(db, { ...DEFAULTS }, deps);
+  await s.tick();
+  t += 60000;   // 2 ticks — slow tick, not sleep
+  await s.tick();
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM events WHERE kind = 'sleep_gap'").get().n, 0);
+  s.stop();
+});
+
 test('dedupe mirrors real timing: stream event, reconcile 30 s later → still one row', async () => {
   const db = openDb(':memory:');
   let t = NOW;
