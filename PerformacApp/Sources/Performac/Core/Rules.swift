@@ -126,21 +126,52 @@ enum Rules {
     }
 
     // cross-ref login items + LaunchAgent labels against proc names seen in the last 30 d
-    static func loginItemsAudit(_ items: [String], _ agents: [String], _ procNames: [String], _ cfg: Config, _ now: Int64) -> [EngineFinding] {
+    /// A login item or LaunchAgent that appears to do nothing.
+    ///
+    /// v1 compared LaunchAgent *labels* ("com.chris.performac") against process *names*
+    /// ("node"). Those never match, so every agent was flagged — including Performac's own
+    /// backend, which was running at the time. 19 of 24 findings were false. Three fixes:
+    ///  1. An agent launchd currently has running is in use. Ground truth beats inference.
+    ///  2. Otherwise match the agent's resolved program ("node"), never its label.
+    ///  3. Say nothing at all until there is enough history to justify the claim.
+    struct LoginAgent: Sendable {
+        var label: String
+        var program: String?      // basename of ProgramArguments[0] / Program, nil if unreadable
+        init(label: String, program: String? = nil) { self.label = label; self.program = program }
+    }
+
+    static func loginItemsAudit(_ items: [String], _ agents: [LoginAgent], _ procNames: [String],
+                                _ runningLabels: Set<String>, _ historyDays: Double,
+                                _ cfg: Config, _ now: Int64) -> [EngineFinding] {
+        // The headline claims a month of evidence. Without it, the honest output is nothing.
+        guard historyDays >= Double(cfg.login.minHistoryDays) else { return [] }
         var out: [EngineFinding] = []
-        func seen(_ label: String) -> Bool {
-            procNames.contains { label == $0 || label.hasPrefix($0) || $0.hasPrefix(label) }
+
+        func seen(_ name: String) -> Bool {
+            let n = name.lowercased()
+            return procNames.contains { p in
+                let q = p.lowercased()
+                return n == q || n.hasPrefix(q) || q.hasPrefix(n)
+            }
         }
-        func make(_ label: String) -> EngineFinding {
+        func make(_ label: String, _ where_: String) -> EngineFinding {
             EngineFinding(
                 id: "login-\(slug(label))", kind: "login", severity: "info",
-                headline: "\(label) launches at login but hasn't shown up in a month of process samples",
-                why: "It may be doing nothing, or doing something you never asked it to.",
-                detail: "Short-lived helpers can slip between 30-second ticks — review it in System Settings → General → Login Items.",
+                headline: "\(label) launches at login but hasn't run in \(Int(historyDays)) days of samples",
+                why: "It is not running now and its program has not appeared in any sample — it may be doing nothing.",
+                detail: "Short-lived helpers can slip between 30-second ticks — review it in \(where_).",
                 linkKind: nil, linkTarget: nil)
         }
-        for item in items where !seen(item) { out.append(make(item)) }
-        for agent in agents where !seen(agent) { out.append(make(agent)) }
+
+        for item in items where !seen(item) {
+            out.append(make(item, "System Settings → General → Login Items"))
+        }
+        for agent in agents {
+            if runningLabels.contains(agent.label) { continue }   // launchd says it is running
+            if let prog = agent.program, seen(prog) { continue }  // its program has been sampled
+            if agent.program == nil, seen(agent.label) { continue }
+            out.append(make(agent.label, "~/Library/LaunchAgents"))
+        }
         return out
     }
 

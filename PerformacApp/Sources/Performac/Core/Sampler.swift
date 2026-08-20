@@ -68,12 +68,33 @@ func refreshFindings(_ db: DB, _ cfg: Config, _ now: Int64,
         cfg, now)
     findings += Rules.storageTrend(rowsToDiskSamples(db.prepare("SELECT * FROM disk_samples").all()), cfg, now)
     findings += Rules.drift(driftEntries(db), cfg, now)
-    findings += Rules.loginItemsAudit(
-        getSetting(db, "loginItems")?.objectVal?["items"]?.arrayVal?.compactMap { $0.stringVal } ?? [],
-        getSetting(db, "loginAgents")?.objectVal?["agents"]?.arrayVal?.compactMap { $0.stringVal } ?? [],
-        db.prepare("SELECT DISTINCT name FROM proc_samples WHERE ts > ?")
-            .all([.int(now - 30 * 86_400_000)]).compactMap { $0["name"]?.stringVal },
-        cfg, now)
+    findings += {
+        // Agents are stored as {label, program}; a database copied from v1 holds bare
+        // strings, so tolerate both — an unresolved program just falls back to the label.
+        let raw = getSetting(db, "loginAgents")?.objectVal?["agents"]?.arrayVal ?? []
+        let agents: [Rules.LoginAgent] = raw.compactMap { v in
+            if let o = v.objectVal, let label = o["label"]?.stringVal {
+                return Rules.LoginAgent(label: label, program: o["program"]?.stringVal)
+            }
+            if let label = v.stringVal, !label.isEmpty { return Rules.LoginAgent(label: label) }
+            return nil
+        }
+        let running = Set(getSetting(db, "loginRunning")?.objectVal?["labels"]?.arrayVal?
+            .compactMap { $0.stringVal } ?? [])
+        // Real span of evidence, not the window we happen to query.
+        let span = db.prepare("SELECT MIN(ts) lo, MAX(ts) hi FROM proc_samples").all().first
+        let days: Double = {
+            guard let loV = span?["lo"], let hiV = span?["hi"], !loV.isNull, !hiV.isNull
+            else { return 0 }
+            let lo = loV.intVal, hi = hiV.intVal
+            return hi > lo ? Double(hi - lo) / 86_400_000 : 0
+        }()
+        return Rules.loginItemsAudit(
+            getSetting(db, "loginItems")?.objectVal?["items"]?.arrayVal?.compactMap { $0.stringVal } ?? [],
+            agents,
+            db.prepare("SELECT DISTINCT name FROM proc_samples").all().compactMap { $0["name"]?.stringVal },
+            running, days, cfg, now)
+    }()
     findings += Rules.batteryTrend(
         rowsToEvents(db.prepare("SELECT * FROM events WHERE kind = 'battery' ORDER BY ts").all()).compactMap { e in
             guard let data = e.detail.data(using: .utf8),
@@ -509,6 +530,36 @@ func driftTick(_ db: DB, _ cfg: Config, _ deps: any SamplerDeps) async {
     setSetting(db, "driftEntries", JSONValue.from(entries))
     setSetting(db, "driftEperm", JSONValue.from(eperm))
     await refreshFindings(db, loadConfig(db), t, { bin, args in try await deps.execFile(bin, args) })
+}
+
+/// Resolve ~/Library/LaunchAgents to {label, program} and ask launchd which labels are
+/// actually running. Both are ground truth the label-matching rule never had.
+func loginTick(_ db: DB, _ deps: any SamplerDeps) async {
+    let dir = NSHomeDirectory() + "/Library/LaunchAgents"
+    var agents: [[String: Any]] = []
+    for name in (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
+    where name.hasSuffix(".plist") {
+        guard let d = NSDictionary(contentsOfFile: dir + "/" + name) else { continue }
+        let label = (d["Label"] as? String) ?? String(name.dropLast(6))
+        var program: Any = NSNull()
+        if let p = d["Program"] as? String {
+            program = (p as NSString).lastPathComponent
+        } else if let args = d["ProgramArguments"] as? [String], let first = args.first {
+            program = (first as NSString).lastPathComponent
+        }
+        agents.append(["label": label, "program": program])
+    }
+    setSetting(db, "loginAgents", JSONValue.from(["agents": agents]))
+
+    // `launchctl list` → "PID\tStatus\tLabel"; a numeric PID means it is running now.
+    if let out = try? await deps.execFile("launchctl", ["list"]) {
+        var running: [String] = []
+        for line in out.split(separator: "\n").dropFirst() {
+            let f = line.split(separator: "\t", omittingEmptySubsequences: false)
+            if f.count >= 3, Int(f[0]) != nil { running.append(String(f[2])) }
+        }
+        setSetting(db, "loginRunning", JSONValue.from(["labels": running]))
+    }
 }
 
 func backupTick(_ db: DB, _ cfg: Config, _ deps: any SamplerDeps) async {

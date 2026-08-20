@@ -490,14 +490,35 @@ enum RulesCheck {
         }
 
         // ---- loginItemsAudit ----
+        // These are written to FALSIFY, not confirm. v1's rule passed its own tests while
+        // producing 19 false findings live, including Performac's own running backend.
         do {
-            let fs = Rules.loginItemsAudit(["Ice", "AltTab", "OneDrive"], ["com.ice.menu"], ["AltTab", "OneDrive"], Config.defaults, NOW)
-            c.check("login: unmatched items and agents", fs.count == 2 && fs[0].severity == "info")
-            c.check("login: Ice headline", fs.count == 2 && fs[0].headline.contains("Ice") && fs[0].headline.contains("hasn"), fs.first?.headline ?? "")
-            c.check("login: System Settings caveat", fs.count == 2 && fs[0].detail.contains("System Settings"), fs.first?.detail ?? "")
-            c.check("login: 30-second caveat", fs.count == 2 && fs[0].detail.contains("30-second"), fs.first?.detail ?? "")
-            c.check("login: agent headline", fs.count == 2 && fs[1].headline.contains("com.ice.menu"), fs.last?.headline ?? "")
-            c.check("login: all matched → empty", Rules.loginItemsAudit(["AltTab"], [], ["AltTab"], Config.defaults, NOW).isEmpty)
+            let plenty = 30.0
+            // an agent launchd is running RIGHT NOW must never be called unused
+            c.check("login: running agent never flagged", Rules.loginItemsAudit(
+                [], [Rules.LoginAgent(label: "com.chris.performac", program: "node")], [],
+                ["com.chris.performac"], plenty, Config.defaults, NOW).isEmpty)
+            // label never matches a process name; the resolved program does
+            c.check("login: matched by program, not label", Rules.loginItemsAudit(
+                [], [Rules.LoginAgent(label: "com.chris.performac", program: "node")], ["node"],
+                [], plenty, Config.defaults, NOW).isEmpty)
+            // genuinely idle: not running, program never sampled
+            let idle = Rules.loginItemsAudit(
+                [], [Rules.LoginAgent(label: "com.dead.agent", program: "ghostd")], ["node"],
+                [], plenty, Config.defaults, NOW)
+            c.check("login: truly unused agent flagged", idle.count == 1)
+            c.check("login: headline cites the real window",
+                    idle.first?.headline.contains("30 days of samples") == true)
+            // a fresh database cannot support the claim
+            c.check("login: thin history → silence", Rules.loginItemsAudit(
+                ["Ice"], [Rules.LoginAgent(label: "com.dead.agent", program: "ghostd")], [],
+                [], 0.4, Config.defaults, NOW).isEmpty)
+            // plain login items still work by name
+            let fs = Rules.loginItemsAudit(["Ice", "AltTab", "OneDrive"], [], ["AltTab", "OneDrive"],
+                                           [], plenty, Config.defaults, NOW)
+            c.check("login: unmatched item flagged", fs.count == 1 && fs[0].headline.hasPrefix("Ice"))
+            c.check("login: all matched → empty", Rules.loginItemsAudit(
+                ["AltTab"], [], ["AltTab"], [], plenty, Config.defaults, NOW).isEmpty)
         }
 
         // ---- batteryTrend ----

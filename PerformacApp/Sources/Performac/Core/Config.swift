@@ -68,6 +68,12 @@ struct CacheRules: Codable, Sendable {
     var redGb: Double = 20
     var staleDays: Int = 21
 }
+/// Login-audit knobs. minHistoryDays exists because the headline claims evidence:
+/// with a fresh database there is none, and the honest output is silence.
+struct Login: Codable, Sendable {
+    var minHistoryDays: Int = 7
+}
+
 struct Drift: Codable, Sendable {
     var paths: [String] = ["~/Downloads", "~/Desktop"]
     var minAgeDays: Int = 60
@@ -106,6 +112,7 @@ struct Config: Codable, Sendable {
     var storage: Storage = Storage()
     var cacheRules: CacheRules = CacheRules()
     var drift: Drift = Drift()
+    var login: Login = Login()
     var dup: Dup = Dup()
     var notifyCooldownHours: Int = 24
     var weeklyDigestNotify: Bool = true
