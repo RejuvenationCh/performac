@@ -149,7 +149,7 @@ public struct DiskScanner: Sendable {
 
         guard let enumerator = FileManager.default.enumerator(
             at: root,
-            includingPropertiesForKeys: nil,
+            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey, .totalFileAllocatedSizeKey],
             options: [],
             errorHandler: { _, _ in true }     // EPERM subtrees: degrade, keep going
         ) else {
