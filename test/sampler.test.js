@@ -43,7 +43,14 @@ const PLIST_EXTERNAL = `<?xml version="1.0" encoding="UTF-8"?>
 
 const NOW = 1755000000000;
 
-function makeDeps({ ps = PS, volumes = () => [], diskutilInfo = () => PLIST_EXTERNAL } = {}) {
+// local YYYYMMDD-HH:MM:SS stamp matching diskutil activity's Time= field
+function timeStamp(ms) {
+  const d = new Date(ms);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+function makeDeps({ ps = PS, volumes = () => [], diskutilInfo = () => PLIST_EXTERNAL, now = () => NOW } = {}) {
   const calls = [];
   const execFile = async (bin, args) => {
     calls.push([bin, args]);
@@ -73,7 +80,7 @@ function makeDeps({ ps = PS, volumes = () => [], diskutilInfo = () => PLIST_EXTE
     statfs: async () => ({ bsize: 4096, blocks: 1000000, bavail: 500000 }),
     listVolumes: volumes,
     realpath: p => p,
-    now: () => NOW,
+    now,
   };
 }
 
@@ -197,7 +204,7 @@ test('reconcile: internal volume in set diff → no event (external still emits)
   s.stop();
 });
 
-test('stream mount event deduped against reconcile within 5s', async () => {
+test('stream mount event deduped against reconcile within the dedupe window', async () => {
   const db = openDb(':memory:');
   let vols = [];
   const deps = makeDeps({ volumes: () => vols });
@@ -208,6 +215,25 @@ test('stream mount event deduped against reconcile within 5s', async () => {
   assert.equal(db.prepare("SELECT COUNT(*) n FROM events WHERE kind = 'mount'").get().n, 1);
   vols = ['T7'];
   await s.tick();   // reconcile sees T7 already reported by the stream → no duplicate
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM events WHERE kind = 'mount'").get().n, 1);
+  s.stop();
+});
+
+test('dedupe mirrors real timing: stream event, reconcile 30 s later → still one row', async () => {
+  const db = openDb(':memory:');
+  let t = NOW;
+  let vols = [];
+  const deps = makeDeps({ volumes: () => vols, now: () => t });
+  const s = startSampler(db, { ...DEFAULTS }, deps);
+  const duStream = deps.spawned.find(c => c.bin === 'diskutil');
+  // line carries its own Time= stamp ≈ now, exactly like the real stream
+  const line = DU_APPEAR.replace(/Time=\d+-\d\d:\d\d:\d\d/, 'Time=' + timeStamp(t));
+  duStream.stdout.emit('data', line + '\n');
+  await s.tick();          // settle the stream insert
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM events WHERE kind = 'mount'").get().n, 1);
+  t += 30000;              // real offset: stream line lands up to one tick before the reconcile
+  vols = ['T7'];
+  await s.tick();          // the 5 s window missed exactly this pair live
   assert.equal(db.prepare("SELECT COUNT(*) n FROM events WHERE kind = 'mount'").get().n, 1);
   s.stop();
 });

@@ -115,7 +115,6 @@ export async function refreshFindings(db, cfg, now, exec) {
 }
 
 const GB = 1073741824;
-const RECENT_MS = 5000;   // reconcile dedupes against stream events newer than this
 
 // hourly: measure every cache target (D2 registry) into cache_samples, then refresh findings
 export async function cacheTick(db, cfg, deps) {
@@ -331,9 +330,12 @@ export function startSampler(db, cfg, deps) {
     return verdicts.get(name);
   }
 
-  // a reconcile event is skipped if the stream already reported it moments ago
+  // a reconcile event is skipped if the stream already reported it. The window must
+  // cover the tick offset — a stream line lands up to one tick before the next
+  // reconcile, so 5 s missed every stream-then-tick pair in real time.
+  const DEDUPE_MS = cfg.tickSec * 2 * 1000;
   function recentEvent(kind, key) {
-    return db.prepare('SELECT 1 FROM events WHERE kind = ? AND key = ? AND ts > ?').get(kind, key, now() - RECENT_MS) !== undefined;
+    return db.prepare('SELECT 1 FROM events WHERE kind = ? AND key = ? AND ts > ?').get(kind, key, now() - DEDUPE_MS) !== undefined;
   }
 
   async function tick() {
