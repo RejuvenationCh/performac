@@ -50,7 +50,7 @@ function timeStamp(ms) {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-function makeDeps({ ps = PS, volumes = () => [], diskutilInfo = () => PLIST_EXTERNAL, now = () => NOW } = {}) {
+function makeDeps({ ps = PS, volumes = () => [], diskutilInfo = () => PLIST_EXTERNAL, now = () => NOW, power = () => null } = {}) {
   const calls = [];
   const execFile = async (bin, args) => {
     calls.push([bin, args]);
@@ -59,7 +59,10 @@ function makeDeps({ ps = PS, volumes = () => [], diskutilInfo = () => PLIST_EXTE
       if (args[0] === 'front') return { stdout: '{"LSASN"={0x0-0x17017}; }' };
       return { stdout: FRONT };
     }
-    if (bin === 'pmset') return { stdout: 'Note: No CPU power status has been recorded' };
+    if (bin === 'pmset') {
+      if (args[0] === '-g' && args[1] === 'batt') return { stdout: power() };
+      return { stdout: 'Note: No CPU power status has been recorded' };
+    }
     if (bin === 'diskutil' && args[0] === 'info') return { stdout: diskutilInfo(args) };
     throw new Error(`unexpected execFile ${bin}`);
   };
@@ -216,6 +219,22 @@ test('stream mount event deduped against reconcile within the dedupe window', as
   vols = ['T7'];
   await s.tick();   // reconcile sees T7 already reported by the stream → no duplicate
   assert.equal(db.prepare("SELECT COUNT(*) n FROM events WHERE kind = 'mount'").get().n, 1);
+  s.stop();
+});
+
+test('tick records power source events only on change', async () => {
+  const db = openDb(':memory:');
+  let p = `Now drawing from 'AC Power'`;
+  const deps = makeDeps({ power: () => p });
+  const s = startSampler(db, { ...DEFAULTS }, deps);
+  await s.tick();
+  await s.tick();   // unchanged → still one event
+  p = `Now drawing from 'Battery Power'`;
+  await s.tick();
+  const powers = db.prepare("SELECT key FROM events WHERE kind = 'power' ORDER BY ts").all().map(r => r.key);
+  assert.deepEqual(powers, ['AC Power', 'Battery Power']);
+  // regression: refreshFindings must actually run (an early TDZ bug threw before this)
+  assert.ok(db.prepare('SELECT COUNT(*) n FROM findings').get().n >= 1, 'findings pipeline ran');
   s.stop();
 });
 

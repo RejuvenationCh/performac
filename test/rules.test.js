@@ -125,6 +125,20 @@ test('thermal with no export window → no finding (ambient throttling, not work
   assert.deepEqual(thermalDuringExport(procs, therm, tcfg, T0 + 40 * 60000), []);
 });
 
+test('thermal overlap on battery → info (throttling by design); on AC → stays amber', () => {
+  const T0 = NOW;
+  const procs = exportSamples('Adobe Media Encoder 2026', T0, 40, 320, 480);
+  const therm = [thermEvent(T0 + 10 * 60000, 1), thermEvent(T0 + 28 * 60000, 0)];
+  const onBatt = thermalDuringExport(procs, therm, tcfg, T0 + 40 * 60000, { key: 'Battery Power' });
+  assert.equal(onBatt.length, 1);
+  assert.equal(onBatt[0].severity, 'info', 'throttling on battery is by design');
+  assert.ok(onBatt[0].why.includes('battery'), onBatt[0].why);
+  const onAc = thermalDuringExport(procs, therm, tcfg, T0 + 40 * 60000, { key: 'AC Power' });
+  assert.equal(onAc[0].severity, 'amber', 'throttling on AC is a cooling problem');
+  // no power context (older tests) behaves as before
+  assert.equal(thermalDuringExport(procs, therm, tcfg, T0 + 40 * 60000)[0].severity, 'amber');
+});
+
 test('gap ≥ 2 min splits windows; sub-10-min segments produce nothing', () => {
   const T0 = NOW;
   const a = exportSamples('Adobe Media Encoder 2026', T0, 9, 400, 400);
@@ -550,6 +564,17 @@ test('battery: 60 days apart → trend sentence; >1.5%/month decline → amber',
 test('battery: health below 85 → amber', () => {
   const rows = [{ ts: NOW, cycleCount: 200, healthPct: 80 }];
   assert.equal(batteryTrend(rows, b16cfg, NOW)[0].severity, 'amber');
+});
+
+test('battery: ~80% on AC → info (optimized charging holds it there, not degradation)', () => {
+  const rows = [{ ts: NOW, cycleCount: 200, healthPct: 80 }];
+  const onAc = batteryTrend(rows, b16cfg, NOW, { key: 'AC Power' });
+  assert.equal(onAc[0].severity, 'info');
+  assert.ok(onAc[0].why.toLowerCase().includes('optimized charging'), onAc[0].why);
+  const onBatt = batteryTrend(rows, b16cfg, NOW, { key: 'Battery Power' });
+  assert.equal(onBatt[0].severity, 'amber');
+  const farGone = batteryTrend([{ ts: NOW, cycleCount: 300, healthPct: 70 }], b16cfg, NOW, { key: 'AC Power' });
+  assert.equal(farGone[0].severity, 'amber', '70% is below any charging cap');
 });
 
 test('browserBloat: gated off → []', () => {

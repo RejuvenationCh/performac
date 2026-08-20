@@ -111,21 +111,24 @@ export function loginItemsAudit(items, agents, procNames, cfg, now) {
   return out;
 }
 
-// tier-3 gated: [] unless cfg.tier3.battery. Samples = [{ts, cycleCount, healthPct}]
-export function batteryTrend(batterySamples, cfg, now) {
+// tier-3 gated: [] unless cfg.tier3.battery. Samples = [{ts, cycleCount, healthPct}];
+// power = latest power event {key:'AC Power'|'Battery Power'} — ~80% on AC is optimized
+// charging holding the cap, not degradation.
+export function batteryTrend(batterySamples, cfg, now, power) {
   if (!cfg.tier3 || !cfg.tier3.battery) return [];
   const rows = batterySamples.slice().sort((a, b) => a.ts - b.ts);
   if (!rows.length) return [];
   const latest = rows[rows.length - 1];
   const old = rows.filter(r => latest.ts - r.ts >= 30 * DAY).sort((a, b) => a.ts - b.ts)[0];
+  const onAcCapped = power?.key === 'AC Power' && latest.healthPct >= 78 && latest.healthPct < 85;
   let severity = 'info';
   let trend = '';
   if (old) {
     const months = (latest.ts - old.ts) / (30 * DAY);
     const declinePerMonth = (old.healthPct - latest.healthPct) / months;
-    if (latest.healthPct < 85 || declinePerMonth > 1.5) severity = 'amber';
+    if ((latest.healthPct < 85 || declinePerMonth > 1.5) && !onAcCapped) severity = 'amber';
     trend = ` Down ${(old.healthPct - latest.healthPct).toFixed(1)}% since ${new Date(old.ts).toLocaleDateString()} (${declinePerMonth.toFixed(1)}% per month).`;
-  } else if (latest.healthPct < 85) {
+  } else if (latest.healthPct < 85 && !onAcCapped) {
     severity = 'amber';
   }
   return [{
@@ -133,7 +136,7 @@ export function batteryTrend(batterySamples, cfg, now) {
     kind: 'battery',
     severity,
     headline: `Battery health ${latest.healthPct.toFixed(1)}% after ${latest.cycleCount} cycles`,
-    why: `macOS reports this from the battery controller.${trend}`,
+    why: `macOS reports this from the battery controller.${trend}${onAcCapped ? ' Health near 80% on AC is optimized charging holding the cap — normal.' : ''}`,
     detail: 'Health declines naturally with charge cycles; a faster slide is worth a look at Apple service.',
     linkKind: null,
     linkTarget: null,
@@ -488,8 +491,10 @@ export function driveInstability(events, cfg, now) {
 }
 
 // export windows (≥ export.cpuPct sustained ≥ export.minMinutes, gaps < 2 min merged)
-// × elevated intervals from thermlog level events (1/2 opens, 0 closes, open at now stays open)
-export function thermalDuringExport(procSamples, thermalEvents, cfg, now) {
+// × elevated intervals from thermlog level events (1/2 opens, 0 closes, open at now stays open).
+// power = latest power event {key:'AC Power'|'Battery Power'}: throttling on battery is by
+// design (info), throttling on AC is a real cooling problem (amber/red).
+export function thermalDuringExport(procSamples, thermalEvents, cfg, now, power) {
   const therm = thermalEvents
     .filter(e => e.kind === 'thermal' && e.key === 'thermlog')
     .sort((a, b) => a.ts - b.ts);
@@ -532,12 +537,13 @@ export function thermalDuringExport(procSamples, thermalEvents, cfg, now) {
         if (overlap < cfg.thermal.minElevatedMinutes * 60000) continue;
         // ponytail: 30-min red line is plan-literal (not a DEFAULTS knob); calibrate in rules if it bites
         const red = overlap >= 30 * 60000 || iv.maxLevel >= 2;
+        const onBattery = power?.key === 'Battery Power';
         out.push({
           id: `thermal-export-${slug(winName)}`,
           kind: 'thermal',
-          severity: red ? 'red' : 'amber',
+          severity: onBattery ? 'info' : (red ? 'red' : 'amber'),
           headline: `Thermal pressure ran elevated for ${Math.round(overlap / 60000)} min during your ${winName} export`,
-          why: `Your export ran ~${Math.round((lastTs - winStart) / 60000)} min with a peak of ${Math.round(peak)}% CPU, and thermal warning level ${iv.maxLevel} overlapped for ${Math.round(overlap / 60000)} of those minutes — sustained encode heat, not a spike.`,
+          why: `Your export ran ~${Math.round((lastTs - winStart) / 60000)} min with a peak of ${Math.round(peak)}% CPU, and thermal warning level ${iv.maxLevel} overlapped for ${Math.round(overlap / 60000)} of those minutes — sustained encode heat, not a spike.${onBattery ? ' On battery, macOS throttles by design — plug in for full speed.' : ''}`,
           detail: 'Check fan intakes for dust and consider a stand that improves airflow under load.',
           linkKind: null,
           linkTarget: null,

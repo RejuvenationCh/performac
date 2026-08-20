@@ -28,12 +28,14 @@ export function findingsGeneratedAt() {
 // run all rules, upsert findings by id, delete ids no longer produced, notify.
 // exec is the injected execFile ({stdout} contract) used by maybeNotify.
 export async function refreshFindings(db, cfg, now, exec) {
+  const powerEvents = db.prepare("SELECT * FROM events WHERE kind = 'power' ORDER BY ts").all();
+  const lastPower = powerEvents[powerEvents.length - 1] ?? null;
   const findings = [
     ...cacheGrowth(db.prepare('SELECT * FROM cache_samples').all(), cfg, now),
     ...thermalDuringExport(
       db.prepare('SELECT * FROM proc_samples ORDER BY ts').all(),
       db.prepare("SELECT * FROM events WHERE kind = 'thermal' ORDER BY ts").all(),
-      cfg, now
+      cfg, now, lastPower
     ),
     ...driveInstability(
       db.prepare("SELECT * FROM events WHERE kind IN ('mount','unmount','sleep_gap') ORDER BY ts").all(),
@@ -65,7 +67,7 @@ export async function refreshFindings(db, cfg, now, exec) {
       db.prepare("SELECT * FROM events WHERE kind = 'battery' ORDER BY ts").all()
         .map(r => { try { return { ts: r.ts, ...JSON.parse(r.detail) }; } catch { return null; } })
         .filter(Boolean),
-      cfg, now
+      cfg, now, lastPower
     ),
     ...browserBloat(
       db.prepare('SELECT * FROM proc_samples WHERE ts > ?').all(now - 24 * 3600000),
@@ -372,6 +374,12 @@ export function startSampler(db, cfg, deps) {
       addEvent('thermal', 'cpu_limit', String(therm.cpuSpeedLimit));
     }
     if (therm.cpuSpeedLimit !== null) lastCpuLimit = therm.cpuSpeedLimit;
+
+    // power source as context for thermal/battery rules — event only when it changes
+    const { stdout: battText } = await execFile('pmset', ['-g', 'batt', '-o']);
+    const power = parsePower(battText);
+    if (power && power !== lastPower) addEvent('power', power, '');
+    if (power) lastPower = power;
 
     const vols = new Set(listVolumes());
     for (const v of vols) {
