@@ -1,0 +1,5 @@
+performac.db*
+insights/__pycache__
+seed/digest.json
+.DS_Store
+node_modules
