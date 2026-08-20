@@ -3,7 +3,11 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
+import { execFile, spawn } from 'node:child_process';
 import { openDb } from './db.js';
+import { loadConfig } from './config.js';
+import { startSampler, lastTick } from './sampler.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 7420;
@@ -62,6 +66,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, {
         ok: true,
         uptimeSec: Math.floor((Date.now() - startedAt) / 1000),
+        lastTick: lastTick(),
         dbRows: {
           proc_samples: rowCount('proc_samples'),
           disk_samples: rowCount('disk_samples'),
@@ -83,3 +88,15 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`performac on http://127.0.0.1:${PORT}`);
 });
+
+const cfg = loadConfig(db);
+const sampler = startSampler(db, cfg, {
+  execFile: promisify(execFile),
+  spawn,
+  statfs: promisify(fs.statfs),
+  listVolumes: () => { try { return fs.readdirSync('/Volumes'); } catch { return []; } },
+  realpath: fs.realpathSync,
+});
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.on(sig, () => { sampler.stop(); process.exit(0); });
+}
