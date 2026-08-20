@@ -49,6 +49,8 @@ struct CacheEntry: Identifiable, Sendable {
     var safe: Bool                // true → "Safe to clean", false → "Check first"
     var why: String
     var path: String
+    /// Off the cleaner's allowlist → shown and measured, but never selectable or trashable.
+    var cleanable = true
     var selected = false
 }
 

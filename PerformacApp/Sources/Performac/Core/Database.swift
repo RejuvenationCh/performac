@@ -48,6 +48,11 @@ CREATE TABLE IF NOT EXISTS findings(
 CREATE TABLE IF NOT EXISTS dup_groups(
   scan_ts INTEGER NOT NULL, hash TEXT NOT NULL, size_mb INTEGER NOT NULL, paths TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+-- Everything the app has ever moved to the Trash. Append-only: "what happened to that
+-- folder" must always have an answer.
+CREATE TABLE IF NOT EXISTS trash_log(
+  ts INTEGER NOT NULL, path TEXT NOT NULL, ok INTEGER NOT NULL, detail TEXT NOT NULL DEFAULT '');
+CREATE INDEX IF NOT EXISTS idx_trash_ts ON trash_log(ts);
 """
 
 final class DB: @unchecked Sendable {

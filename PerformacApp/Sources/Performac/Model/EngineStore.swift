@@ -106,13 +106,19 @@ final class EngineStore: ObservableObject {
             if bytes <= 0 { continue }
             let mtime = row["newest_mtime"]?.isNull == false ? row["newest_mtime"]?.intVal : nil
             let ageDays = mtime.map { Double(now - $0) / Double(Rules.DAY) }
+            let path = row["path"]?.stringVal ?? ""
+            // The cleaner's allowlist decides — not the measurement registry. Anything
+            // without an explicit policy is shown but cannot be selected or trashed.
+            let policy = Allowlist.policy(for: CacheTarget(id: id, label: meta.app, path: path,
+                                                           safety: meta.safety))
             entries.append(CacheEntry(
                 name: meta.app,
                 bytes: bytes,
                 age: Rules.ageText(ageDays) + (mtime == nil ? "" : " ago"),
-                safe: meta.safety == "safe",
-                why: meta.clearing.isEmpty ? "Measured by Performac's cache walker." : meta.clearing,
-                path: row["path"]?.stringVal ?? ""))
+                safe: policy.safe,
+                why: policy.consequence,
+                path: path,
+                cleanable: policy.cleanable))
         }
         cacheEntries = entries
     }
@@ -130,6 +136,26 @@ final class EngineStore: ObservableObject {
             let name = (paths.first as NSString?)?.lastPathComponent ?? "file"
             return DupGroup(bytes: (row["size_mb"]?.intVal ?? 0) * 1_000_000, name: name, paths: paths)
         }
+    }
+
+    // MARK: the cleaner — the only place the app removes anything
+
+    @Published var lastTrashSummary: String? = nil
+
+    /// Trash the selected cache entries. Allowlist is rebuilt here from the entries the UI
+    /// is actually offering, so the set can never be widened by the caller.
+    func trashSelected(_ selected: [CacheEntry]) {
+        let allowed = Set(cacheEntries.filter(\.cleanable)
+            .map { ($0.path as NSString).expandingTildeInPath })
+        let paths = selected.filter(\.cleanable).map { ($0.path as NSString).expandingTildeInPath }
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        let results = Trash.moveToTrash(paths, allowed: allowed, db: db, now: now)
+        let ok = results.filter(\.ok).count
+        let failed = results.count - ok
+        lastTrashSummary = failed == 0
+            ? "Moved \(ok) item\(ok == 1 ? "" : "s") to the Trash."
+            : "Moved \(ok), could not move \(failed) — see Trash history."
+        refreshCacheEntries()
     }
 
     // MARK: settings write path (validateSetting against the DEFAULTS template)

@@ -5,10 +5,13 @@ struct CleanView: View {
     @State private var caches: [CacheEntry]
     @State private var confirming = false
 
-    init(caches: [CacheEntry] = Sample.caches) {
+    private let onTrash: ([CacheEntry]) -> Void
+
+    init(caches: [CacheEntry] = Sample.caches, onTrash: @escaping ([CacheEntry]) -> Void = { _ in }) {
         _caches = State(initialValue: caches)
+        self.onTrash = onTrash
     }
-    private var selected: [CacheEntry] { caches.filter(\.selected) }
+    private var selected: [CacheEntry] { caches.filter { $0.selected && $0.cleanable } }
     private var selectedBytes: Int64 { selected.reduce(0) { $0 + $1.bytes } }
 
     var body: some View {
@@ -17,8 +20,8 @@ struct CleanView: View {
             VStack(spacing: 0) {
                 HStack(spacing: PC.gutter) {
                     Toggle("", isOn: Binding(
-                        get: { !caches.isEmpty && caches.allSatisfy(\.selected) },
-                        set: { v in for i in caches.indices { caches[i].selected = v } }))
+                        get: { let c = caches.filter(\.cleanable); return !c.isEmpty && c.allSatisfy(\.selected) },
+                        set: { v in for i in caches.indices where caches[i].cleanable { caches[i].selected = v } }))
                         .labelsHidden().toggleStyle(.checkbox)
                     Text("NAME").font(.pcLabel).foregroundStyle(PC.meta)
                     Spacer()
@@ -56,7 +59,12 @@ struct CleanView: View {
                 .background(PC.surface).pcHairline(.top)
             }
             .sheet(isPresented: $confirming) {
-                TrashSheet(items: selected) { confirming = false }
+                TrashSheet(items: selected,
+                           onCancel: { confirming = false },
+                           onConfirm: {
+                               confirming = false
+                               onTrash(selected)
+                           })
             }
         }
     }
@@ -67,7 +75,14 @@ struct CacheRow: View {
     @State private var hover = false
     var body: some View {
         HStack(alignment: .top, spacing: PC.gutter) {
-            Toggle("", isOn: $entry.selected).labelsHidden().toggleStyle(.checkbox).padding(.top, 1)
+            if entry.cleanable {
+                Toggle("", isOn: $entry.selected).labelsHidden().toggleStyle(.checkbox).padding(.top, 1)
+            } else {
+                // Protected: measured and shown, but the app will not trash it.
+                Image(systemName: "lock.fill").font(.system(size: 10)).foregroundStyle(PC.meta)
+                    .frame(width: 14).padding(.top, 3)
+                    .help("Not on the cleaner's allowlist — Performac will not trash this.")
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.name).font(.pcBody).foregroundStyle(PC.ink)
                 Text(entry.why).font(.pcSmall).foregroundStyle(PC.ink2)   // mandatory why-line
@@ -92,7 +107,8 @@ struct CacheRow: View {
 /// Cancel focused, full paths and sizes, recoverability stated.
 struct TrashSheet: View {
     let items: [CacheEntry]
-    var onClose: () -> Void
+    var onCancel: () -> Void
+    var onConfirm: () -> Void
     private var total: Int64 { items.reduce(0) { $0 + $1.bytes } }
 
     var body: some View {
@@ -130,8 +146,8 @@ struct TrashSheet: View {
 
             HStack(spacing: PC.s2 + 2) {
                 Spacer()
-                Button("Cancel", action: onClose).keyboardShortcut(.cancelAction)
-                Button("Move to Trash", action: onClose).buttonStyle(.borderedProminent)
+                Button("Cancel", action: onCancel).keyboardShortcut(.cancelAction)
+                Button("Move to Trash", action: onConfirm).buttonStyle(.borderedProminent)
             }
             .padding(.horizontal, 24).padding(.bottom, 20)
         }

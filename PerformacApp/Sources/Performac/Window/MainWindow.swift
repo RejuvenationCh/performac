@@ -38,7 +38,7 @@ struct MainWindow: View {
                     onAppear: { store.diskViewAppeared() },
                     onDisappear: { store.diskViewDisappeared() },
                     onCancel: { store.cancelDiskScan() })
-                case .clean: CleanView(caches: store.cacheEntries)
+                case .clean: CleanView(caches: store.cacheEntries, onTrash: { store.trashSelected($0) })
                 case .duplicates: DuplicatesView(groups: store.dupGroups)
                 case .settings: SettingsView(
                     config: store.config,
