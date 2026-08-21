@@ -231,6 +231,38 @@ final class EngineStore: ObservableObject {
         }
     }
 
+    // MARK: uninstaller
+
+    @Published var apps: [InstalledApp] = []
+    @Published var selectedApp: InstalledApp? = nil
+    @Published var leftovers: [Leftover] = []
+    @Published var appRefusal: String? = nil
+
+    func loadApps() {
+        if apps.isEmpty { apps = Uninstaller.installedApps() }
+    }
+
+    func selectApp(_ app: InstalledApp) {
+        selectedApp = app
+        appRefusal = Uninstaller.refusal(for: app)
+        leftovers = appRefusal == nil ? Uninstaller.leftovers(for: app) : []
+    }
+
+    /// Trash the bundle plus whichever leftovers are still ticked. Allowlist is built from
+    /// exactly what is on screen, so nothing outside the shown set can be removed.
+    func uninstallSelected() {
+        guard let app = selectedApp, appRefusal == nil else { return }
+        let chosen = leftovers.filter(\.selected).map(\.path)
+        let paths = [app.path] + chosen
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        let results = Trash.moveToTrash(paths, allowed: Set(paths), db: db, now: now)
+        let ok = results.filter(\.ok).count
+        lastTrashSummary = "Moved \(ok) of \(paths.count) items to the Trash."
+        apps = Uninstaller.installedApps()
+        selectedApp = nil
+        leftovers = []
+    }
+
     // MARK: the cleaner — the only place the app removes anything
 
     @Published var lastTrashSummary: String? = nil

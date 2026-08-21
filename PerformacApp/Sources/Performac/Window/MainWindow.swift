@@ -4,12 +4,13 @@ import SwiftUI
 import AppKit
 
 enum Route: String, CaseIterable, Identifiable {
-    case today, digest, disk, clean, duplicates, settings
+    case today, digest, disk, clean, apps, duplicates, settings
     var id: String { rawValue }
     var symbol: String {
         switch self {
         case .today: "sparkles"; case .digest: "text.alignleft"; case .disk: "internaldrive"
-        case .clean: "trash"; case .duplicates: "doc.on.doc"; case .settings: "gearshape"
+        case .clean: "trash"; case .apps: "square.stack.3d.up"
+        case .duplicates: "doc.on.doc"; case .settings: "gearshape"
         }
     }
     var title: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
@@ -50,6 +51,15 @@ struct MainWindow: View {
                     browsePath: store.browsePath,
                     onReveal: { NSWorkspace.shared.selectFile($0, inFileViewerRootedAtPath: "") },
                     onCancel: { store.cancelDiskScan() })
+                case .apps: AppsView(
+                    apps: store.apps,
+                    selected: store.selectedApp,
+                    leftovers: store.leftovers,
+                    refusal: store.appRefusal,
+                    onAppear: { store.loadApps() },
+                    onSelect: { store.selectApp($0) },
+                    onToggle: { i, v in if store.leftovers.indices.contains(i) { store.leftovers[i].selected = v } },
+                    onUninstall: { store.uninstallSelected() })
                 case .clean: CleanView(caches: store.cacheEntries, onTrash: { store.trashSelected($0) })
                 case .duplicates: DuplicatesView(
                     groups: store.dupGroups,

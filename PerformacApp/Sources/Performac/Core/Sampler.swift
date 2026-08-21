@@ -226,6 +226,20 @@ final class Sampler: @unchecked Sendable {
             .run([.int(ts ?? deps.now()), .text(kind), .text(key), .text(detail)])
     }
 
+    /// Check-and-insert as one step.
+    ///
+    /// Checking `recentEvent` and then calling `addEvent` separately is a race: the external
+    /// probe is async, so two stream lines for the same volume can both finish their await,
+    /// both look and see nothing, and both insert. That is exactly the duplicate-in-the-same-
+    /// second behaviour seen live on Macintosh HD, and it made the dedupe check intermittent.
+    /// The DB serialises statements per connection, so doing both here closes the window.
+    @discardableResult
+    private func addEventDeduped(_ kind: String, _ key: String, _ detail: String, _ ts: Int64? = nil) -> Bool {
+        if recentEvent(kind, key) { return false }
+        addEvent(kind, key, detail, ts)
+        return true
+    }
+
     /// external-only filter. The entry is set while the probe is in flight so concurrent
     /// events share one call, then dropped again if it failed. Caching a failure would
     /// write the volume off for the life of the process — and a drive with a loose
@@ -325,12 +339,12 @@ final class Sampler: @unchecked Sendable {
 
         let vols = Set(deps.listVolumes())
         for v in vols {
-            if lastVolumes.contains(v) || recentEvent("mount", v) { continue }
-            if await isExternal(v) { addEvent("mount", v, "") }
+            if lastVolumes.contains(v) { continue }
+            if await isExternal(v) { addEventDeduped("mount", v, "") }
         }
         for v in lastVolumes {
-            if vols.contains(v) || recentEvent("unmount", v) { continue }
-            if await isExternal(v) { addEvent("unmount", v, "") }
+            if vols.contains(v) { continue }
+            if await isExternal(v) { addEventDeduped("unmount", v, "") }
         }
         lastVolumes = vols
 
@@ -390,8 +404,9 @@ final class Sampler: @unchecked Sendable {
             guard let self else { return }
             let ext = await self.isExternal(p.volume)
             // intra-stream dedupe: the initial dump can emit the same volume twice (volume + snapshot)
-            if !ext || self.recentEvent(kind, p.volume) { return }
-            self.addEvent(kind, p.volume, "", p.ts)   // line's own Time= stamp, not the insert time
+            if !ext { return }
+            // dedupe and insert together — see addEventDeduped
+            self.addEventDeduped(kind, p.volume, "", p.ts)   // line's own Time= stamp
         }
         probeTasks.append(probe)
     }
