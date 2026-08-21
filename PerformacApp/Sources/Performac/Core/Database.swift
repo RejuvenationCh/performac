@@ -69,14 +69,27 @@ final class DB: @unchecked Sendable {
     /// threads aborts with SQLITE_MISUSE — so all statement work holds this lock.
     let lock = NSLock()
 
-    init(path: String) {
+    /// `readOnly` opens a second connection for the UI.
+    ///
+    /// Every statement on a connection holds one lock, so a UI read on the same connection
+    /// blocks behind whatever the sampler is doing — a cache walk, a drift walk, an 87k-row
+    /// insert. That is what made expanding a folder take seconds: not the query (0.1 ms) but
+    /// waiting for the lock. WAL allows concurrent readers alongside one writer, so the UI
+    /// gets its own handle and never waits on a background write.
+    init(path: String, readOnly: Bool = false) {
         var h: OpaquePointer?
-        guard sqlite3_open(path, &h) == SQLITE_OK, let h else {
+        let flags = readOnly ? SQLITE_OPEN_READONLY : (SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE)
+        guard sqlite3_open_v2(path, &h, flags, nil) == SQLITE_OK, let h else {
             fatalError("cannot open sqlite db at \(path)")
         }
         handle = h
-        sqlite3_exec(handle, "PRAGMA journal_mode = WAL;", nil, nil, nil)
-        sqlite3_exec(handle, SCHEMA, nil, nil, nil)
+        if readOnly {
+            // a reader must never block on a writer's transaction
+            sqlite3_busy_timeout(handle, 2000)
+        } else {
+            sqlite3_exec(handle, "PRAGMA journal_mode = WAL;", nil, nil, nil)
+            sqlite3_exec(handle, SCHEMA, nil, nil, nil)
+        }
     }
 
     deinit { sqlite3_close(handle) }

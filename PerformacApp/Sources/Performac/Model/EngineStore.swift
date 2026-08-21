@@ -30,6 +30,8 @@ final class EngineStore: ObservableObject {
     @Published var scanPath = ""
 
     let db: DB
+    /// Read-only connection used by the browser. See DB.init(readOnly:).
+    let readDB: DB
     var sampler: Sampler?
     private var scanTask: Task<Void, Never>?
     private var scanStart: Date?
@@ -49,6 +51,8 @@ final class EngineStore: ObservableObject {
     init(db: DB? = nil) {
         let path = db == nil ? copyV1DatabaseIfNeeded(v1Path: V1_DATABASE_PATH) : nil
         self.db = db ?? DB(path: path!)
+        // Separate handle for browsing reads so the UI never waits on the sampler's lock.
+        self.readDB = (db == nil && path != nil) ? DB(path: path!, readOnly: true) : self.db
         loadPersistedScan()   // reopening shows the last result, labelled as a snapshot
         loadCoachIntro()
     }
@@ -70,7 +74,7 @@ final class EngineStore: ObservableObject {
     // MARK: refresh from SQLite (cheap — findings table only)
 
     func refreshFromDatabase() {
-        let rows = db.prepare("SELECT id, kind, severity, headline, why, detail, link_kind, link_target, updated FROM findings ORDER BY updated DESC").all()
+        let rows = readDB.prepare("SELECT id, kind, severity, headline, why, detail, link_kind, link_target, updated FROM findings ORDER BY updated DESC").all()
         var findings: [Finding] = []
         var kinds: [String] = []
         for row in rows {
@@ -109,7 +113,7 @@ final class EngineStore: ObservableObject {
         refreshTrend()
         refreshQuietFacts()
         findingsAt = Date()
-        config = loadConfig(db)
+        config = loadConfig(readDB)
         fdaGranted = EngineStore.checkFullDiskAccess()
     }
 
@@ -117,7 +121,7 @@ final class EngineStore: ObservableObject {
 
     private func refreshCacheEntries() {
         var entries: [CacheEntry] = []
-        let rows = db.prepare("SELECT * FROM cache_samples ORDER BY ts DESC").all()
+        let rows = readDB.prepare("SELECT * FROM cache_samples ORDER BY ts DESC").all()
         var seen = Set<String>()
         let now = Int64(Date().timeIntervalSince1970 * 1000)
         for row in rows {
@@ -148,8 +152,8 @@ final class EngineStore: ObservableObject {
     // MARK: Duplicates view — v1's last scan rows (the rescanner arrives with Clean)
 
     private func refreshDupGroups() {
-        let rows = db.prepare("SELECT * FROM dup_groups WHERE scan_ts = (SELECT MAX(scan_ts) FROM dup_groups) ORDER BY size_mb DESC").all()
-        dupScanAt = db.prepare("SELECT MAX(scan_ts) m FROM dup_groups").get()?["m"]?.intVal
+        let rows = readDB.prepare("SELECT * FROM dup_groups WHERE scan_ts = (SELECT MAX(scan_ts) FROM dup_groups) ORDER BY size_mb DESC").all()
+        dupScanAt = readDB.prepare("SELECT MAX(scan_ts) m FROM dup_groups").get()?["m"]?.intVal
         dupGroups = rows.compactMap { row in
             guard let pathsText = row["paths"]?.stringVal,
                   let data = pathsText.data(using: .utf8),
@@ -250,16 +254,16 @@ final class EngineStore: ObservableObject {
 
     func refreshQuietFacts() {
         var f = QuietFacts()
-        if let lo = db.prepare("SELECT MIN(ts) m FROM proc_samples").get()?["m"], !lo.isNull {
+        if let lo = readDB.prepare("SELECT MIN(ts) m FROM proc_samples").get()?["m"], !lo.isNull {
             f.watchingDays = max(Int((Double(Date().timeIntervalSince1970 * 1000) - Double(lo.intVal)) / 86_400_000), 0)
         }
         f.freeGb = metrics.freeGb
-        if let mb = db.prepare("SELECT MAX(size_mb) m FROM cache_samples WHERE ts = (SELECT MAX(ts) FROM cache_samples)")
+        if let mb = readDB.prepare("SELECT MAX(size_mb) m FROM cache_samples WHERE ts = (SELECT MAX(ts) FROM cache_samples)")
             .get()?["m"], !mb.isNull {
             f.largestCacheGb = Double(mb.intVal) / 1024
         }
         // "steady" = time since the last unexpected mount/unmount, not an invented number
-        if let last = db.prepare("SELECT MAX(ts) m FROM events WHERE kind IN ('mount','unmount')")
+        if let last = readDB.prepare("SELECT MAX(ts) m FROM events WHERE kind IN ('mount','unmount')")
             .get()?["m"], !last.isNull {
             f.drivesQuietDays = max(Int((Double(Date().timeIntervalSince1970 * 1000) - Double(last.intVal)) / 86_400_000), 0)
         }
@@ -269,9 +273,9 @@ final class EngineStore: ObservableObject {
 
     /// Size of the database on disk, for Settings.
     var databaseSummary: String {
-        let rows = (db.prepare("SELECT COUNT(*) n FROM proc_samples").get()?["n"]?.intVal ?? 0)
-            + (db.prepare("SELECT COUNT(*) n FROM disk_samples").get()?["n"]?.intVal ?? 0)
-            + (db.prepare("SELECT COUNT(*) n FROM cache_samples").get()?["n"]?.intVal ?? 0)
+        let rows = (readDB.prepare("SELECT COUNT(*) n FROM proc_samples").get()?["n"]?.intVal ?? 0)
+            + (readDB.prepare("SELECT COUNT(*) n FROM disk_samples").get()?["n"]?.intVal ?? 0)
+            + (readDB.prepare("SELECT COUNT(*) n FROM cache_samples").get()?["n"]?.intVal ?? 0)
         let path = NSHomeDirectory() + "/Library/Application Support/com.chris.performac.v2/performac.db"
         var bytes: Int64 = 0
         for suffix in ["", "-wal", "-shm"] {
@@ -296,7 +300,7 @@ final class EngineStore: ObservableObject {
     /// Reads the boot volume's samples. Never invents a slope: below the same four days
     /// storageTrend requires, it says how little history there is instead of guessing.
     func refreshTrend() {
-        let rows = db.prepare("SELECT ts, free_gb FROM disk_samples WHERE volume = ? ORDER BY ts")
+        let rows = readDB.prepare("SELECT ts, free_gb FROM disk_samples WHERE volume = ? ORDER BY ts")
             .all([.text("Macintosh HD")])
         let pts = rows.compactMap { r -> (Int64, Double)? in
             guard let ts = r["ts"]?.intVal, let g = r["free_gb"] else { return nil }
@@ -363,7 +367,7 @@ final class EngineStore: ObservableObject {
     func refreshCoachIntro() {
         guard CoachIntro.isConfigured, !coachBusy else { return }
         coachBusy = true
-        let rows = db.prepare("SELECT severity, headline, why FROM findings ORDER BY id").all()
+        let rows = readDB.prepare("SELECT severity, headline, why FROM findings ORDER BY id").all()
             .map { (severity: $0["severity"]?.stringVal ?? "info",
                     headline: $0["headline"]?.stringVal ?? "",
                     why: $0["why"]?.stringVal ?? "") }
@@ -585,7 +589,7 @@ final class EngineStore: ObservableObject {
 
     /// Reads from the table, so a scan from last week browses exactly like a fresh one.
     func childrenOf(_ path: String) -> [SizeEntry] {
-        db.prepare("SELECT name, items, bytes, is_dir FROM scan_entries WHERE parent = ? ORDER BY bytes DESC")
+        readDB.prepare("SELECT name, items, bytes, is_dir FROM scan_entries WHERE parent = ? ORDER BY bytes DESC")
             .all([.text(path)])
             .map { r in
                 let isDir = (r["is_dir"]?.intVal ?? 1) == 1
