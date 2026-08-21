@@ -455,6 +455,7 @@ final class EngineStore: ObservableObject {
         if let saved = getSetting(db, "diskScanRoot")?.objectVal?["path"]?.stringVal { scanRoot = saved }
         if let m = getSetting(db, "diskViewMode")?.objectVal?["mode"]?.stringVal,
            let mode = DiskViewMode(rawValue: m) { diskViewMode = mode }
+        else if getSetting(db, "diskViewMode") != nil { diskViewMode = .outline }   // retired mode
         if let r = getSetting(db, "rightPanelMode")?.objectVal?["mode"]?.stringVal,
            let rm = RightPanelMode(rawValue: r) { rightPanelMode = rm }
         guard let o = getSetting(db, "lastDiskScan")?.objectVal else { return }

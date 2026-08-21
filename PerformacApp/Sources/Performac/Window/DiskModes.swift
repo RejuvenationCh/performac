@@ -213,22 +213,28 @@ private struct Bubble: View {
                 .overlay(Circle().stroke(entry.kind.color.opacity(0.85), lineWidth: hover ? 2 : 1))
             // Label anything that can hold text. Only genuinely tiny circles stay bare —
             // a clipped half-word is worse than none.
-            if radius > 15 {
-                VStack(spacing: 1) {
-                    if radius > 30 {
+            // Text has to fit the square inscribed in the circle (side = r * √2), not the
+            // circle's width. Sizes are proportional with NO floor: a floor is what made
+            // small bubbles show oversized, truncated labels like "SquidS… / 7.4 GB".
+            if radius > 14 {
+                let box = radius * 1.414
+                VStack(spacing: 0) {
+                    if radius > 34 {
                         Image(systemName: isOther ? "ellipsis" : entry.symbol)
-                            .font(.system(size: min(radius * 0.26, 15)))
+                            .font(.system(size: min(radius * 0.24, 15)))
                             .foregroundStyle(PC.ink2)
+                            .padding(.bottom, 1)
                     }
                     Text(entry.name)
-                        .font(.system(size: min(max(radius * 0.19, 8), 12), weight: .medium))
-                        .foregroundStyle(PC.ink).lineLimit(1).minimumScaleFactor(0.7)
-                        .frame(maxWidth: radius * 1.7)
+                        .font(.system(size: min(radius * 0.21, 12), weight: .medium))
+                        .foregroundStyle(PC.ink)
+                        .lineLimit(1).minimumScaleFactor(0.5).truncationMode(.middle)
                     Text(Fmt.bytes(entry.bytes))
-                        .font(.system(size: min(max(radius * 0.17, 8), 11)).monospacedDigit())
-                        .foregroundStyle(PC.ink2).lineLimit(1)
+                        .font(.system(size: min(radius * 0.185, 11)).monospacedDigit())
+                        .foregroundStyle(PC.ink2)
+                        .lineLimit(1).minimumScaleFactor(0.5)
                 }
-                .padding(.horizontal, 2)
+                .frame(width: box - 4)
             }
         }
         .frame(width: radius * 2, height: radius * 2)

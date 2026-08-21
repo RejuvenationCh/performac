@@ -126,18 +126,19 @@ enum Fmt {
 
 /// How the Disk view draws the current folder. Outline is the default: it is the only mode
 /// that shows depth without losing your place.
+/// The left pane is textual; the visual shapes (treemap, bubbles) live in the right panel.
+/// Showing bubbles in both at once was redundant, so it is not offered here.
 enum DiskViewMode: String, CaseIterable, Sendable {
-    case outline, list, compact, bubbles
+    case outline, list, compact
     var label: String {
         switch self {
-        case .outline: "Outline"; case .list: "List"
-        case .compact: "Compact"; case .bubbles: "Bubbles"
+        case .outline: "Outline"; case .list: "List"; case .compact: "Compact"
         }
     }
     var symbol: String {
         switch self {
         case .outline: "list.bullet.indent"; case .list: "list.bullet"
-        case .compact: "rectangle.compress.vertical"; case .bubbles: "circle.circle"
+        case .compact: "rectangle.compress.vertical"
         }
     }
 }

@@ -100,8 +100,6 @@ struct DiskView: View {
                         }
                     case .compact:
                         CompactList(entries: entries, onOpen: onOpen)
-                    case .bubbles:
-                        BubbleView(entries: entries, onOpen: onOpen)
                     }
                     Spacer(minLength: 0)
                     HStack(spacing: PC.gutter) {
@@ -119,7 +117,7 @@ struct DiskView: View {
                     .padding(.horizontal, PC.gutter).padding(.vertical, PC.s2)
                     .pcHairline(.top)
                 }
-                .frame(minWidth: 380, idealWidth: 560)
+                .frame(minWidth: 240, idealWidth: 560, maxWidth: .infinity)
                 .background(PC.surface)
 
                 VStack(spacing: 0) {
@@ -141,7 +139,7 @@ struct DiskView: View {
                     }
                     TreeMapLegend().padding(.horizontal, PC.gutter).padding(.bottom, PC.gutter)
                 }
-                .frame(minWidth: 260)
+                .frame(minWidth: 200, maxWidth: .infinity)
                 .background(PC.canvas)
             }
         }
