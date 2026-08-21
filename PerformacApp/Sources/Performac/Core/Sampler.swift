@@ -410,7 +410,17 @@ final class Sampler: @unchecked Sendable {
             let ext = await self.isExternal(p.volume)
             // intra-stream dedupe: the initial dump can emit the same volume twice (volume + snapshot)
             if !ext { return }
-            // dedupe and insert together — see addEventDeduped
+            // A "mount" for a volume we already believe is mounted is not a reconnect.
+            //
+            // FSKit-backed volumes (exFAT on macOS 26 runs in userspace) re-announce
+            // themselves to DiskArbitration periodically without ever unmounting. Counting
+            // those as flaps produced a red "disconnected 5 times" card for a drive that had
+            // been continuously mounted on a brand-new cable. Recorded under its own kind so
+            // the signal is kept for diagnosis but never reaches the instability rule.
+            if kind == "mount", self.lastVolumes.contains(p.volume) {
+                self.addEventDeduped("mount_reannounce", p.volume, "", p.ts)
+                return
+            }
             self.addEventDeduped(kind, p.volume, "", p.ts)   // line's own Time= stamp
         }
         probeTasks.append(probe)

@@ -226,6 +226,30 @@ enum SamplerCheck {
             s.stop()
         }
 
+        // A volume that is already mounted re-announcing itself is not a reconnect.
+        // Real case: exFAT on macOS 26 runs through FSKit and re-announces periodically,
+        // which produced a red "disconnected 5 times" card for a continuously mounted drive.
+        do {
+            let db = DB(path: ":memory:")
+            let deps = makeDeps(volumes: { ["T7"] })
+            let s = Sampler(db: db, cfg: Config.defaults, deps: deps)
+            await s.tick()                              // T7 is now known to be mounted
+            let duStream = deps.streams.first { $0.bin == "diskutil" }!
+            duStream.emit(SamplerFixtures.DU_APPEAR)    // ...and announces itself again
+            await s.tick()
+            // lastVolumes is seeded at construction, so a drive already plugged in produces
+            // no mount event at all — correct, and the re-announce must not invent one.
+            c.eq("stream: re-announce invents no mount",
+                 db.prepare("SELECT COUNT(*) n FROM events WHERE kind = 'mount' AND key = 'T7'").get()?["n"]?.intVal, 0)
+            c.eq("stream: re-announce is recorded separately",
+                 db.prepare("SELECT COUNT(*) n FROM events WHERE kind = 'mount_reannounce'").get()?["n"]?.intVal, 1)
+            // and the flap rule must not see it
+            let events = rowsToEvents(db.prepare("SELECT * FROM events").all())
+            c.check("drive: a re-announce never becomes a flap",
+                    Rules.driveInstability(events, Config.defaults, Int64(Date().timeIntervalSince1970 * 1000)).isEmpty)
+            s.stop()
+        }
+
         // external volume → one mount; verdict cached (no second diskutil call)
         do {
             let db = DB(path: ":memory:")
