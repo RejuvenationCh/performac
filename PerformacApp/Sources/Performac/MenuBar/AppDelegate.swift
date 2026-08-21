@@ -236,6 +236,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return prefix + "0"
     }
 
+    /// Closing the window retreats to the menu bar rather than quitting: the sampler must
+    /// keep running, and a background agent has no business holding a Dock tile. Reopening
+    /// from the menu bar or the pinned icon promotes it back to a regular app.
+    ///
+    /// A pinned Dock icon stays visible either way — what disappears is the running
+    /// indicator and the Cmd-Tab entry, which is correct for something with no window.
+    func windowWillClose(_ notification: Notification) {
+        guard (notification.object as? NSWindow) === window else { return }
+        DispatchQueue.main.async { NSApp.setActivationPolicy(.accessory) }
+    }
+
+    /// Never quit just because the window closed. The engine is the app.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
     /// Remembered so Restore Size can put it back where it was.
     private var preFillFrame: NSRect?
 
@@ -313,6 +327,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func openWindow() {
         popover.performClose(nil)
+        if NSApp.activationPolicy() != .regular {
+            NSApp.setActivationPolicy(.regular)
+            installMainMenu()          // the menu bar is dropped when going accessory
+        }
         if let w = window { w.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return }
         let w = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
