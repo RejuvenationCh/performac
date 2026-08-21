@@ -19,6 +19,8 @@ struct SettingsView: View {
     var onDashboardGraph: (GraphKind, Bool) -> Void = { _, _ in }
     var onPopoverFindings: (Bool) -> Void = { _ in }
     var onMetricTile: (MetricTileKind, Bool) -> Void = { _, _ in }
+    var ignored: [String] = []
+    var onUnignore: (String) -> Void = { _ in }
     @State private var staleDays: Int
     @State private var weeksLeft: Int
     @State private var cycles: Int
@@ -36,6 +38,8 @@ struct SettingsView: View {
          popoverFindings: Bool = true,
          metricTiles: [MetricTileKind] = MetricTileKind.defaults,
          onMetricTile: @escaping (MetricTileKind, Bool) -> Void = { _, _ in },
+         ignored: [String] = [],
+         onUnignore: @escaping (String) -> Void = { _ in },
          onPopoverGraph: @escaping (GraphKind, Bool) -> Void = { _, _ in },
          onDashboardGraph: @escaping (GraphKind, Bool) -> Void = { _, _ in },
          onPopoverFindings: @escaping (Bool) -> Void = { _ in },
@@ -54,6 +58,8 @@ struct SettingsView: View {
         self.onDashboardGraph = onDashboardGraph
         self.onPopoverFindings = onPopoverFindings
         self.onMetricTile = onMetricTile
+        self.ignored = ignored
+        self.onUnignore = onUnignore
         self.onMenuBarItem = onMenuBarItem
         _staleDays = State(initialValue: config.cacheRules.staleDays)
         _weeksLeft = State(initialValue: config.storage.warnWeeksLeft)
@@ -167,6 +173,19 @@ struct SettingsView: View {
                         Divider().overlay(PC.hairline)
                         Stepper2("Sustained CPU warning after", $cpuMinutes, "minutes")
                             .onChange(of: cpuMinutes) { v in onSave("hog", .object(["minMinutes": .number(Double(v))])) }
+                    }
+                    SettingsGroup(header: "Ignored processes") {
+                        if ignored.isEmpty {
+                            Note("Nothing ignored. Use Ignore on a CPU or memory card to stop reporting a process.")
+                        } else {
+                            ForEach(Array(ignored.enumerated()), id: \.element) { i, name in
+                                if i > 0 { Divider().overlay(PC.hairline) }
+                                Row(name) {
+                                    Button("Stop ignoring") { onUnignore(name) }
+                                        .controlSize(.small)
+                                }
+                            }
+                        }
                     }
                     SettingsGroup(header: "Scanning") {
                         Stepper2("Duplicate scan minimum file size", $dupMinMB, "MB")

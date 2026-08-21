@@ -33,10 +33,12 @@ struct MainWindow: View {
                     updatedAt: store.findingsAt,
                     busy: store.refreshing,
                     onRefresh: { (NSApp.delegate as? AppDelegate)?.refreshNow() },
-                    quitAction: { store.requestQuit($0) })
+                    quitAction: { store.requestQuit($0) },
+                    onIgnore: { store.ignoreProcess($0) })
                 case .digest: DigestView(
                     findings: store.digest,
                     quitAction: { store.requestQuit($0) },
+                    onIgnore: { store.ignoreProcess($0) },
                     updatedAt: store.findingsAt,
                     busy: store.refreshing,
                     onRefresh: { (NSApp.delegate as? AppDelegate)?.refreshNow() },
@@ -114,6 +116,8 @@ struct MainWindow: View {
                     popoverFindings: store.popoverShowsFindings,
                     metricTiles: store.metricTiles,
                     onMetricTile: { store.setMetricTile($0, $1) },
+                    ignored: store.ignoredProcesses,
+                    onUnignore: { store.unignoreProcess($0) },
                     onPopoverGraph: { store.setPopoverGraph($0, $1) },
                     onDashboardGraph: { store.setDashboardGraph($0, $1) },
                     onPopoverFindings: { store.setPopoverShowsFindings($0) },

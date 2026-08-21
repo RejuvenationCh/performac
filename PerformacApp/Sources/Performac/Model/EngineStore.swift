@@ -603,6 +603,39 @@ final class EngineStore: ObservableObject {
             }
     }
 
+    // MARK: muted processes
+
+    /// Processes the hog and idle rules should stop reporting.
+    ///
+    /// Kept as the rules' own ignore list rather than a separate mute table, so a muted
+    /// process is genuinely never evaluated instead of being computed and then hidden.
+    var ignoredProcesses: [String] {
+        let cfg = loadConfig(readDB)
+        let builtin = Set(Config.defaults.hog.ignore)
+        return cfg.hog.ignore.filter { !builtin.contains($0) }.sorted()
+    }
+
+    func ignoreProcess(_ name: String) {
+        var cfg = loadConfig(readDB)
+        guard !cfg.hog.ignore.contains(name) else { return }
+        cfg.hog.ignore.append(name)
+        setSetting(db, "hog", JSONValue.from([
+            "cpuPct": cfg.hog.cpuPct, "minMinutes": Double(cfg.hog.minMinutes),
+            "lookbackHours": Double(cfg.hog.lookbackHours), "ignore": cfg.hog.ignore,
+        ]))
+        refreshFromDatabase()
+    }
+
+    func unignoreProcess(_ name: String) {
+        var cfg = loadConfig(readDB)
+        cfg.hog.ignore.removeAll { $0 == name }
+        setSetting(db, "hog", JSONValue.from([
+            "cpuPct": cfg.hog.cpuPct, "minMinutes": Double(cfg.hog.minMinutes),
+            "lookbackHours": Double(cfg.hog.lookbackHours), "ignore": cfg.hog.ignore,
+        ]))
+        refreshFromDatabase()
+    }
+
     // MARK: configurable surfaces
 
     private func graphs(_ key: String, _ fallback: [GraphKind]) -> [GraphKind] {

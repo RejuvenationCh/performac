@@ -18,6 +18,7 @@ struct VisualEffect: NSViewRepresentable {
 struct CoachCardView: View {
     let finding: Finding
     var onQuit: (String) -> Void = { _ in }
+    var onIgnore: ((String) -> Void)? = nil
     @State private var confirming = false
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
@@ -41,6 +42,12 @@ struct CoachCardView: View {
                             Button("Quit \(target)") { confirming = true }
                                 .buttonStyle(.plain)
                                 .font(.pcLabel).foregroundStyle(PC.red)
+                            if let onIgnore {
+                                Button("Ignore") { onIgnore(target) }
+                                    .buttonStyle(.plain)
+                                    .font(.pcLabel).foregroundStyle(PC.meta)
+                                    .help("Stop reporting \(target). Undo in Settings.")
+                            }
                         }
                     }
                     .padding(.top, 2)

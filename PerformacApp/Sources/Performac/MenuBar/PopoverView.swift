@@ -100,7 +100,8 @@ struct PopoverView: View {
                         .frame(maxWidth: .infinity).padding(.vertical, 24)
                     } else {
                         ForEach(cards) { f in
-                            CoachCardView(finding: f, onQuit: { store.requestQuit($0) })
+                            CoachCardView(finding: f, onQuit: { store.requestQuit($0) },
+                                          onIgnore: { store.ignoreProcess($0) })
                         }
                     }
                 }

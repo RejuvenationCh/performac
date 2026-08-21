@@ -30,6 +30,7 @@ struct FreshnessBar: View {
 struct TodayView: View {
     var findings: [Finding] = Sample.findings
     var quitAction: (String) -> Void = { _ in }
+    var onIgnore: ((String) -> Void)? = nil
     var updatedAt: Date? = nil
     var busy: Bool = false
     var onRefresh: () -> Void = {}
@@ -41,7 +42,7 @@ struct TodayView: View {
             else {
                 ScrollView {
                     VStack(spacing: PC.gutter) {
-                        ForEach(findings) { CoachCardView(finding: $0, onQuit: quitAction) }
+                        ForEach(findings) { CoachCardView(finding: $0, onQuit: quitAction, onIgnore: onIgnore) }
                     }
                     .padding(.horizontal, PC.stack).padding(.bottom, PC.stack)
                 }
@@ -108,6 +109,7 @@ private struct QuietTile: View {
 struct DigestView: View {
     var findings: [Finding] = Sample.findings
     var quitAction: (String) -> Void = { _ in }
+    var onIgnore: ((String) -> Void)? = nil
     var updatedAt: Date? = nil
     var busy: Bool = false
     var onRefresh: () -> Void = {}
@@ -175,7 +177,7 @@ struct DigestView: View {
                     }
                     .padding(PC.gutter).frame(maxWidth: .infinity, alignment: .leading).pcCard()
 
-                    ForEach(findings) { CoachCardView(finding: $0, onQuit: quitAction) }
+                    ForEach(findings) { CoachCardView(finding: $0, onQuit: quitAction, onIgnore: onIgnore) }
                 }
                 .padding(.horizontal, PC.stack).padding(.bottom, PC.stack)
             }

@@ -17,6 +17,7 @@ struct DashboardView: View {
     var busy: Bool = false
     var onRefresh: () -> Void = {}
     var quitAction: (String) -> Void = { _ in }
+    var onIgnore: ((String) -> Void)? = nil
 
     private var worst: [Finding] {
         let order: [Severity] = [.red, .amber, .info]
@@ -75,7 +76,7 @@ struct DashboardView: View {
                         .padding(PC.gutter).pcCard()
                     } else {
                         SectionHeader(text: "Worth knowing (\(worst.count))")
-                        ForEach(worst) { CoachCardView(finding: $0, onQuit: quitAction) }
+                        ForEach(worst) { CoachCardView(finding: $0, onQuit: quitAction, onIgnore: onIgnore) }
                     }
                 }
                 .padding(.horizontal, PC.stack).padding(.bottom, PC.stack)
