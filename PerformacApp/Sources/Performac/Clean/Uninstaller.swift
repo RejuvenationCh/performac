@@ -48,6 +48,32 @@ enum Uninstaller {
         ("Application Scripts", "App Scripts"),
     ]
 
+    /// Names, ids and running state only — no directory walking, so this is instant.
+    static func listApps() -> [InstalledApp] {
+        let fm = FileManager.default
+        var out: [InstalledApp] = []
+        let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+        for root in ["/Applications", NSHomeDirectory() + "/Applications"] {
+            for name in (try? fm.contentsOfDirectory(atPath: root)) ?? [] where name.hasSuffix(".app") {
+                let path = root + "/" + name
+                guard let b = Bundle(path: path), let id = b.bundleIdentifier else { continue }
+                out.append(InstalledApp(
+                    name: (name as NSString).deletingPathExtension, bundleID: id, path: path,
+                    bytes: 0, isRunning: running.contains(id), isSystem: id.hasPrefix("com.apple.")))
+            }
+        }
+        return out.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// The expensive half: walks each bundle. Call this off the main actor.
+    static func withSizes(_ apps: [InstalledApp]) -> [InstalledApp] {
+        apps.map { a in
+            var c = a
+            c.bytes = directorySize(a.path)
+            return c
+        }.sorted { $0.bytes > $1.bytes }
+    }
+
     static func installedApps() -> [InstalledApp] {
         let fm = FileManager.default
         var out: [InstalledApp] = []

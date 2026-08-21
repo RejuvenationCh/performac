@@ -345,9 +345,39 @@ final class EngineStore: ObservableObject {
     @Published var selectedApp: InstalledApp? = nil
     @Published var leftovers: [Leftover] = []
     @Published var appRefusal: String? = nil
+    @Published var appsLoading = false
+    @Published var leftoversLoading = false
 
+    /// Names first, sizes after. Sizing every bundle walks gigabytes (Adobe, Xcode), which
+    /// froze the view for seconds when it ran inline on the main actor.
     func loadApps() {
-        if apps.isEmpty { apps = Uninstaller.installedApps() }
+        guard apps.isEmpty, !appsLoading else { return }
+        appsLoading = true
+        apps = Uninstaller.listApps()            // cheap: names and bundle ids only
+        Task.detached(priority: .utility) {
+            let sized = Uninstaller.withSizes(Uninstaller.listApps())
+            await MainActor.run { [weak self] in
+                self?.apps = sized
+                self?.appsLoading = false
+            }
+        }
+    }
+
+    /// Leftovers also walk directories, so they are measured off the main actor too.
+    func selectAppAsync(_ app: InstalledApp) {
+        selectedApp = app
+        appRefusal = Uninstaller.refusal(for: app)
+        leftovers = []
+        guard appRefusal == nil else { return }
+        leftoversLoading = true
+        Task.detached(priority: .userInitiated) {
+            let found = Uninstaller.leftovers(for: app)
+            await MainActor.run { [weak self] in
+                guard self?.selectedApp?.id == app.id else { return }   // user moved on
+                self?.leftovers = found
+                self?.leftoversLoading = false
+            }
+        }
     }
 
     func selectApp(_ app: InstalledApp) {
@@ -552,10 +582,10 @@ final class EngineStore: ObservableObject {
         if autoRefreshScan && !scanning { startDiskScan() }
     }
 
-    /// Leaving the view stops the scan. Nothing keeps reading the disk in the background.
-    func diskViewDisappeared() {
-        if scanning { cancelDiskScan() }
-    }
+    /// Switching tabs does NOT stop a scan. A scan is minutes of work the user asked for;
+    /// killing it because they looked at another view would waste it silently. Cancel is
+    /// explicit (the button) or at quit. Results land whenever it finishes.
+    func diskViewDisappeared() {}
 
     func setAutoRefreshScan(_ on: Bool) {
         autoRefreshScan = on

@@ -76,8 +76,10 @@ struct MainWindow: View {
                     selected: store.selectedApp,
                     leftovers: store.leftovers,
                     refusal: store.appRefusal,
+                    appsLoading: store.appsLoading,
+                    leftoversLoading: store.leftoversLoading,
                     onAppear: { store.loadApps() },
-                    onSelect: { store.selectApp($0) },
+                    onSelect: { store.selectAppAsync($0) },
                     onToggle: { i, v in if store.leftovers.indices.contains(i) { store.leftovers[i].selected = v } },
                     onUninstall: { store.uninstallSelected() })
                 case .clean: CleanView(caches: store.cacheEntries, onTrash: { store.trashSelected($0) })

@@ -7,6 +7,8 @@ struct AppsView: View {
     var selected: InstalledApp? = nil
     var leftovers: [Leftover] = []
     var refusal: String? = nil
+    var appsLoading: Bool = false
+    var leftoversLoading: Bool = false
     var onAppear: () -> Void = {}
     var onSelect: (InstalledApp) -> Void = { _ in }
     var onToggle: (Int, Bool) -> Void = { _, _ in }
@@ -21,6 +23,16 @@ struct AppsView: View {
         Page(title: "Apps",
              subtitle: "Remove an app together with the files it leaves behind. Everything goes to the Trash.") {
             HSplitView {
+                VStack(spacing: 0) {
+                if appsLoading {
+                    HStack(spacing: PC.s2) {
+                        ProgressView().controlSize(.small).scaleEffect(0.7)
+                        Text("Measuring app sizes…").font(.pcSmall).foregroundStyle(PC.meta)
+                        Spacer()
+                    }
+                    .padding(.horizontal, PC.gutter).padding(.vertical, PC.s2)
+                    .background(PC.fill1).pcHairline(.bottom)
+                }
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(apps) { app in
@@ -28,6 +40,7 @@ struct AppsView: View {
                             Divider().overlay(PC.hairline)
                         }
                     }
+                }
                 }
                 .frame(minWidth: 260, idealWidth: 340)
                 .background(PC.surface)
@@ -74,9 +87,13 @@ struct AppsView: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: PC.s2) {
-                        SectionHeader(text: "Left behind (\(leftovers.count))")
-                            .padding(.horizontal, PC.stack).padding(.top, PC.gutter)
-                        if leftovers.isEmpty {
+                        HStack(spacing: PC.s2) {
+                            SectionHeader(text: leftoversLoading ? "Left behind" : "Left behind (\(leftovers.count))")
+                            if leftoversLoading { ProgressView().controlSize(.small).scaleEffect(0.6) }
+                            Spacer()
+                        }
+                        .padding(.horizontal, PC.stack).padding(.top, PC.gutter)
+                        if leftovers.isEmpty && !leftoversLoading {
                             Text("Nothing else found under ~/Library.")
                                 .font(.pcSmall).foregroundStyle(PC.meta)
                                 .padding(.horizontal, PC.stack)
@@ -145,7 +162,11 @@ private struct AppRow: View {
                 }
             }
             Spacer(minLength: PC.s2)
-            Text(Fmt.bytes(app.bytes)).font(.pcNum).foregroundStyle(PC.ink2)
+            if app.bytes > 0 {
+                Text(Fmt.bytes(app.bytes)).font(.pcNum).foregroundStyle(PC.ink2)
+            } else {
+                Text("—").font(.pcNum).foregroundStyle(PC.meta.opacity(0.5))
+            }
         }
         .padding(.horizontal, PC.gutter).padding(.vertical, 6)
         .background(isSelected ? PC.fill2 : .clear)
