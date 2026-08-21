@@ -62,24 +62,47 @@ private struct QuietTile: View {
 struct DigestView: View {
     var findings: [Finding] = Sample.findings
     var quitAction: (String) -> Void = { _ in }
+    var trendPoints: [Double] = []
+    var trendWindow: String = ""
+    var trendNote: String = ""
+
+    /// Templated from the findings actually present. It never claims more than the cards do.
+    private var summary: String {
+        if findings.isEmpty {
+            return "Nothing worth doing. Caches are in normal range and nothing has changed enough to mention."
+        }
+        let red = findings.filter { $0.severity == .red }.count
+        let amber = findings.filter { $0.severity == .amber }.count
+        var parts: [String] = []
+        if red > 0 { parts.append("\(red) needing attention") }
+        if amber > 0 { parts.append("\(amber) worth a look") }
+        let head = parts.isEmpty
+            ? "\(findings.count) thing\(findings.count == 1 ? "" : "s") to know about"
+            : parts.joined(separator: " and ")
+        return "\(head), biggest first. Each card carries the evidence behind it — the age, the trend, or the count that made it worth showing."
+    }
     var body: some View {
         Page(title: "Digest", subtitle: "Weekly read — the trends behind the cards.") {
             ScrollView {
                 VStack(alignment: .leading, spacing: PC.gutter) {
                     VStack(alignment: .leading, spacing: PC.s2) {
-                        SectionHeader(text: "This week")
-                        Text("Hey, quick look at your Mac this week. RobloxPlayer has been averaging 99% CPU for the last 46 minutes, which is sustained load rather than a quick spike, so if you're not actually using it, quitting it from Activity Monitor is worth doing. Everything else looks fine. Resolve's media cache is sitting at 27.7 GB, but it was last written 15 days ago, still under your 21-day line, so leave it alone.")
+                        SectionHeader(text: "Summary")
+                        Text(summary)
                             .font(.pcBody).foregroundStyle(PC.ink2).lineSpacing(3)
                             .frame(maxWidth: 620, alignment: .leading)
                     }
                     .padding(PC.gutter).frame(maxWidth: .infinity, alignment: .leading).pcCard()
 
                     VStack(alignment: .leading, spacing: PC.s2) {
-                        SectionHeader(text: "Free space, last 30 days")
-                        Sparkline(values: [78, 76, 74, 73, 71, 70, 70, 69, 68, 67, 66, 66])
-                            .frame(height: 54)
-                        Text("Losing about 1 GB a week. At this rate you have roughly 14 weeks of headroom.")
-                            .font(.pcSmall).foregroundStyle(PC.ink2)
+                        SectionHeader(text: trendWindow.isEmpty ? "Free space" : "Free space, last \(trendWindow)")
+                        if trendPoints.count >= 2 {
+                            Sparkline(values: trendPoints).frame(height: 54)
+                        } else {
+                            Text("Not enough samples to draw yet.")
+                                .font(.pcSmall).foregroundStyle(PC.meta)
+                                .frame(height: 54, alignment: .leading)
+                        }
+                        Text(trendNote).font(.pcSmall).foregroundStyle(PC.ink2)
                     }
                     .padding(PC.gutter).frame(maxWidth: .infinity, alignment: .leading).pcCard()
 

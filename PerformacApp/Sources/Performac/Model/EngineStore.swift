@@ -105,6 +105,7 @@ final class EngineStore: ObservableObject {
         digest = findings
         refreshCacheEntries()
         refreshDupGroups()
+        refreshTrend()
         config = loadConfig(db)
         fdaGranted = EngineStore.checkFullDiskAccess()
     }
@@ -230,6 +231,67 @@ final class EngineStore: ObservableObject {
             let json = (try? JSONSerialization.data(withJSONObject: g.paths))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             ins.run([.int(ts), .text(g.hash), .int(g.sizeMb), .text(json)])
+        }
+    }
+
+    // MARK: Digest — real free-space history, and an honest note about it
+
+    struct Trend: Sendable {
+        var points: [Double] = []
+        var window: String = ""
+        var note: String = ""
+        var hasEnoughHistory = false
+    }
+    @Published var trend = Trend()
+
+    /// Reads the boot volume's samples. Never invents a slope: below the same four days
+    /// storageTrend requires, it says how little history there is instead of guessing.
+    func refreshTrend() {
+        let rows = db.prepare("SELECT ts, free_gb FROM disk_samples WHERE volume = ? ORDER BY ts")
+            .all([.text("Macintosh HD")])
+        let pts = rows.compactMap { r -> (Int64, Double)? in
+            guard let ts = r["ts"]?.intVal, let g = r["free_gb"] else { return nil }
+            return (ts, Double(g.stringVal) ?? 0)
+        }
+        guard let first = pts.first, let last = pts.last, pts.count >= 2 else {
+            trend = Trend(points: [], window: "no history yet",
+                          note: "Performac has not collected enough samples to draw anything.",
+                          hasEnoughHistory: false)
+            return
+        }
+        let spanDays = Double(last.0 - first.0) / 86_400_000
+        let windowText = spanDays >= 2
+            ? String(format: "%.0f days", spanDays)
+            : String(format: "%.0f hours", spanDays * 24)
+
+        // thin out to ~60 points so the line stays readable
+        let step = max(1, pts.count / 60)
+        let series = stride(from: 0, to: pts.count, by: step).map { pts[$0].1 }
+
+        if spanDays < 4 {
+            trend = Trend(points: series, window: windowText,
+                          note: "Only \(windowText) of history — too early to call a trend. It needs about four days.",
+                          hasEnoughHistory: false)
+            return
+        }
+        // least squares on (days, freeGb)
+        let xs = pts.map { Double($0.0 - first.0) / 86_400_000 }
+        let ys = pts.map(\.1)
+        let n = Double(xs.count)
+        let mx = xs.reduce(0,+) / n, my = ys.reduce(0,+) / n
+        let num = zip(xs, ys).reduce(0.0) { $0 + ($1.0 - mx) * ($1.1 - my) }
+        let den = xs.reduce(0.0) { $0 + ($1 - mx) * ($1 - mx) }
+        let perDay = den == 0 ? 0 : num / den
+        let perWeek = -perDay * 7
+        if perWeek <= 0.5 {
+            trend = Trend(points: series, window: windowText,
+                          note: "Free space is holding steady over the last \(windowText).",
+                          hasEnoughHistory: true)
+        } else {
+            let weeksLeft = (ys.last ?? 0) / perWeek
+            trend = Trend(points: series, window: windowText,
+                          note: String(format: "Losing about %.1f GB a week. At this rate roughly %.0f weeks of headroom.", perWeek, weeksLeft),
+                          hasEnoughHistory: true)
         }
     }
 

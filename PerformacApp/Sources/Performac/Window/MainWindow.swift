@@ -25,7 +25,12 @@ struct MainWindow: View {
             Group {
                 switch route {
                 case .today: TodayView(findings: store.live, quitAction: { store.requestQuit($0) })
-                case .digest: DigestView(findings: store.digest, quitAction: { store.requestQuit($0) })
+                case .digest: DigestView(
+                    findings: store.digest,
+                    quitAction: { store.requestQuit($0) },
+                    trendPoints: store.trend.points,
+                    trendWindow: store.trend.window,
+                    trendNote: store.trend.note)
                 case .disk: DiskView(
                     entries: store.diskEntries,
                     scanning: store.scanning,
