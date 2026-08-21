@@ -182,6 +182,6 @@ struct TrashSheet: View {
             .padding(.horizontal, 24).padding(.bottom, 20)
         }
         .frame(width: 520)
-        .background(PC.surface)
+        .pcGlassPanel(PC.rXl)
     }
 }

@@ -92,7 +92,7 @@ struct RowInfoSheet: View {
             .padding(20)
         }
         .frame(width: 420)
-        .background(PC.surface)
+        .pcGlassPanel(PC.rXl)
         .onAppear(perform: load)
     }
 
@@ -170,6 +170,6 @@ struct RowTrashSheet: View {
             .padding(22)
         }
         .frame(width: 480)
-        .background(PC.surface)
+        .pcGlassPanel(PC.rXl)
     }
 }

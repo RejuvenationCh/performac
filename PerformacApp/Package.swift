@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Performac",
-    platforms: [.macOS(.v15)],   // SwiftPM enum has no .v26; the toolchain still targets macOS 26
+    platforms: [.macOS("26.0")],   // string form: the enum has no .v26, and Liquid Glass needs it
     targets: [
         // NOTE: no testTarget — CommandLineTools ships neither swift-testing nor
         // XCTest modules. Checks live in `Performac check` (see ScannerSelfCheck.swift).

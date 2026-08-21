@@ -76,3 +76,32 @@ extension View {
             .shadow(color: .black.opacity(0.05), radius: 1, y: 1)
     }
 }
+
+
+// MARK: - Liquid Glass
+//
+// Apple's guidance is that Liquid Glass is a material for the layer that FLOATS ABOVE
+// content — navigation, toolbars, controls, popovers, sheets. Content itself stays opaque.
+// This app is mostly dense tabular data, so glass goes on the rail, the headers, the
+// floating controls and the sheets, and never behind a table row, a treemap or a card.
+//
+// Two rules that matter as much as where it goes:
+//   * never stack glass on glass — nested layers read as muddy grey, not depth
+//   * group adjacent glass in a GlassEffectContainer so the shapes blend rather than
+//     each rendering its own separate refraction
+extension View {
+    /// Chrome that floats over content: rails, headers, footers, bars.
+    func pcGlassChrome() -> some View {
+        self.glassEffect(.regular, in: .rect(cornerRadius: 0))
+    }
+
+    /// A floating panel with its own shape: popovers, sheets, detached controls.
+    func pcGlassPanel(_ radius: CGFloat = PC.rXl) -> some View {
+        self.glassEffect(.regular, in: .rect(cornerRadius: radius))
+    }
+
+    /// Controls the user presses. `.interactive()` gives the press its specular response.
+    func pcGlassControl(_ radius: CGFloat = PC.rPill) -> some View {
+        self.glassEffect(.regular.interactive(), in: .rect(cornerRadius: radius))
+    }
+}

@@ -38,7 +38,9 @@ struct PopoverView: View {
             .pcHairline(.top)
         }
         .frame(width: 380, height: 520)
-        .background(VisualEffect())
+        // A popover is the floating layer by definition, so it is the clearest case for
+        // glass. Replaces the NSVisualEffectView vibrancy this used before.
+        .pcGlassPanel(PC.rXl)
         // NSVisualEffectView follows the system appearance, so with the app pinned to light
         // the popover was rendering dark while every other surface was light.
         .environment(\.colorScheme, .light)

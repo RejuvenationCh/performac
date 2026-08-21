@@ -128,7 +128,7 @@ private struct Rail: View {
         }
         .frame(width: PC.rail)
         .frame(maxHeight: .infinity)
-        .background(PC.surface)
+        .pcGlassChrome()
         .pcHairline(.trailing)
     }
 }
@@ -169,6 +169,8 @@ struct Page<Content: View>: View {
                 if let trailing { trailing }
             }
             .padding(.horizontal, PC.stack).padding(.top, PC.stack).padding(.bottom, PC.gutter)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .pcGlassChrome()
             content
         }
     }

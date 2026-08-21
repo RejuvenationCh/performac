@@ -129,6 +129,31 @@ Present in the artifact, wrong for this app:
 6. The treemap is drawn as vertical strips. Build a **squarified** treemap so small items keep
    a clickable aspect ratio.
 
+## Liquid Glass
+
+Adopted for the **interface layer only**, per Apple's guidance that Liquid Glass belongs to
+what floats above content, not to content itself. This app is mostly dense tabular data, so
+the split is strict:
+
+| glass | opaque |
+|---|---|
+| the 64pt rail | table rows (SizeRow, CacheRow, OutlineRow, CompactRow) |
+| page headers | coach cards |
+| the Disk toolbar (target picker, Scan, mode switch) | treemap and bubbles |
+| the menu bar popover | the metric strip inside it |
+| every sheet (trash, uninstall, Get Info, quit) | list and detail panes |
+| primary controls (`.glass`, `.glassProminent`) | badges and pills |
+
+Two rules with the same weight as the placement:
+
+1. **Never stack glass on glass.** Nested layers read as muddy grey rather than depth, which
+   is why a sheet is glass but its rows are not.
+2. **Legibility outranks the effect.** Anything carrying a number a decision rests on stays
+   on an opaque surface.
+
+The popover's `NSVisualEffectView` was replaced by `.glassEffect`; the deployment target is
+`macOS 26` (`Package.swift` uses the string form, the enum has no `.v26`).
+
 ## Rules the next change must keep
 
 1. **Native, dense, macOS.** If a change would look at home on a phone, it is wrong here.
@@ -142,4 +167,5 @@ Present in the artifact, wrong for this app:
 7. **Destructive confirmations stay blue, with Cancel focused**, and always state recoverability.
 8. **Cards do not nest.**
 9. **Light only** (pinned in `AppDelegate`), but keep both values on every token — never hard-code a bare hex at a call site.
+10. **Glass is chrome, never content.** If a surface carries a figure the user will act on, it is opaque. Never nest glass inside glass.
 10. **Never state a status the app cannot evidence.**

@@ -48,7 +48,7 @@ struct DiskView: View {
             HStack(spacing: PC.gutter) {
                 ScanTargetPicker(root: scanRoot, targets: targets, onPick: onPickRoot)
                 if scanning {
-                    Button("Cancel", action: onCancel).controlSize(.large)
+                    Button("Cancel", action: onCancel).controlSize(.large).buttonStyle(.glass)
                 } else {
                     Button {
                         onScan()
@@ -56,7 +56,7 @@ struct DiskView: View {
                         Label(entries.isEmpty ? "Scan" : "Rescan", systemImage: "magnifyingglass")
                             .font(.pcTitle)
                     }
-                    .buttonStyle(.borderedProminent).controlSize(.large)
+                    .buttonStyle(.glassProminent).controlSize(.large)
                     .keyboardShortcut("r", modifiers: .command)
                     .help("Scan the selected location. Cmd-R")
                 }
@@ -70,7 +70,7 @@ struct DiskView: View {
                 StorageBar(freeBytes: Int64(freeGb * 1_073_741_824), totalBytes: Int64(totalGb * 1_073_741_824))
             }
             .padding(.horizontal, PC.stack).padding(.vertical, PC.gutter)
-            .background(PC.surface).pcHairline(.bottom)
+            .pcGlassChrome().pcHairline(.bottom)
 
             if !crumbs.isEmpty {
                 CrumbBar(crumbs: crumbs, onCrumb: onCrumb)

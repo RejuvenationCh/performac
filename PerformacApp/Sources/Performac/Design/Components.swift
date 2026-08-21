@@ -85,7 +85,7 @@ struct QuitSheet: View {
             .padding(.horizontal, 24).padding(.bottom, 20)
         }
         .frame(width: 460)
-        .background(PC.surface)
+        .pcGlassPanel(PC.rXl)
     }
 }
 
@@ -200,13 +200,24 @@ struct SectionHeader: View {
 /// Relative time that actually ticks. A static "just now" is still on screen ten minutes
 /// later, which is worse than no timestamp: it reads as current when it is not.
 enum Ago {
+    /// Precision drops as the age grows: seconds matter for something a moment old and are
+    /// noise on something from last Tuesday. At most two units, never a smaller one than the
+    /// scale warrants.
     static func text(_ date: Date, now: Date = Date()) -> String {
         let s = Int(now.timeIntervalSince(date))
         if s < 1 { return "now" }
-        if s < 60 { return "\(s)s ago" }
-        if s < 3600 { return "\(s / 60)m \(s % 60)s ago" }
-        if s < 86_400 { return "\(s / 3600)h \(s % 3600 / 60)m ago" }
-        return "\(s / 86_400)d ago"
+        if s < 60 { return "\(s)s ago" }                                   // 42s ago
+        if s < 3600 { return "\(s / 60)m ago" }                            // 7m ago
+        if s < 86_400 {                                                     // 3h 20m ago
+            let h = s / 3600, m = s % 3600 / 60
+            return m == 0 ? "\(h)h ago" : "\(h)h \(m)m ago"
+        }
+        if s < 604_800 {                                                    // 2d 5h ago
+            let d = s / 86_400, h = s % 86_400 / 3600
+            return h == 0 ? "\(d)d ago" : "\(d)d \(h)h ago"
+        }
+        let w = s / 604_800, d = s % 604_800 / 86_400                       // 3w 2d ago
+        return d == 0 ? "\(w)w ago" : "\(w)w \(d)d ago"
     }
 }
 

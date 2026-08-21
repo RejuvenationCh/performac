@@ -220,6 +220,6 @@ struct UninstallSheet: View {
             .padding(.horizontal, 24).padding(.bottom, 20)
         }
         .frame(width: 560)
-        .background(PC.surface)
+        .pcGlassPanel(PC.rXl)
     }
 }
