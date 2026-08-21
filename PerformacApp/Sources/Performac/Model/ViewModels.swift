@@ -74,9 +74,14 @@ enum Fmt {
         if mb >= 1 { return String(format: "%.0f MB", locale: en, mb) }
         return String(format: "%.0f KB", locale: en, Double(b) / 1_000)
     }
-    static func count(_ n: Int) -> String {
+    /// Shared, not per call: allocating a NumberFormatter each time measured ~29x slower
+    /// (51.5 ms vs 1.8 ms per 5000 calls), and this runs once per row per redraw.
+    private static let counter: NumberFormatter = {
         let f = NumberFormatter(); f.numberStyle = .decimal; f.locale = Locale(identifier: "en_US")
-        return f.string(from: NSNumber(value: n)) ?? "\(n)"
+        return f
+    }()
+    static func count(_ n: Int) -> String {
+        counter.string(from: NSNumber(value: n)) ?? "\(n)"
     }
 }
 

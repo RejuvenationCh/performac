@@ -12,94 +12,117 @@ struct OutlineList: View {
     let onReveal: (String) -> Void
     @Binding var infoTarget: RowInfo?
     @Binding var trashTarget: RowInfo?
-    private var maxBytes: Int64 { entries.map(\.bytes).max() ?? 1 }
+
+    /// Which paths are open, and the children fetched for them. Held here rather than in
+    /// per-row @State so collapsing actually frees the rows.
+    @State private var expanded: Set<String> = []
+    @State private var kids: [String: [SizeEntry]] = [:]
+
+    /// The visible tree, flattened to one array.
+    ///
+    /// This used to be a recursive View struct: an OutlineRow whose body contained more
+    /// OutlineRows. SwiftUI has to materialise that nested generic type for every row even
+    /// when collapsed, which is why the outline lagged noticeably where the flat list did
+    /// not. One LazyVStack over a flat array only builds what is on screen.
+    private struct Flat: Identifiable {
+        let id: String          // full path: stable across expand and collapse
+        let entry: SizeEntry
+        let depth: Int
+        let maxBytes: Int64
+    }
+
+    private var rows: [Flat] {
+        var out: [Flat] = []
+        func walk(_ items: [SizeEntry], _ parent: String, _ depth: Int) {
+            let localMax = items.map(\.bytes).max() ?? 1
+            for e in items {
+                let path = (parent as NSString).appendingPathComponent(e.name)
+                out.append(Flat(id: path, entry: e, depth: depth, maxBytes: localMax))
+                if expanded.contains(path), let children = kids[path] {
+                    walk(children, path, depth + 1)
+                }
+            }
+        }
+        walk(entries, basePath, 0)
+        return out
+    }
 
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                ForEach(entries) { e in
-                    OutlineRow(entry: e,
-                               path: (basePath as NSString).appendingPathComponent(e.name),
-                               depth: 0, maxBytes: maxBytes,
-                               loadChildren: loadChildren, onReveal: onReveal,
+                ForEach(rows) { r in
+                    OutlineRow(entry: r.entry, path: r.id, depth: r.depth,
+                               maxBytes: r.maxBytes,
+                               isExpanded: expanded.contains(r.id),
+                               onToggle: { toggle(r.id) },
+                               onReveal: onReveal,
                                infoTarget: $infoTarget, trashTarget: $trashTarget)
                 }
             }
         }
     }
+
+    private func toggle(_ path: String) {
+        if expanded.contains(path) {
+            expanded.remove(path)
+            kids[path] = nil                       // collapsing frees the rows
+        } else {
+            if kids[path] == nil { kids[path] = loadChildren(path) }
+            expanded.insert(path)
+        }
+    }
 }
 
+/// A plain row. No recursion, no per-row state, no child loading — the list above owns all
+/// three, so this only draws.
 private struct OutlineRow: View {
     let entry: SizeEntry
     let path: String
     let depth: Int
     let maxBytes: Int64
-    let loadChildren: (String) -> [SizeEntry]
+    let isExpanded: Bool
+    let onToggle: () -> Void
     let onReveal: (String) -> Void
     @Binding var infoTarget: RowInfo?
     @Binding var trashTarget: RowInfo?
 
-    @State private var expanded = false
-    @State private var kids: [SizeEntry] = []
     @State private var hover = false
     private var isFolder: Bool { entry.symbol == "folder.fill" }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: PC.s2) {
-                // indent grows with depth; the twisty only exists for folders
-                Color.clear.frame(width: CGFloat(depth) * 14, height: 1)
-                Button {
-                    toggle()
-                } label: {
-                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(isFolder ? PC.ink2 : .clear)
-                        .frame(width: 12)
-                }
-                .buttonStyle(.plain).disabled(!isFolder)
-
-                Image(systemName: entry.symbol).font(.system(size: 12))
-                    .foregroundStyle(entry.kind.color).frame(width: 15)
-                Text(entry.name).font(.pcBody).foregroundStyle(PC.ink).lineLimit(1)
-                Spacer(minLength: PC.s2)
-                if hover { IconButtonAction("magnifyingglass", help: "Reveal in Finder") { onReveal(path) } }
-                if entry.items > 0 {
-                    Text(Fmt.count(entry.items)).font(.pcNum).foregroundStyle(PC.meta)
-                        .frame(width: 58, alignment: .trailing)
-                }
-                Text(Fmt.bytes(entry.bytes)).font(.pcNum).foregroundStyle(PC.ink)
-                    .frame(width: 70, alignment: .trailing)
-                ProportionBar(fraction: Double(entry.bytes) / Double(max(maxBytes, 1)))
-                    .frame(width: 70, height: 4)
+        HStack(spacing: PC.s2) {
+            Color.clear.frame(width: CGFloat(depth) * 14, height: 1)
+            Button(action: onToggle) {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(isFolder ? PC.ink2 : .clear)
+                    .frame(width: 12)
             }
-            .padding(.horizontal, PC.gutter).padding(.vertical, 5)
-            .background(hover ? PC.fill1 : .clear)
-            .contentShape(Rectangle())
-            .onTapGesture(count: 2) { toggle() }
-            .onHover { hover = $0 }
-            .rowActions(RowInfo(path: path, name: entry.name, bytes: entry.bytes,
-                                items: entry.items, isFolder: isFolder),
-                        onOpen: isFolder ? { toggle() } : nil,
-                        infoTarget: $infoTarget, trashTarget: $trashTarget)
+            .buttonStyle(.plain).disabled(!isFolder)
 
-            if expanded {
-                ForEach(kids) { k in
-                    OutlineRow(entry: k,
-                               path: (path as NSString).appendingPathComponent(k.name),
-                               depth: depth + 1,
-                               maxBytes: kids.map(\.bytes).max() ?? 1,
-                               loadChildren: loadChildren, onReveal: onReveal,
-                               infoTarget: $infoTarget, trashTarget: $trashTarget)
-                }
+            Image(systemName: entry.symbol).font(.system(size: 12))
+                .foregroundStyle(entry.kind.color).frame(width: 15)
+            Text(entry.name).font(.pcBody).foregroundStyle(PC.ink).lineLimit(1)
+            Spacer(minLength: PC.s2)
+            if hover { IconButtonAction("magnifyingglass", help: "Reveal in Finder") { onReveal(path) } }
+            if entry.items > 0 {
+                Text(Fmt.count(entry.items)).font(.pcNum).foregroundStyle(PC.meta)
+                    .frame(width: 58, alignment: .trailing)
             }
+            Text(Fmt.bytes(entry.bytes)).font(.pcNum).foregroundStyle(PC.ink)
+                .frame(width: 70, alignment: .trailing)
+            ProportionBar(fraction: Double(entry.bytes) / Double(max(maxBytes, 1)))
+                .frame(width: 70, height: 4)
         }
-    }
-
-    private func toggle() {
-        guard isFolder else { return }
-        if !expanded && kids.isEmpty { kids = loadChildren(path) }   // load once, on demand
-        withAnimation(.easeOut(duration: 0.12)) { expanded.toggle() }
+        .padding(.horizontal, PC.gutter).padding(.vertical, 5)
+        .background(hover ? PC.fill1 : .clear)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { if isFolder { onToggle() } }
+        .onHover { hover = $0 }
+        .rowActions(RowInfo(path: path, name: entry.name, bytes: entry.bytes,
+                            items: entry.items, isFolder: isFolder),
+                    onOpen: isFolder ? onToggle : nil,
+                    infoTarget: $infoTarget, trashTarget: $trashTarget)
     }
 }
 
