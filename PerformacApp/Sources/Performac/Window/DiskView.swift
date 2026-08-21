@@ -22,6 +22,10 @@ struct DiskView: View {
     var crumbs: [(name: String, path: String)] = []
     var onOpen: (String) -> Void = { _ in }
     var onCrumb: (String) -> Void = { _ in }
+    var canGoBack: Bool = false
+    var canGoForward: Bool = false
+    var onBack: () -> Void = {}
+    var onForward: () -> Void = {}
     var mode: DiskViewMode = .outline
     var onMode: (DiskViewMode) -> Void = { _ in }
     var childrenOf: (String) -> [SizeEntry] = { _ in [] }
@@ -77,7 +81,18 @@ struct DiskView: View {
             .pcGlassChrome().pcHairline(.bottom)
 
             if !crumbs.isEmpty {
-                CrumbBar(crumbs: crumbs, onCrumb: onCrumb)
+                HStack(spacing: PC.s2) {
+                    HStack(spacing: 0) {
+                        Button(action: onBack) { Image(systemName: "chevron.left") }
+                            .disabled(!canGoBack).help("Back (Cmd-[, or the mouse's back button)")
+                        Button(action: onForward) { Image(systemName: "chevron.right") }
+                            .disabled(!canGoForward).help("Forward (Cmd-], or the mouse's forward button)")
+                    }
+                    .buttonStyle(.bordered).controlSize(.small)
+                    CrumbBar(crumbs: crumbs, onCrumb: onCrumb)
+                }
+                .padding(.leading, PC.stack)
+                .background(PC.canvas)
             }
             if scanning {
                 ScanProgress(files: scanFiles, bytes: scanBytes, elapsed: scanElapsed,
@@ -253,8 +268,7 @@ struct CrumbBar: View {
             }
             Spacer()
         }
-        .padding(.horizontal, PC.stack).padding(.vertical, PC.s2)
-        .background(PC.canvas).pcHairline(.bottom)
+        .padding(.trailing, PC.stack).padding(.vertical, PC.s2)
     }
 }
 

@@ -603,20 +603,52 @@ final class EngineStore: ObservableObject {
             }
     }
 
+    // MARK: browse history
+    //
+    // Real back/forward, so the mouse's side buttons and a two-finger swipe do what they do
+    // everywhere else. Going somewhere new pushes the current location and clears forward,
+    // the same rule a browser uses.
+    private var backStack: [String] = []
+    private var forwardStack: [String] = []
+    var canGoBack: Bool { !backStack.isEmpty }
+    var canGoForward: Bool { !forwardStack.isEmpty }
+
     /// Descend into a folder. Files and empty folders are not navigable.
     func browse(into name: String) {
-        let next = (browsePath as NSString).appendingPathComponent(name)
-        guard !childrenOf(next).isEmpty else { return }
-        browsePath = next
-        diskEntries = childrenOf(next)
+        navigate(to: (browsePath as NSString).appendingPathComponent(name))
     }
 
     /// Jump to any ancestor from the breadcrumb.
-    func browse(to path: String) {
+    func browse(to path: String) { navigate(to: path) }
+
+    private func navigate(to path: String) {
+        guard path != browsePath else { return }
         let kids = childrenOf(path)
         guard !kids.isEmpty else { return }
+        backStack.append(browsePath)
+        forwardStack.removeAll()
         browsePath = path
         diskEntries = kids
+    }
+
+    func goBack() {
+        guard let prev = backStack.popLast() else { return }
+        let kids = childrenOf(prev)
+        guard !kids.isEmpty else { return }
+        forwardStack.append(browsePath)
+        browsePath = prev
+        diskEntries = kids
+        objectWillChange.send()
+    }
+
+    func goForward() {
+        guard let next = forwardStack.popLast() else { return }
+        let kids = childrenOf(next)
+        guard !kids.isEmpty else { return }
+        backStack.append(browsePath)
+        browsePath = next
+        diskEntries = kids
+        objectWillChange.send()
     }
 
     /// Breadcrumb components from the scan root down to where we are.

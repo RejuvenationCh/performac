@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var engineDeps: LiveDeps?
     private var engineSampler: Sampler?
     private var metricsTimer: Timer?
+    private var navMonitor: Any?
     private var engineTasks: [Task<Void, Never>] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -31,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         installMainMenu()
         startMetricsTimer()
+        startNavigationMonitor()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         configureStatusButton()
 
@@ -143,6 +145,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         winMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         winMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         winMenu.addItem(.separator())
+        let back = NSMenuItem(title: "Back", action: #selector(navigateBack), keyEquivalent: "[")
+        back.keyEquivalentModifierMask = [.command]
+        back.target = self
+        winMenu.addItem(back)
+        let fwd = NSMenuItem(title: "Forward", action: #selector(navigateForward), keyEquivalent: "]")
+        fwd.keyEquivalentModifierMask = [.command]
+        fwd.target = self
+        winMenu.addItem(fwd)
+        winMenu.addItem(.separator())
         // Fill the screen but stay a normal window: menu bar visible, no Space switch,
         // no animation. Option-clicking the green button "zooms", which is close but
         // leaves gaps and toggles unpredictably; this is explicit.
@@ -169,6 +180,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         store.cancelDiskScan()
         for t in engineTasks { t.cancel() }
     }
+
+    /// The universal back/forward gestures, wired to the browse history.
+    ///
+    /// Two sources, because people reach for both: the mouse's side buttons (button 3 and 4,
+    /// which macOS reports as otherMouseDown) and a two-finger horizontal swipe on the
+    /// trackpad. Cmd-[ and Cmd-] are in the Window menu for the keyboard.
+    private func startNavigationMonitor() {
+        navMonitor = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown, .swipe]) { [weak self] event in
+            guard let self, self.window?.isKeyWindow == true else { return event }
+            switch event.type {
+            case .otherMouseDown:
+                // 3 = back, 4 = forward on every multi-button mouse that reports them
+                if event.buttonNumber == 3 { self.store.goBack(); return nil }
+                if event.buttonNumber == 4 { self.store.goForward(); return nil }
+            case .swipe:
+                // deltaX is +1 for a leftward (back) swipe on a natural-scrolling trackpad
+                if event.deltaX > 0 { self.store.goBack(); return nil }
+                if event.deltaX < 0 { self.store.goForward(); return nil }
+            default: break
+            }
+            return event
+        }
+    }
+
+    @objc private func navigateBack() { store.goBack() }
+    @objc private func navigateForward() { store.goForward() }
 
     /// Stats-style live readout. Two seconds is frequent enough to feel live and cheap
     /// enough to ignore: each sample is three kernel calls, no subprocess.
