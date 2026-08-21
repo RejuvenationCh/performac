@@ -100,6 +100,9 @@ struct MainWindow: View {
                     busy: store.trashing,
                     progress: store.trashProgress,
                     summary: store.lastTrashSummary,
+                    breakdowns: store.breakdowns,
+                    inspectingPaths: store.inspecting,
+                    onInspect: { store.inspectCache($0) },
                     onTrash: { store.trashSelected($0) })
                 case .duplicates: DuplicatesView(
                     groups: store.dupGroups,

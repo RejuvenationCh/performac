@@ -79,6 +79,30 @@ enum CleanCheck {
                     caches.sorted(by: SortState(key: .status, ascending: true)).map(\.name) == ["old", "big"])
         }
 
+        // ---- cache origins ----
+        // Every cleanable family must explain where its size comes from. "Cache" says
+        // nothing about whether losing it costs a second or an afternoon.
+        for id in ["gen-adobe", "resolve-cache", "premiere-media", "premiere-peaks",
+                   "gen-deriveddata", "gen-homebrew", "gen-logs", "lr-default", "gen-zen"] {
+            c.check("origin: \(id) explains itself", (CacheDetail.origin(forID: id) ?? "").count > 40)
+        }
+        c.check("origin: Adobe's names After Effects, which is where the size actually is",
+                CacheDetail.origin(forID: "gen-adobe")?.contains("After Effects") == true)
+        c.check("origin: Resolve's names how to clear it in-app",
+                CacheDetail.origin(forID: "resolve-cache")?.contains("Delete Render Cache") == true)
+
+        // a real directory is broken down largest-first, with counts
+        let bdRoot = NSTemporaryDirectory() + "pc-breakdown-\(UUID().uuidString)"
+        let big = bdRoot + "/big", small = bdRoot + "/small"
+        for d in [big, small] { try? FileManager.default.createDirectory(atPath: d, withIntermediateDirectories: true) }
+        for i in 0..<12 { FileManager.default.createFile(atPath: "\(big)/f\(i).aecache", contents: Data(repeating: 0x41, count: 200_000)) }
+        FileManager.default.createFile(atPath: "\(small)/one.bin", contents: Data(repeating: 0x42, count: 1000))
+        let b = CacheDetail.inspect(bdRoot)
+        c.check("breakdown: largest part first", b.parts.first?.name == "big")
+        c.check("breakdown: counts the files", b.parts.first?.files == 12)
+        c.check("breakdown: names the dominant extension", b.mainExtension == "aecache")
+        c.check("breakdown: an empty path yields nothing", CacheDetail.inspect(bdRoot + "/nope").parts.isEmpty)
+
         // ---- Trash card ----
         let cfg = Config.defaults
         c.check("trash: silent below the threshold",

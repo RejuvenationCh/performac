@@ -13,10 +13,18 @@ struct CleanView: View {
     var busy: Bool = false
     var progress: String = ""
     var summary: String? = nil
+    var breakdowns: [String: CacheBreakdown] = [:]
+    var inspectingPaths: Set<String> = []
+    var onInspect: (CacheEntry) -> Void = { _ in }
 
     init(caches: [CacheEntry] = Sample.caches, busy: Bool = false, progress: String = "",
-         summary: String? = nil, onTrash: @escaping ([CacheEntry]) -> Void = { _ in }) {
+         summary: String? = nil,
+         breakdowns: [String: CacheBreakdown] = [:],
+         inspectingPaths: Set<String> = [],
+         onInspect: @escaping (CacheEntry) -> Void = { _ in },
+         onTrash: @escaping ([CacheEntry]) -> Void = { _ in }) {
         self.busy = busy; self.progress = progress; self.summary = summary
+        self.breakdowns = breakdowns; self.inspectingPaths = inspectingPaths; self.onInspect = onInspect
         _caches = State(initialValue: caches)
         self.onTrash = onTrash
     }
@@ -73,7 +81,11 @@ struct CleanView: View {
                         // Sorted for display, but each row keeps a binding into the real
                         // array — sorting a list must never scramble which row a click hits.
                         ForEach(displayOrder, id: \.self) { i in
-                            CacheRow(entry: $caches[i], onRowTap: { shift in toggle(i, shift: shift) })
+                            CacheRow(entry: $caches[i],
+                                     onRowTap: { shift in toggle(i, shift: shift) },
+                                     breakdown: breakdowns[caches[i].path],
+                                     inspecting: inspectingPaths.contains(caches[i].path),
+                                     onInspect: { onInspect(caches[i]) })
                             Divider().overlay(PC.hairline)
                         }
                     }
@@ -120,7 +132,11 @@ struct CleanView: View {
 struct CacheRow: View {
     @Binding var entry: CacheEntry
     var onRowTap: (Bool) -> Void = { _ in }
+    var breakdown: CacheBreakdown? = nil
+    var inspecting: Bool = false
+    var onInspect: () -> Void = {}
     @State private var hover = false
+    @State private var expanded = false
     var body: some View {
         HStack(alignment: .top, spacing: PC.gutter) {
             if entry.cleanable {
@@ -146,6 +162,16 @@ struct CacheRow: View {
                  tint: entry.safe ? PC.green : PC.amber,
                  soft: entry.safe ? PC.greenSoft : PC.amberSoft)
                 .frame(width: 96, alignment: .leading)
+            Button {
+                expanded.toggle()
+                if expanded { onInspect() }
+            } label: {
+                Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(hover || expanded ? PC.ink2 : PC.meta.opacity(0.5))
+                    .frame(width: 14)
+            }
+            .buttonStyle(.plain).help("Where this size comes from")
         }
         .padding(.horizontal, PC.gutter).padding(.vertical, PC.s2 + 1)
         .background(entry.selected ? PC.fill2 : (hover ? PC.fill1.opacity(0.6) : .clear))
@@ -157,6 +183,48 @@ struct CacheRow: View {
         .onHover { hover = $0 }
         .help(entry.cleanable ? "Click to select. Shift-click to select a range."
                               : "Not on the cleaner's allowlist — Performac will not trash this.")
+
+        if expanded { detail }
+    }
+
+    /// What the size is made of, and what refills it.
+    @ViewBuilder private var detail: some View {
+        VStack(alignment: .leading, spacing: PC.s2) {
+            if let origin = CacheDetail.origin(forID: entry.cacheID) {
+                Text(origin).font(.pcSmall).foregroundStyle(PC.ink2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if inspecting {
+                HStack(spacing: PC.s2) {
+                    ProgressView().controlSize(.small).scaleEffect(0.6)
+                    Text("Measuring what is inside…").font(.pcSmall).foregroundStyle(PC.meta)
+                }
+            } else if let b = breakdown {
+                if b.parts.isEmpty {
+                    Text("Nothing inside it right now.").font(.pcSmall).foregroundStyle(PC.meta)
+                } else {
+                    ForEach(b.parts) { part in
+                        HStack(spacing: PC.s2) {
+                            Text(part.name).font(.pcSmall).foregroundStyle(PC.ink).lineLimit(1)
+                            Spacer(minLength: PC.s2)
+                            if part.files > 0 {
+                                Text("\(Fmt.count(part.files)) files")
+                                    .font(.pcNum).foregroundStyle(PC.meta)
+                            }
+                            Text(Fmt.bytes(part.bytes)).font(.pcNum).foregroundStyle(PC.ink)
+                                .frame(width: 70, alignment: .trailing)
+                        }
+                    }
+                    if let ext = b.mainExtension {
+                        Text("Mostly .\(ext) files.").font(.pcSmall).foregroundStyle(PC.meta)
+                    }
+                }
+            }
+        }
+        .padding(.leading, PC.stack + PC.gutter).padding(.trailing, PC.gutter)
+        .padding(.vertical, PC.s2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PC.fill1.opacity(0.5))
     }
 }
 

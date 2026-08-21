@@ -145,6 +145,7 @@ final class EngineStore: ObservableObject {
                 safe: policy.safe,
                 why: policy.consequence,
                 path: path,
+                cacheID: id,
                 cleanable: policy.cleanable,
                 contentsOnly: policy.contentsOnly))
         }
@@ -482,6 +483,26 @@ final class EngineStore: ObservableObject {
         Task.detached(priority: .utility) {
             let refreshed = Uninstaller.withSizes(Uninstaller.listApps())
             await MainActor.run { [weak self] in self?.apps = refreshed }
+        }
+    }
+
+    // MARK: cache breakdown
+
+    @Published var breakdowns: [String: CacheBreakdown] = [:]
+    @Published var inspecting: Set<String> = []
+
+    /// Walked on demand and cached, because inspecting a quarter of a million files is not
+    /// something to do for every row on the chance the user expands one.
+    func inspectCache(_ entry: CacheEntry) {
+        let key = entry.path
+        guard breakdowns[key] == nil, !inspecting.contains(key) else { return }
+        inspecting.insert(key)
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let b = CacheDetail.inspect(key)
+            await MainActor.run {
+                self?.breakdowns[key] = b
+                self?.inspecting.remove(key)
+            }
         }
     }
 
