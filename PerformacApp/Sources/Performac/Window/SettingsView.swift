@@ -5,8 +5,8 @@ import AppKit
 struct SettingsView: View {
     @State private var launchAtLogin = false
     @State private var showInMenuBar = true
-    @State private var menuBarShows: String
-    var onMenuBar: (String) -> Void = { _ in }
+    @State private var menuBarOn: Set<String>
+    var onMenuBarItem: (MenuBarItem, Bool) -> Void = { _, _ in }
     @State private var staleDays: Int
     @State private var weeksLeft: Int
     @State private var cycles: Int
@@ -17,11 +17,11 @@ struct SettingsView: View {
     var onSave: (String, JSONValue) -> Void = { _, _ in }
 
     init(config: Config = .defaults, fdaGranted: Bool = false,
-         menuBarMode: String = "metrics",
-         onMenuBar: @escaping (String) -> Void = { _ in },
+         menuBarItems: [MenuBarItem] = MenuBarItem.defaults,
+         onMenuBarItem: @escaping (MenuBarItem, Bool) -> Void = { _, _ in },
          onSave: @escaping (String, JSONValue) -> Void = { _, _ in }) {
-        _menuBarShows = State(initialValue: menuBarMode)
-        self.onMenuBar = onMenuBar
+        _menuBarOn = State(initialValue: Set(menuBarItems.map(\.rawValue)))
+        self.onMenuBarItem = onMenuBarItem
         _staleDays = State(initialValue: config.cacheRules.staleDays)
         _weeksLeft = State(initialValue: config.storage.warnWeeksLeft)
         _cycles = State(initialValue: config.drive.cycles24h)
@@ -57,14 +57,20 @@ struct SettingsView: View {
                         Divider().overlay(PC.hairline)
                         Row("Show in menu bar") { Toggle("", isOn: $showInMenuBar).labelsHidden() }
                         Divider().overlay(PC.hairline)
-                        Row("Menu bar shows") {
-                            Picker("", selection: Binding(get: { menuBarShows },
-                                                          set: { menuBarShows = $0; onMenuBar($0) })) {
-                                Text("Live CPU and memory").tag("metrics")
-                                Text("Worst finding").tag("finding")
-                                Text("Free space").tag("free")
-                            }.labelsHidden().frame(width: 180)
+                    }
+                    SettingsGroup(header: "Menu bar readouts") {
+                        ForEach(Array(MenuBarItem.allCases.enumerated()), id: \.element.id) { i, item in
+                            if i > 0 { Divider().overlay(PC.hairline) }
+                            Row(item.label) {
+                                Toggle("", isOn: Binding(
+                                    get: { menuBarOn.contains(item.rawValue) },
+                                    set: { on in
+                                        if on { menuBarOn.insert(item.rawValue) } else { menuBarOn.remove(item.rawValue) }
+                                        onMenuBarItem(item, on)
+                                    })).labelsHidden()
+                            }
                         }
+                        Note("Each readout adds to the menu bar text. Network shows download and upload rates.")
                     }
                     SettingsGroup(header: "Thresholds") {
                         Stepper2("Warn when a cache is unused for", $staleDays, "days")

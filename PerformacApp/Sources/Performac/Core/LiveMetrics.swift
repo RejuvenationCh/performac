@@ -5,25 +5,89 @@
 // drive a menu bar that updates every couple of seconds.
 import Darwin
 import Foundation
+import IOKit.ps
 
 struct Metrics: Sendable, Equatable {
     var cpuPercent: Double = 0
     var memUsedGb: Double = 0
     var memTotalGb: Double = 0
     var freeGb: Double = 0
+    var totalGb: Double = 0
     var thermal: String = "Normal"
+    var netDownBps: Double = 0
+    var netUpBps: Double = 0
+    var batteryPercent: Int = -1        // -1 = no battery
+    var batteryCharging = false
     var memPercent: Double { memTotalGb > 0 ? memUsedGb / memTotalGb * 100 : 0 }
+    var diskUsedPercent: Double { totalGb > 0 ? (totalGb - freeGb) / totalGb * 100 : 0 }
 }
 
 final class LiveMetrics: @unchecked Sendable {
     static let shared = LiveMetrics()
     /// CPU is a rate, so it needs the previous tick counts to compare against.
     private var prevTicks: (user: UInt64, sys: UInt64, idle: UInt64, nice: UInt64)?
+    /// Network is a rate too: bytes counters plus the moment they were read.
+    private var prevNet: (inBytes: UInt64, outBytes: UInt64, at: Date)?
     private let lock = NSLock()
 
     func sample() -> Metrics {
-        Metrics(cpuPercent: cpu(), memUsedGb: memory().used, memTotalGb: memory().total,
-                freeGb: freeSpace(), thermal: thermalLevel())
+        let mem = memory()
+        let disk = space()
+        let net = network()
+        let bat = battery()
+        return Metrics(cpuPercent: cpu(), memUsedGb: mem.used, memTotalGb: mem.total,
+                       freeGb: disk.free, totalGb: disk.total, thermal: thermalLevel(),
+                       netDownBps: net.down, netUpBps: net.up,
+                       batteryPercent: bat.percent, batteryCharging: bat.charging)
+    }
+
+    /// Throughput across every physical interface, from the kernel's byte counters.
+    /// Loopback and virtual interfaces are excluded or the numbers double-count.
+    func network() -> (down: Double, up: Double) {
+        var head: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&head) == 0, let start = head else { return (0, 0) }
+        defer { freeifaddrs(head) }
+        var inB: UInt64 = 0, outB: UInt64 = 0
+        var p: UnsafeMutablePointer<ifaddrs>? = start
+        while let cur = p {
+            defer { p = cur.pointee.ifa_next }
+            let name = String(cString: cur.pointee.ifa_name)
+            guard cur.pointee.ifa_addr?.pointee.sa_family == UInt8(AF_LINK),
+                  name.hasPrefix("en") || name.hasPrefix("pdp_ip") else { continue }
+            guard let d = cur.pointee.ifa_data?.assumingMemoryBound(to: if_data.self) else { continue }
+            inB += UInt64(d.pointee.ifi_ibytes)
+            outB += UInt64(d.pointee.ifi_obytes)
+        }
+        lock.lock(); defer { lock.unlock() }
+        let now = Date()
+        defer { prevNet = (inB, outB, now) }
+        guard let prev = prevNet else { return (0, 0) }
+        let dt = now.timeIntervalSince(prev.at)
+        guard dt > 0.05 else { return (0, 0) }
+        // counters wrap and interfaces come and go; a negative delta means reset, not traffic
+        let dIn = inB >= prev.inBytes ? Double(inB - prev.inBytes) : 0
+        let dOut = outB >= prev.outBytes ? Double(outB - prev.outBytes) : 0
+        return (dIn / dt, dOut / dt)
+    }
+
+    func battery() -> (percent: Int, charging: Bool) {
+        guard let blob = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+              let list = IOPSCopyPowerSourcesList(blob)?.takeRetainedValue() as? [CFTypeRef],
+              let src = list.first,
+              let d = IOPSGetPowerSourceDescription(blob, src)?.takeUnretainedValue() as? [String: Any]
+        else { return (-1, false) }
+        let cur = d[kIOPSCurrentCapacityKey] as? Int ?? 0
+        let max = d[kIOPSMaxCapacityKey] as? Int ?? 100
+        let charging = (d[kIOPSIsChargingKey] as? Bool) ?? false
+        return (max > 0 ? Int(Double(cur) / Double(max) * 100) : -1, charging)
+    }
+
+    func space() -> (free: Double, total: Double) {
+        var fs = statfs()
+        guard statfs("/System/Volumes/Data", &fs) == 0 else { return (0, 0) }
+        let unit = Double(fs.f_bsize)
+        return (Double(fs.f_bavail) * unit / 1_073_741_824,
+                Double(fs.f_blocks) * unit / 1_073_741_824)
     }
 
     /// Busy fraction between this call and the last one, across all cores.
@@ -69,12 +133,6 @@ final class LiveMetrics: @unchecked Sendable {
         let wired = Double(stats.wire_count) * page
         let compressed = Double(stats.compressor_page_count) * page
         return ((active + wired + compressed) / 1_073_741_824, total)
-    }
-
-    func freeSpace() -> Double {
-        var fs = statfs()
-        guard statfs("/System/Volumes/Data", &fs) == 0 else { return 0 }
-        return Double(fs.f_bavail) * Double(fs.f_bsize) / 1_073_741_824
     }
 
     /// Apple Silicon exposes no unprivileged temperature, so report pressure, not degrees.

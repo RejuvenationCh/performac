@@ -150,3 +150,32 @@ enum RightPanelMode: String, CaseIterable, Sendable {
     var label: String { self == .treemap ? "Treemap" : "Bubbles" }
     var symbol: String { self == .treemap ? "square.grid.2x2" : "circle.circle" }
 }
+
+
+/// What the menu bar can display. Each is independently toggleable, RunCat/Stats style.
+enum MenuBarItem: String, CaseIterable, Sendable, Identifiable {
+    case cpu, memory, disk, network, battery, finding
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .cpu: "CPU usage"
+        case .memory: "Memory pressure"
+        case .disk: "Storage used"
+        case .network: "Network speed"
+        case .battery: "Battery"
+        case .finding: "Worst finding"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .cpu: "cpu"
+        case .memory: "memorychip"
+        case .disk: "internaldrive"
+        case .network: "arrow.up.arrow.down"
+        case .battery: "battery.100"
+        case .finding: "exclamationmark.triangle"
+        }
+    }
+    /// Default set matches what a diagnostic bar is usually for.
+    static let defaults: [MenuBarItem] = [.cpu, .memory]
+}

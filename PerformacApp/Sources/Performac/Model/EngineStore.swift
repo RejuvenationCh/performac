@@ -447,12 +447,20 @@ final class EngineStore: ObservableObject {
         return out
     }
 
-    var menuBarMode: String {
-        getSetting(db, "menuBarShows")?.objectVal?["mode"]?.stringVal ?? "metrics"
+    /// Which readouts the menu bar shows, in a fixed display order.
+    var menuBarItems: [MenuBarItem] {
+        guard let raw = getSetting(db, "menuBarItems")?.objectVal?["items"]?.arrayVal else {
+            return MenuBarItem.defaults
+        }
+        let on = Set(raw.compactMap { $0.stringVal })
+        return MenuBarItem.allCases.filter { on.contains($0.rawValue) }
     }
 
-    func setMenuBarMode(_ m: String) {
-        setSetting(db, "menuBarShows", JSONValue.from(["mode": m]))
+    func setMenuBarItem(_ item: MenuBarItem, _ on: Bool) {
+        var current = Set(menuBarItems.map(\.rawValue))
+        if on { current.insert(item.rawValue) } else { current.remove(item.rawValue) }
+        setSetting(db, "menuBarItems", JSONValue.from(["items": Array(current)]))
+        objectWillChange.send()
     }
 
     func setDiskViewMode(_ m: DiskViewMode) {

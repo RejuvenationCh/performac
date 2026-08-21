@@ -168,32 +168,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         metricsTimer = t
     }
 
-    /// What the menu bar shows, per the Settings picker: the live numbers, or the worst
-    /// finding, or just free space.
+    /// Compose the title from whichever readouts are enabled, in a fixed order.
     private func updateStatusTitle() {
         guard let b = statusItem?.button else { return }
         let m = store.metrics
-        let mode = getSetting(store.db, "menuBarShows")?.objectVal?["mode"]?.stringVal ?? "metrics"
+        let items = store.menuBarItems
         let worst = store.worst
 
-        switch mode {
-        case "finding":
+        var parts: [String] = []
+        for item in items {
+            switch item {
+            case .cpu:     parts.append(String(format: "C %.0f%%", m.cpuPercent))
+            case .memory:  parts.append(String(format: "M %.0f%%", m.memPercent))
+            case .disk:    parts.append(String(format: "D %.0f%%", m.diskUsedPercent))
+            case .network: parts.append(rate(m.netDownBps, "\u{2193}") + " " + rate(m.netUpBps, "\u{2191}"))
+            case .battery: if m.batteryPercent >= 0 {
+                               parts.append("B \(m.batteryPercent)%" + (m.batteryCharging ? "+" : ""))
+                           }
+            case .finding: if let w = worst { parts.append(shortHeadline(w.headline)) }
+            }
+        }
+
+        // Nothing enabled, or nothing to say: fall back to a bare glyph so the item stays
+        // clickable rather than collapsing to zero width.
+        if parts.isEmpty {
             b.image = NSImage(systemSymbolName: worst == nil ? "gauge.with.dots.needle.33percent"
                                                              : worst!.severity.symbol,
                               accessibilityDescription: "Performac")
             b.image?.isTemplate = true
-            b.title = worst == nil ? "" : " " + shortHeadline(worst!.headline)
-        case "free":
+            b.title = ""
+        } else {
             b.image = nil
-            b.title = String(format: "%.0f GB", m.freeGb)
-        default:                                   // live metrics, the Stats-like default
-            b.image = nil
-            b.title = String(format: "%.0f%%  %.0f%%", m.cpuPercent, m.memPercent)
+            b.title = parts.joined(separator: "  ")
         }
         b.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-        b.toolTip = String(format: "CPU %.0f%%   Memory %.1f of %.0f GB   Free %.0f GB   %@",
-                           m.cpuPercent, m.memUsedGb, m.memTotalGb, m.freeGb, m.thermal)
+        b.toolTip = String(format: "CPU %.0f%%   Memory %.1f of %.0f GB   Disk %.0f%% used   Down %@   Up %@%@   %@",
+                           m.cpuPercent, m.memUsedGb, m.memTotalGb, m.diskUsedPercent,
+                           rate(m.netDownBps, ""), rate(m.netUpBps, ""),
+                           m.batteryPercent >= 0 ? "   Battery \(m.batteryPercent)%" : "",
+                           m.thermal)
             + (worst.map { "\n\n" + $0.headline } ?? "")
+    }
+
+    /// Menu bar width is precious: one significant figure, unit implied by magnitude.
+    private func rate(_ bps: Double, _ prefix: String) -> String {
+        let mb = bps / 1_048_576
+        if mb >= 1 { return String(format: "%@%.1fM", prefix, mb) }
+        let kb = bps / 1024
+        if kb >= 1 { return String(format: "%@%.0fK", prefix, kb) }
+        return prefix + "0"
     }
 
     /// Menu bar space is scarce: keep the first few words, never the whole sentence.

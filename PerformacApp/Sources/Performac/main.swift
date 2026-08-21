@@ -21,10 +21,14 @@ if CommandLine.arguments.count >= 4, CommandLine.arguments[1] == "parity" {
 if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "metrics" {
     let m = LiveMetrics.shared
     _ = m.cpu()                                  // prime the tick delta
+    _ = m.network()                              // rates need a previous reading
     try? await Task.sleep(for: .seconds(1))
     let s = m.sample()
-    print(String(format: "cpu %.1f%%  mem %.1f/%.1f GB (%.0f%%)  free %.1f GB  thermal %@",
-                 s.cpuPercent, s.memUsedGb, s.memTotalGb, s.memPercent, s.freeGb, s.thermal))
+    print(String(format: "cpu %.1f%%  mem %.1f/%.1f GB (%.0f%%)  disk %.0f%% used (%.1f free of %.0f)  net down %.0f KB/s up %.0f KB/s  battery %d%%%@  thermal %@",
+                 s.cpuPercent, s.memUsedGb, s.memTotalGb, s.memPercent,
+                 s.diskUsedPercent, s.freeGb, s.totalGb,
+                 s.netDownBps / 1024, s.netUpBps / 1024,
+                 s.batteryPercent, s.batteryCharging ? " (charging)" : "", s.thermal))
     exit(0)
 }
 if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "check" {
