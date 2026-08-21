@@ -390,17 +390,33 @@ final class EngineStore: ObservableObject {
     /// Trash one item chosen in the browser. The allowlist is that single path, so this can
     /// never widen to anything the user did not point at.
     func trashPath(_ path: String) {
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
-        let r = Trash.moveToTrash([path], allowed: [path], db: db, now: now)
-        lastTrashSummary = r.first?.ok == true
-            ? "Moved \((path as NSString).lastPathComponent) to the Trash."
-            : "Could not move it: \(r.first?.message ?? "unknown error")"
-        // drop it from the current listing so the row does not linger as a ghost
-        if r.first?.ok == true {
-            let name = (path as NSString).lastPathComponent
-            diskEntries.removeAll { $0.name == name }
-            db.prepare("DELETE FROM scan_entries WHERE parent = ? AND name = ?")
-                .run([.text((path as NSString).deletingLastPathComponent), .text(name)])
+        guard !trashing else { return }
+        let name = (path as NSString).lastPathComponent
+        let parent = (path as NSString).deletingLastPathComponent
+        trashing = true
+        trashProgress = "Moving \(name)…"
+        let db = self.db
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let now = Int64(Date().timeIntervalSince1970 * 1000)
+            let r = Trash.moveToTrash([path], allowed: [path], db: db, now: now)
+            let good = r.first?.ok == true
+            let msg = r.first?.message ?? "unknown error"
+            await MainActor.run {
+                guard let self else { return }
+                self.trashing = false
+                self.trashProgress = ""
+                self.lastTrashSummary = good
+                    ? "Moved \(name) to the Trash."
+                    : "Could not move it: \(msg)"
+                if good {
+                    // drop it from the listing so the row does not linger as a ghost
+                    self.diskEntries.removeAll { $0.name == name }
+                    db.prepare("DELETE FROM scan_entries WHERE parent = ? AND name = ?")
+                        .run([.text(parent), .text(name)])
+                }
+                trashTick(db)
+                self.refreshFromDatabase()
+            }
         }
     }
 
@@ -455,35 +471,87 @@ final class EngineStore: ObservableObject {
     /// exactly what is on screen, so nothing outside the shown set can be removed.
     func uninstallSelected() {
         guard let app = selectedApp, appRefusal == nil else { return }
-        let chosen = leftovers.filter(\.selected).map(\.path)
-        let paths = [app.path] + chosen
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
-        let results = Trash.moveToTrash(paths, allowed: Set(paths), db: db, now: now)
-        let ok = results.filter(\.ok).count
-        lastTrashSummary = "Moved \(ok) of \(paths.count) items to the Trash."
-        apps = Uninstaller.installedApps()
+        let chosen = leftovers.filter(\.selected)
+        var items = [(name: app.name, path: app.path)]
+        items += chosen.map { (name: ($0.path as NSString).lastPathComponent, path: $0.path) }
+        runTrash(items, allowed: Set(items.map(\.path)))
         selectedApp = nil
         leftovers = []
+        Task.detached(priority: .utility) {
+            let refreshed = Uninstaller.withSizes(Uninstaller.listApps())
+            await MainActor.run { [weak self] in self?.apps = refreshed }
+        }
     }
 
     // MARK: the cleaner — the only place the app removes anything
 
     @Published var lastTrashSummary: String? = nil
+    /// Trashing is not instant. The Adobe cache alone is ~250,000 files, and trashItem walks
+    /// every one to record it for Put Back. Running that on the main actor froze the window
+    /// until it finished, which read as "nothing happened, then everything happened".
+    @Published var trashing = false
+    @Published var trashProgress: String = ""
 
     /// Trash the selected cache entries. Allowlist is rebuilt here from the entries the UI
     /// is actually offering, so the set can never be widened by the caller.
     func trashSelected(_ selected: [CacheEntry]) {
         let allowed = Set(cacheEntries.filter(\.cleanable)
             .map { ($0.path as NSString).expandingTildeInPath })
-        let paths = selected.filter(\.cleanable).map { ($0.path as NSString).expandingTildeInPath }
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
-        let results = Trash.moveToTrash(paths, allowed: allowed, db: db, now: now)
-        let ok = results.filter(\.ok).count
-        let failed = results.count - ok
-        lastTrashSummary = failed == 0
-            ? "Moved \(ok) item\(ok == 1 ? "" : "s") to the Trash."
-            : "Moved \(ok), could not move \(failed) — see Trash history."
-        refreshCacheEntries()
+        let items = selected.filter(\.cleanable)
+            .map { (name: $0.name, path: ($0.path as NSString).expandingTildeInPath) }
+        runTrash(items, allowed: allowed)
+    }
+
+    /// Re-measure the paths just trashed and write fresh samples.
+    ///
+    /// This is what made trashing look slow. The move itself takes about 0.02 s — it is a
+    /// rename. But the Clean list reads cache_samples, which only cacheTick writes, and that
+    /// runs hourly. So the row sat there at its old size long after the files were gone, and
+    /// the Trash card kept its old total. Nothing was slow; the screen was just stale.
+    nonisolated private static func remeasure(_ db: DB, _ paths: [String], _ now: Int64) {
+        for path in paths {
+            let m = measure(path)                     // a trashed path measures 0
+            let id = db.prepare("SELECT cache_id FROM cache_samples WHERE path = ? ORDER BY ts DESC LIMIT 1")
+                .get([.text(path)])?["cache_id"]?.stringVal
+            guard let id else { continue }
+            db.prepare("INSERT INTO cache_samples(ts, cache_id, path, size_mb, newest_mtime, file_count) VALUES(?,?,?,?,?,?)")
+                .run([.int(now), .text(id), .text(path), .int(Int64(m.sizeMb)),
+                      m.newestMtime.map { SQLValue.int($0) } ?? .null, .int(Int64(m.fileCount))])
+        }
+    }
+
+    /// Shared by every bulk trash. Off the main actor, one item at a time so the progress
+    /// line names what is actually being moved rather than spinning anonymously.
+    private func runTrash(_ items: [(name: String, path: String)], allowed: Set<String>) {
+        guard !trashing, !items.isEmpty else { return }
+        trashing = true
+        trashProgress = "Preparing…"
+        let db = self.db
+        Task.detached(priority: .userInitiated) { [weak self] in
+            var ok = 0, failed = 0
+            for (i, item) in items.enumerated() {
+                await MainActor.run {
+                    self?.trashProgress = "Moving \(item.name) (\(i + 1) of \(items.count))…"
+                }
+                let now = Int64(Date().timeIntervalSince1970 * 1000)
+                let r = Trash.moveToTrash([item.path], allowed: allowed, db: db, now: now)
+                if r.first?.ok == true { ok += 1 } else { failed += 1 }
+            }
+            // fresh sizes before the UI reads them again
+            Self.remeasure(db, items.map(\.path), Int64(Date().timeIntervalSince1970 * 1000))
+            let done = ok, bad = failed
+            await MainActor.run {
+                guard let self else { return }
+                self.trashing = false
+                self.trashProgress = ""
+                self.lastTrashSummary = bad == 0
+                    ? "Moved \(done) item\(done == 1 ? "" : "s") to the Trash."
+                    : "Moved \(done), could not move \(bad) — see Trash history."
+                self.refreshCacheEntries()
+                trashTick(self.db)          // the Trash card should reflect this immediately
+                self.refreshFromDatabase()
+            }
+        }
     }
 
     // MARK: settings write path (validateSetting against the DEFAULTS template)

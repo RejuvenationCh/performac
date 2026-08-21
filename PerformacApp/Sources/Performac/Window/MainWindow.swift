@@ -95,7 +95,12 @@ struct MainWindow: View {
                     onSelect: { store.selectAppAsync($0) },
                     onToggle: { i, v in if store.leftovers.indices.contains(i) { store.leftovers[i].selected = v } },
                     onUninstall: { store.uninstallSelected() })
-                case .clean: CleanView(caches: store.cacheEntries, onTrash: { store.trashSelected($0) })
+                case .clean: CleanView(
+                    caches: store.cacheEntries,
+                    busy: store.trashing,
+                    progress: store.trashProgress,
+                    summary: store.lastTrashSummary,
+                    onTrash: { store.trashSelected($0) })
                 case .duplicates: DuplicatesView(
                     groups: store.dupGroups,
                     scanning: store.dupScanning,

@@ -9,8 +9,13 @@ struct CleanView: View {
     @State private var lastToggled: Int? = nil
 
     private let onTrash: ([CacheEntry]) -> Void
+    var busy: Bool = false
+    var progress: String = ""
+    var summary: String? = nil
 
-    init(caches: [CacheEntry] = Sample.caches, onTrash: @escaping ([CacheEntry]) -> Void = { _ in }) {
+    init(caches: [CacheEntry] = Sample.caches, busy: Bool = false, progress: String = "",
+         summary: String? = nil, onTrash: @escaping ([CacheEntry]) -> Void = { _ in }) {
+        self.busy = busy; self.progress = progress; self.summary = summary
         _caches = State(initialValue: caches)
         self.onTrash = onTrash
     }
@@ -64,16 +69,25 @@ struct CleanView: View {
 
                 HStack {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("\(selected.count) selected — \(Fmt.bytes(selectedBytes))")
-                            .font(.pcTitle).foregroundStyle(PC.ink)
-                        Text("Everything goes to the Trash and stays recoverable.")
-                            .font(.pcSmall).foregroundStyle(PC.meta)
+                        if busy {
+                            HStack(spacing: PC.s2) {
+                                ProgressView().controlSize(.small).scaleEffect(0.7)
+                                Text(progress).font(.pcTitle).foregroundStyle(PC.ink)
+                            }
+                            Text("Large caches hold hundreds of thousands of files, so this takes a moment.")
+                                .font(.pcSmall).foregroundStyle(PC.meta)
+                        } else {
+                            Text("\(selected.count) selected — \(Fmt.bytes(selectedBytes))")
+                                .font(.pcTitle).foregroundStyle(PC.ink)
+                            Text(summary ?? "Everything goes to the Trash and stays recoverable.")
+                                .font(.pcSmall).foregroundStyle(PC.meta)
+                        }
                     }
                     Spacer()
                     // DESIGN.md: this label is fixed. Never "Clean", "Optimize", or "Free up".
                     Button("Move to Trash") { confirming = true }
                         .buttonStyle(.borderedProminent)
-                        .disabled(selected.isEmpty)
+                        .disabled(selected.isEmpty || busy)
                 }
                 .padding(.horizontal, PC.stack).padding(.vertical, PC.gutter)
                 .background(PC.surface).pcHairline(.top)
