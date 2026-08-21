@@ -97,6 +97,11 @@ struct DigestView: View {
     var updatedAt: Date? = nil
     var busy: Bool = false
     var onRefresh: () -> Void = {}
+    var coachIntro: String? = nil
+    var coachAt: Date? = nil
+    var coachBusy: Bool = false
+    var coachConfigured: Bool = false
+    var onCoach: () -> Void = {}
     var trendPoints: [Double] = []
     var trendWindow: String = ""
     var trendNote: String = ""
@@ -122,8 +127,22 @@ struct DigestView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: PC.gutter) {
                     VStack(alignment: .leading, spacing: PC.s2) {
-                        SectionHeader(text: "Summary")
-                        Text(summary)
+                        HStack {
+                            SectionHeader(text: "Summary")
+                            Spacer()
+                            if coachConfigured {
+                                if coachBusy {
+                                    ProgressView().controlSize(.small).scaleEffect(0.6)
+                                } else {
+                                    Button("Rewrite", action: onCoach)
+                                        .buttonStyle(.link).font(.pcLabel)
+                                        .help("Ask Gemini to summarise the findings below")
+                                }
+                            }
+                        }
+                        // Gemini's paragraph when configured and available; otherwise the
+                        // templated one. Either way it only restates the cards.
+                        Text(coachIntro ?? summary)
                             .font(.pcBody).foregroundStyle(PC.ink2).lineSpacing(3)
                             .frame(maxWidth: 620, alignment: .leading)
                     }

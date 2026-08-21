@@ -50,6 +50,7 @@ final class EngineStore: ObservableObject {
         let path = db == nil ? copyV1DatabaseIfNeeded(v1Path: V1_DATABASE_PATH) : nil
         self.db = db ?? DB(path: path!)
         loadPersistedScan()   // reopening shows the last result, labelled as a snapshot
+        loadCoachIntro()
     }
 
     // MARK: worst finding for the menu bar (red > amber > info; empty → quiet)
@@ -296,6 +297,43 @@ final class EngineStore: ObservableObject {
             trend = Trend(points: series, window: windowText,
                           note: String(format: "Losing about %.1f GB a week. At this rate roughly %.0f weeks of headroom.", perWeek, weeksLeft),
                           hasEnoughHistory: true)
+        }
+    }
+
+    // MARK: Digest coach intro (Gemini, opt-in)
+
+    @Published var coachIntro: String? = nil
+    @Published var coachAt: Date? = nil
+    @Published var coachBusy = false
+    var coachConfigured: Bool { CoachIntro.isConfigured }
+
+    func loadCoachIntro() {
+        guard let o = getSetting(db, "coachIntro")?.objectVal else { return }
+        coachIntro = o["text"]?.stringVal
+        coachAt = o["ts"]?.doubleVal.map { Date(timeIntervalSince1970: $0 / 1000) }
+    }
+
+    /// Only severity, headline and why-line leave the machine — never paths. See CoachIntro.
+    func refreshCoachIntro() {
+        guard CoachIntro.isConfigured, !coachBusy else { return }
+        coachBusy = true
+        let rows = db.prepare("SELECT severity, headline, why FROM findings ORDER BY id").all()
+            .map { (severity: $0["severity"]?.stringVal ?? "info",
+                    headline: $0["headline"]?.stringVal ?? "",
+                    why: $0["why"]?.stringVal ?? "") }
+        let prompt = CoachIntro.buildPrompt(rows)
+        Task { [weak self] in
+            let text = await CoachIntro.fetch(prompt: prompt)
+            await MainActor.run {
+                guard let self else { return }
+                self.coachBusy = false
+                guard let text else { return }          // failure keeps the previous text
+                let ts = Date()
+                self.coachIntro = text
+                self.coachAt = ts
+                setSetting(self.db, "coachIntro",
+                           JSONValue.from(["text": text, "ts": ts.timeIntervalSince1970 * 1000]))
+            }
         }
     }
 

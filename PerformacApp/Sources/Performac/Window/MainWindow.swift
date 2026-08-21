@@ -36,6 +36,11 @@ struct MainWindow: View {
                     updatedAt: store.findingsAt,
                     busy: store.refreshing,
                     onRefresh: { (NSApp.delegate as? AppDelegate)?.refreshNow() },
+                    coachIntro: store.coachIntro,
+                    coachAt: store.coachAt,
+                    coachBusy: store.coachBusy,
+                    coachConfigured: store.coachConfigured,
+                    onCoach: { store.refreshCoachIntro() },
                     trendPoints: store.trend.points,
                     trendWindow: store.trend.window,
                     trendNote: store.trend.note)
