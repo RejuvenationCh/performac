@@ -195,3 +195,28 @@ struct SectionHeader: View {
         Text(text.uppercased()).font(.pcLabel).tracking(0.6).foregroundStyle(PC.meta)
     }
 }
+
+
+/// Relative time that actually ticks. A static "just now" is still on screen ten minutes
+/// later, which is worse than no timestamp: it reads as current when it is not.
+enum Ago {
+    static func text(_ date: Date, now: Date = Date()) -> String {
+        let s = Int(now.timeIntervalSince(date))
+        if s < 1 { return "now" }
+        if s < 60 { return "\(s)s ago" }
+        if s < 3600 { return "\(s / 60)m \(s % 60)s ago" }
+        if s < 86_400 { return "\(s / 3600)h \(s % 3600 / 60)m ago" }
+        return "\(s / 86_400)d ago"
+    }
+}
+
+/// Re-renders once a second so the relative time is never stale on screen.
+struct TickingAgo: View {
+    let date: Date?
+    var prefix: String = ""
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { ctx in
+            Text(date.map { prefix + Ago.text($0, now: ctx.date) } ?? (prefix + "never"))
+        }
+    }
+}

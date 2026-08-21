@@ -28,6 +28,8 @@ struct DiskView: View {
     var browsePath: String = ""
     var onReveal: (String) -> Void = { _ in }
     var onTrashPath: (String) -> Void = { _ in }
+    var freeGb: Double = 0
+    var totalGb: Double = 0
     @State private var infoTarget: RowInfo? = nil
     @State private var trashTarget: RowInfo? = nil
     var rightMode: RightPanelMode = .treemap
@@ -65,7 +67,7 @@ struct DiskView: View {
                     }
                 }
                 .pickerStyle(.segmented).labelsHidden().frame(width: 150)
-                StorageBar(freeBytes: 70_866_000_000, totalBytes: 1_068_000_000_000)
+                StorageBar(freeBytes: Int64(freeGb * 1_073_741_824), totalBytes: Int64(totalGb * 1_073_741_824))
             }
             .padding(.horizontal, PC.stack).padding(.vertical, PC.gutter)
             .background(PC.surface).pcHairline(.bottom)
@@ -170,19 +172,12 @@ struct DiskView: View {
 /// a snapshot, and the app must never let a stale number pass as a current one.
 struct StaleBanner: View {
     let at: Int64
-    private var age: String {
-        let secs = Int(Date().timeIntervalSince1970 - Double(at) / 1000)
-        if secs < 90 { return "just now" }
-        if secs < 5400 { return "\(secs / 60) minutes ago" }
-        if secs < 172_800 { return "\(secs / 3600) hours ago" }
-        return "\(secs / 86_400) days ago"
-    }
     var body: some View {
         HStack(spacing: PC.s2) {
             Image(systemName: "clock.arrow.circlepath")
                 .font(.system(size: 12)).foregroundStyle(PC.amber)
-            Text("Showing the last scan from \(age) — not live.")
-                .font(.pcSmall).foregroundStyle(PC.ink2)
+            TickingAgo(date: Date(timeIntervalSince1970: Double(at) / 1000), prefix: "Last scan: ")
+                .font(.pcSmall).foregroundStyle(PC.ink2).monospacedDigit()
             Spacer()
         }
         .padding(.horizontal, PC.stack).padding(.vertical, PC.s2)

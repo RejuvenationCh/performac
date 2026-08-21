@@ -11,6 +11,7 @@ struct DuplicatesView: View {
     var onScan: () -> Void = {}
     var onCancel: () -> Void = {}
     var onDisappear: () -> Void = {}
+    var lastScanAt: Date? = nil
     private var recoverable: Int64 {
         groups.reduce(0) { $0 + $1.bytes * Int64(max($1.paths.count - 1, 0)) }
     }
@@ -19,7 +20,7 @@ struct DuplicatesView: View {
              subtitle: "Exact matches only — same file, byte for byte. \(groups.count) groups, \(Fmt.bytes(recoverable)) recoverable.",
              trailing: AnyView(
                 HStack(spacing: PC.gutter) {
-                    Text("Last scan: 3 hours ago").font(.pcSmall).foregroundStyle(PC.meta)
+                    TickingAgo(date: lastScanAt, prefix: "Last scan: ").font(.pcSmall).foregroundStyle(PC.meta).monospacedDigit()
                     if scanning {
                         Button("Cancel", action: onCancel).controlSize(.small)
                     } else {

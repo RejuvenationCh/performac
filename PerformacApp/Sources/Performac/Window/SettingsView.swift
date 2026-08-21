@@ -7,6 +7,7 @@ struct SettingsView: View {
     @State private var showInMenuBar = true
     @State private var menuBarOn: Set<String>
     var onMenuBarItem: (MenuBarItem, Bool) -> Void = { _, _ in }
+    let databaseSummary: String
     @State private var staleDays: Int
     @State private var weeksLeft: Int
     @State private var cycles: Int
@@ -18,9 +19,11 @@ struct SettingsView: View {
 
     init(config: Config = .defaults, fdaGranted: Bool = false,
          menuBarItems: [MenuBarItem] = MenuBarItem.defaults,
+         databaseSummary: String = "not measured",
          onMenuBarItem: @escaping (MenuBarItem, Bool) -> Void = { _, _ in },
          onSave: @escaping (String, JSONValue) -> Void = { _, _ in }) {
         _menuBarOn = State(initialValue: Set(menuBarItems.map(\.rawValue)))
+        self.databaseSummary = databaseSummary
         self.onMenuBarItem = onMenuBarItem
         _staleDays = State(initialValue: config.cacheRules.staleDays)
         _weeksLeft = State(initialValue: config.storage.warnWeeksLeft)
@@ -103,7 +106,7 @@ struct SettingsView: View {
                         Divider().overlay(PC.hairline)
                         Row("Database") {
                             HStack(spacing: PC.s2) {
-                                Text("6,820 samples · 14 MB").font(.pcNum).foregroundStyle(PC.meta)
+                                Text(databaseSummary).font(.pcNum).foregroundStyle(PC.meta)
                                 Button("Reveal in Finder") {}.controlSize(.small)
                             }
                         }

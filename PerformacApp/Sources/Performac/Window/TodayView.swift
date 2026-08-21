@@ -6,18 +6,17 @@ struct FreshnessBar: View {
     let at: Date?
     let busy: Bool
     let onRefresh: () -> Void
-    private var text: String {
-        guard let at else { return "Not measured yet" }
-        let s = Int(Date().timeIntervalSince(at))
-        if s < 45 { return "Updated just now" }
-        if s < 5400 { return "Updated \(s / 60) min ago" }
-        if s < 172_800 { return "Updated \(s / 3600) hours ago" }
-        return "Updated \(s / 86_400) days ago"
-    }
     var body: some View {
         HStack(spacing: PC.s2) {
             if busy { ProgressView().controlSize(.small).scaleEffect(0.7) }
-            Text(busy ? "Measuring…" : text).font(.pcSmall).foregroundStyle(PC.meta)
+            if busy {
+                Text("Measuring…").font(.pcSmall).foregroundStyle(PC.meta)
+            } else if at == nil {
+                Text("Not measured yet").font(.pcSmall).foregroundStyle(PC.meta)
+            } else {
+                TickingAgo(date: at, prefix: "Updated ")
+                    .font(.pcSmall).foregroundStyle(PC.meta).monospacedDigit()
+            }
             Button { onRefresh() } label: {
                 Label("Refresh", systemImage: "arrow.clockwise").font(.pcLabel)
             }
@@ -34,10 +33,11 @@ struct TodayView: View {
     var updatedAt: Date? = nil
     var busy: Bool = false
     var onRefresh: () -> Void = {}
+    var facts = EngineStore.QuietFacts()
     var body: some View {
         Page(title: "Today", subtitle: "Live view — drives, thermals, and anything time-sensitive.",
              trailing: AnyView(FreshnessBar(at: updatedAt, busy: busy, onRefresh: onRefresh))) {
-            if findings.isEmpty { QuietState() }
+            if findings.isEmpty { QuietState(facts: facts) }
             else {
                 ScrollView {
                     VStack(spacing: PC.gutter) {
@@ -52,6 +52,10 @@ struct TodayView: View {
 
 /// The app's most common state. It must look deliberate, never broken or unloaded.
 struct QuietState: View {
+    var facts = EngineStore.QuietFacts()
+    private var watchedText: String {
+        facts.watchingDays < 1 ? "less than a day" : "\(facts.watchingDays) day\(facts.watchingDays == 1 ? "" : "s")"
+    }
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
@@ -59,14 +63,24 @@ struct QuietState: View {
                 .font(.system(size: 44)).foregroundStyle(PC.green)
             Text("Nothing worth doing").font(.pcHeadline).foregroundStyle(PC.ink)
                 .padding(.top, PC.gutter)
-            Text("Performac has been watching for 6 days. Caches are in normal range,\ndrives are steady, free space is holding.")
+            Text("Performac has been watching for \(watchedText). Nothing has changed\nenough to be worth telling you about.")
                 .font(.pcBody).foregroundStyle(PC.ink2)
                 .multilineTextAlignment(.center).lineSpacing(2).padding(.top, PC.s1)
             HStack(spacing: PC.s2) {
-                QuietTile("Free space", "66 GB")
-                QuietTile("Largest cache", "29.8 GB")
-                QuietTile("Drives steady", "6 days")
-                QuietTile("Last scan", "2 hours ago")
+                QuietTile("Free space", String(format: "%.0f GB", facts.freeGb))
+                QuietTile("Largest cache", facts.largestCacheGb >= 0.1
+                          ? String(format: "%.1f GB", facts.largestCacheGb) : "none yet")
+                // Days since the last mount/unmount. No events ever seen means nothing has
+                // been plugged in while watching, which is not the same as "steady".
+                QuietTile("Drives quiet", facts.drivesQuietDays.map {
+                    $0 == 0 ? "today" : "\($0)d" } ?? "none seen")
+                QuietTile("Last scan", facts.lastScanAt == nil ? "never" : "")
+                    .overlay(alignment: .bottom) {
+                        if let d = facts.lastScanAt {
+                            TickingAgo(date: d).font(.pcNum).fontWeight(.medium)
+                                .foregroundStyle(PC.ink).padding(.bottom, 10)
+                        }
+                    }
             }
             .padding(.top, PC.stack + 4)
             Spacer()

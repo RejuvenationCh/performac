@@ -60,8 +60,12 @@ public struct ScanEntry: Sendable {
     public let files: Int
     public let bytes: Int64
     public let isDirectory: Bool
-    public init(path: String, files: Int, bytes: Int64, isDirectory: Bool) {
-        self.path = path; self.files = files; self.bytes = bytes; self.isDirectory = isDirectory
+    /// Newest modification time beneath this entry (or its own, for a file). Epoch ms,
+    /// 0 when unknown — the column sorts unknowns last rather than pretending they are 1970.
+    public let mtime: Int64
+    public init(path: String, files: Int, bytes: Int64, isDirectory: Bool, mtime: Int64 = 0) {
+        self.path = path; self.files = files; self.bytes = bytes
+        self.isDirectory = isDirectory; self.mtime = mtime
     }
     public var parent: String { (path as NSString).deletingLastPathComponent }
     public var name: String { (path as NSString).lastPathComponent }
@@ -152,7 +156,7 @@ public struct DiskScanner: Sendable {
                 slices.append(Array(batch[i ..< min(i + sliceLen, batch.count)]))
                 i += sliceLen
             }
-            var increments: [(String, String, Int64)] = []
+            var increments: [(String, String, Int64, Int64)] = []
             let lock = NSLock()
             DispatchQueue.concurrentPerform(iterations: slices.count) { idx in
                 let r = statSlice(slices[idx])
@@ -160,12 +164,16 @@ public struct DiskScanner: Sendable {
                 increments.append(contentsOf: r)
                 lock.unlock()
             }
-            for (dir, filePath, b) in increments {
+            for (dir, filePath, b, mt) in increments {
                 let cur = totals[dir] ?? (0, 0)
                 totals[dir] = (cur.files + 1, cur.bytes + b)
                 filesScanned += 1
                 bytes += b
-                if b >= largeFileMin { largeFiles.append(ScanEntry(path: filePath, files: 0, bytes: b, isDirectory: false)) }
+                newest[dir] = max(newest[dir] ?? 0, mt)      // folder date = newest thing in it
+                if b >= largeFileMin {
+                    largeFiles.append(ScanEntry(path: filePath, files: 0, bytes: b,
+                                                isDirectory: false, mtime: mt))
+                }
             }
             emitProgress(force: false)
         }
@@ -183,6 +191,7 @@ public struct DiskScanner: Sendable {
         }
 
         var largeFiles: [ScanEntry] = []
+        var newest: [String: Int64] = [:]
         var batch: [URL] = []
         batch.reserveCapacity(512)
         for case let url as URL in enumerator {
@@ -218,8 +227,16 @@ public struct DiskScanner: Sendable {
             .map { DirTotal(path: $0.key, files: $0.value.files, bytes: $0.value.bytes) }
             .sorted { $0.bytes > $1.bytes }
 
+        // roll the newest date upward the same way sizes were rolled
+        var rolledMtime = newest
+        for p in paths {
+            let parent = URL(fileURLWithPath: p).deletingLastPathComponent().path
+            guard parent != p, let t = rolledMtime[p] else { continue }
+            rolledMtime[parent] = max(rolledMtime[parent] ?? 0, t)
+        }
         var entries: [ScanEntry] = rolled.map {
-            ScanEntry(path: $0.key, files: $0.value.files, bytes: $0.value.bytes, isDirectory: true)
+            ScanEntry(path: $0.key, files: $0.value.files, bytes: $0.value.bytes,
+                      isDirectory: true, mtime: rolledMtime[$0.key] ?? 0)
         }
         entries.append(contentsOf: largeFiles)
 
@@ -235,16 +252,17 @@ public struct DiskScanner: Sendable {
 
     /// Stat one slice of a batch; returns per-parent-dir increments.
     /// (parent directory, file path, allocated size)
-    private func statSlice(_ slice: [URL]) -> [(String, String, Int64)] {
-        var out: [(String, String, Int64)] = []
+    private func statSlice(_ slice: [URL]) -> [(String, String, Int64, Int64)] {
+        var out: [(String, String, Int64, Int64)] = []
         out.reserveCapacity(slice.count)
         for url in slice {
             guard let vals = try? url.resourceValues(forKeys: [
-                .isSymbolicLinkKey, .totalFileAllocatedSizeKey,
+                .isSymbolicLinkKey, .totalFileAllocatedSizeKey, .contentModificationDateKey,
             ]) else { continue }
             if vals.isSymbolicLink == true { continue }   // never count or follow links
             let size = Int64(vals.totalFileAllocatedSize ?? 0)
-            out.append((url.deletingLastPathComponent().path, url.path, size))
+            let mt = Int64((vals.contentModificationDate?.timeIntervalSince1970 ?? 0) * 1000)
+            out.append((url.deletingLastPathComponent().path, url.path, size, mt))
         }
         return out
     }

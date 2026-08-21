@@ -107,6 +107,7 @@ final class EngineStore: ObservableObject {
         refreshCacheEntries()
         refreshDupGroups()
         refreshTrend()
+        refreshQuietFacts()
         findingsAt = Date()
         config = loadConfig(db)
         fdaGranted = EngineStore.checkFullDiskAccess()
@@ -234,6 +235,49 @@ final class EngineStore: ObservableObject {
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             ins.run([.int(ts), .text(g.hash), .int(g.sizeMb), .text(json)])
         }
+    }
+
+    /// Facts behind the quiet state. Every one is measured; a tile with no data says so
+    /// rather than showing a plausible number.
+    struct QuietFacts: Sendable {
+        var watchingDays: Int = 0
+        var freeGb: Double = 0
+        var largestCacheGb: Double = 0
+        var drivesQuietDays: Int? = nil     // nil = no drive events ever recorded
+        var lastScanAt: Date? = nil
+    }
+    @Published var quietFacts = QuietFacts()
+
+    func refreshQuietFacts() {
+        var f = QuietFacts()
+        if let lo = db.prepare("SELECT MIN(ts) m FROM proc_samples").get()?["m"], !lo.isNull {
+            f.watchingDays = max(Int((Double(Date().timeIntervalSince1970 * 1000) - Double(lo.intVal)) / 86_400_000), 0)
+        }
+        f.freeGb = metrics.freeGb
+        if let mb = db.prepare("SELECT MAX(size_mb) m FROM cache_samples WHERE ts = (SELECT MAX(ts) FROM cache_samples)")
+            .get()?["m"], !mb.isNull {
+            f.largestCacheGb = Double(mb.intVal) / 1024
+        }
+        // "steady" = time since the last unexpected mount/unmount, not an invented number
+        if let last = db.prepare("SELECT MAX(ts) m FROM events WHERE kind IN ('mount','unmount')")
+            .get()?["m"], !last.isNull {
+            f.drivesQuietDays = max(Int((Double(Date().timeIntervalSince1970 * 1000) - Double(last.intVal)) / 86_400_000), 0)
+        }
+        f.lastScanAt = lastScanAt.map { Date(timeIntervalSince1970: Double($0) / 1000) }
+        quietFacts = f
+    }
+
+    /// Size of the database on disk, for Settings.
+    var databaseSummary: String {
+        let rows = (db.prepare("SELECT COUNT(*) n FROM proc_samples").get()?["n"]?.intVal ?? 0)
+            + (db.prepare("SELECT COUNT(*) n FROM disk_samples").get()?["n"]?.intVal ?? 0)
+            + (db.prepare("SELECT COUNT(*) n FROM cache_samples").get()?["n"]?.intVal ?? 0)
+        let path = NSHomeDirectory() + "/Library/Application Support/com.chris.performac.v2/performac.db"
+        var bytes: Int64 = 0
+        for suffix in ["", "-wal", "-shm"] {
+            bytes += (try? FileManager.default.attributesOfItem(atPath: path + suffix)[.size] as? Int64) as? Int64 ?? 0
+        }
+        return "\(Fmt.count(Int(rows))) samples · \(Fmt.bytes(bytes))"
     }
 
     // MARK: Digest — real free-space history, and an honest note about it

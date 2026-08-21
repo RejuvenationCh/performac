@@ -29,7 +29,8 @@ struct MainWindow: View {
                     quitAction: { store.requestQuit($0) },
                     updatedAt: store.findingsAt,
                     busy: store.refreshing,
-                    onRefresh: { (NSApp.delegate as? AppDelegate)?.refreshNow() })
+                    onRefresh: { (NSApp.delegate as? AppDelegate)?.refreshNow() },
+                    facts: store.quietFacts)
                 case .digest: DigestView(
                     findings: store.digest,
                     quitAction: { store.requestQuit($0) },
@@ -69,6 +70,8 @@ struct MainWindow: View {
                     browsePath: store.browsePath,
                     onReveal: { NSWorkspace.shared.selectFile($0, inFileViewerRootedAtPath: "") },
                     onTrashPath: { store.trashPath($0) },
+                    freeGb: store.metrics.freeGb,
+                    totalGb: store.metrics.totalGb,
                     rightMode: store.rightPanelMode,
                     onRightMode: { store.setRightPanelMode($0) },
                     onCancel: { store.cancelDiskScan() })
@@ -92,11 +95,13 @@ struct MainWindow: View {
                     currentPath: store.dupPath,
                     onScan: { store.startDupScan() },
                     onCancel: { store.cancelDupScan() },
-                    onDisappear: { store.cancelDupScan() })
+                    onDisappear: { store.cancelDupScan() },
+                    lastScanAt: store.dupScanAt.map { Date(timeIntervalSince1970: Double($0) / 1000) })
                 case .settings: SettingsView(
                     config: store.config,
                     fdaGranted: store.fdaGranted,
                     menuBarItems: store.menuBarItems,
+                    databaseSummary: store.databaseSummary,
                     onMenuBarItem: { store.setMenuBarItem($0, $1) },
                     onSave: { key, value in _ = store.saveSetting(key, value) })
                 }
