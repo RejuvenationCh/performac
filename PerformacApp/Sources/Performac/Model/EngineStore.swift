@@ -617,6 +617,21 @@ final class EngineStore: ObservableObject {
         objectWillChange.send()
     }
 
+    /// Which cells the popover's top strip shows.
+    var metricTiles: [MetricTileKind] {
+        guard let raw = getSetting(readDB, "metricTiles")?.objectVal?["items"]?.arrayVal else {
+            return MetricTileKind.defaults
+        }
+        let on = Set(raw.compactMap { $0.stringVal })
+        return MetricTileKind.allCases.filter { on.contains($0.rawValue) }
+    }
+    func setMetricTile(_ t: MetricTileKind, _ on: Bool) {
+        var set = Set(metricTiles.map(\.rawValue))
+        if on { set.insert(t.rawValue) } else { set.remove(t.rawValue) }
+        setSetting(db, "metricTiles", JSONValue.from(["items": Array(set)]))
+        objectWillChange.send()
+    }
+
     var popoverGraphs: [GraphKind] { graphs("popoverGraphs", GraphKind.popoverDefaults) }
     func setPopoverGraph(_ g: GraphKind, _ on: Bool) { setGraph("popoverGraphs", popoverGraphs, g, on) }
     var dashboardGraphs: [GraphKind] { graphs("dashboardGraphs", GraphKind.dashboardDefaults) }

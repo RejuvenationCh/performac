@@ -188,12 +188,12 @@ enum MenuBarItem: String, CaseIterable, Sendable, Identifiable {
 
 /// A live trace that can be shown in the popover, the dashboard, or both.
 enum GraphKind: String, CaseIterable, Sendable, Identifiable {
-    case cpu, memory, network, disk
+    case cpu, memory, network, temperature
     var id: String { rawValue }
     var label: String {
         switch self {
         case .cpu: "CPU"; case .memory: "Memory"
-        case .network: "Network"; case .disk: "Free space"
+        case .network: "Network"; case .temperature: "Temperature"
         }
     }
     var detail: String {
@@ -201,9 +201,25 @@ enum GraphKind: String, CaseIterable, Sendable, Identifiable {
         case .cpu: "Percentage across all cores"
         case .memory: "Share of physical memory in use"
         case .network: "Download and upload throughput"
-        case .disk: "Free space on the boot volume"
+        // Free space barely moves minute to minute, so a live trace of it was a flat line.
+        // Temperature actually changes under load, which is what a live graph is for.
+        case .temperature: "SoC die temperature, averaged across sensors"
         }
     }
     static let popoverDefaults: [GraphKind] = [.cpu, .memory, .network]
-    static let dashboardDefaults: [GraphKind] = [.cpu, .memory, .network, .disk]
+    static let dashboardDefaults: [GraphKind] = [.cpu, .memory, .network, .temperature]
+}
+
+/// A cell in the popover's top strip. Independently toggleable.
+enum MetricTileKind: String, CaseIterable, Sendable, Identifiable {
+    case cpu, ram, free, temp, network, battery, diskUsed
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .cpu: "CPU"; case .ram: "Memory"; case .free: "Free space"
+        case .temp: "Temperature"; case .network: "Network"
+        case .battery: "Battery"; case .diskUsed: "Disk used"
+        }
+    }
+    static let defaults: [MetricTileKind] = [.cpu, .ram, .free, .temp]
 }

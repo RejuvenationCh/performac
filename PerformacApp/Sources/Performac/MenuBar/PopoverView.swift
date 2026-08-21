@@ -26,9 +26,32 @@ struct PopoverView: View {
         case .network:
             GraphTile(label: "NETWORK", value: rate(live.current.netDownBps),
                       values: live.netDownSeries, tint: PC.accent)
-        case .disk:
-            GraphTile(label: "FREE", value: String(format: "%.0f GB", live.current.freeGb),
-                      values: live.history.map(\.freeGb), tint: PC.amber)
+        case .temperature:
+            GraphTile(label: "TEMPERATURE",
+                      value: live.current.tempC.map { String(format: "%.0f°C", $0) } ?? "n/a",
+                      values: live.tempSeries, tint: PC.red)
+        }
+    }
+
+    private func shortLabel(_ t: MetricTileKind) -> String {
+        switch t {
+        case .cpu: "CPU"; case .ram: "RAM"; case .free: "FREE"; case .temp: "TEMP"
+        case .network: "NET"; case .battery: "BATT"; case .diskUsed: "DISK"
+        }
+    }
+
+    private func tileValue(_ t: MetricTileKind) -> String {
+        let m = live.current
+        switch t {
+        case .cpu: return String(format: "%.0f%%", m.cpuPercent)
+        case .ram: return String(format: "%.1f/%.0f GB", m.memUsedGb, m.memTotalGb)
+        case .free: return String(format: "%.0f GB", m.freeGb)
+        // A real number now: the die sensors are readable, so "Normal" was hiding
+        // information the machine was willing to give.
+        case .temp: return m.tempC.map { String(format: "%.0f°C", $0) } ?? m.thermal
+        case .network: return rate(m.netDownBps)
+        case .battery: return m.batteryPercent >= 0 ? "\(m.batteryPercent)%" : "n/a"
+        case .diskUsed: return String(format: "%.0f%%", m.diskUsedPercent)
         }
     }
 
@@ -41,14 +64,11 @@ struct PopoverView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                MetricTile(label: "CPU", value: String(format: "%.0f%%", live.current.cpuPercent))
-                Divider().frame(height: 26)
-                MetricTile(label: "RAM", value: String(format: "%.1f/%.0f GB",
-                                                       live.current.memUsedGb, live.current.memTotalGb))
-                Divider().frame(height: 26)
-                MetricTile(label: "FREE", value: String(format: "%.0f GB", live.current.freeGb))
-                Divider().frame(height: 26)
-                MetricTile(label: "TEMP", value: live.current.thermal)
+                let tiles = store.metricTiles
+                ForEach(Array(tiles.enumerated()), id: \.element.id) { i, t in
+                    if i > 0 { Divider().frame(height: 26) }
+                    MetricTile(label: shortLabel(t), value: tileValue(t))
+                }
             }
             .padding(.vertical, PC.gutter)
             .pcHairline(.bottom)

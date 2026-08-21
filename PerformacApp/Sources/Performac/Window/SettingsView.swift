@@ -9,6 +9,7 @@ struct SettingsView: View {
     @State private var popGraphsOn: Set<String>
     @State private var dashGraphsOn: Set<String>
     @State private var popFindings: Bool
+    @State private var tilesOn: Set<String>
     var onMenuBarItem: (MenuBarItem, Bool) -> Void = { _, _ in }
     let databaseSummary: String
     var popoverGraphs: [GraphKind] = GraphKind.popoverDefaults
@@ -17,6 +18,7 @@ struct SettingsView: View {
     var onPopoverGraph: (GraphKind, Bool) -> Void = { _, _ in }
     var onDashboardGraph: (GraphKind, Bool) -> Void = { _, _ in }
     var onPopoverFindings: (Bool) -> Void = { _ in }
+    var onMetricTile: (MetricTileKind, Bool) -> Void = { _, _ in }
     @State private var staleDays: Int
     @State private var weeksLeft: Int
     @State private var cycles: Int
@@ -32,6 +34,8 @@ struct SettingsView: View {
          popoverGraphs: [GraphKind] = GraphKind.popoverDefaults,
          dashboardGraphs: [GraphKind] = GraphKind.dashboardDefaults,
          popoverFindings: Bool = true,
+         metricTiles: [MetricTileKind] = MetricTileKind.defaults,
+         onMetricTile: @escaping (MetricTileKind, Bool) -> Void = { _, _ in },
          onPopoverGraph: @escaping (GraphKind, Bool) -> Void = { _, _ in },
          onDashboardGraph: @escaping (GraphKind, Bool) -> Void = { _, _ in },
          onPopoverFindings: @escaping (Bool) -> Void = { _ in },
@@ -41,6 +45,7 @@ struct SettingsView: View {
         _popGraphsOn = State(initialValue: Set(popoverGraphs.map(\.rawValue)))
         _dashGraphsOn = State(initialValue: Set(dashboardGraphs.map(\.rawValue)))
         _popFindings = State(initialValue: popoverFindings)
+        _tilesOn = State(initialValue: Set(metricTiles.map(\.rawValue)))
         self.databaseSummary = databaseSummary
         self.popoverGraphs = popoverGraphs
         self.dashboardGraphs = dashboardGraphs
@@ -48,6 +53,7 @@ struct SettingsView: View {
         self.onPopoverGraph = onPopoverGraph
         self.onDashboardGraph = onDashboardGraph
         self.onPopoverFindings = onPopoverFindings
+        self.onMetricTile = onMetricTile
         self.onMenuBarItem = onMenuBarItem
         _staleDays = State(initialValue: config.cacheRules.staleDays)
         _weeksLeft = State(initialValue: config.storage.warnWeeksLeft)
@@ -134,6 +140,20 @@ struct SettingsView: View {
                                 .labelsHidden()
                         }
                         Note("The popover keeps three minutes of history, sampled every two seconds.")
+                    }
+                    SettingsGroup(header: "Popover top strip") {
+                        ForEach(Array(MetricTileKind.allCases.enumerated()), id: \.element.id) { i, t in
+                            if i > 0 { Divider().overlay(PC.hairline) }
+                            Row(t.label) {
+                                Toggle("", isOn: Binding(
+                                    get: { tilesOn.contains(t.rawValue) },
+                                    set: { on in
+                                        if on { tilesOn.insert(t.rawValue) } else { tilesOn.remove(t.rawValue) }
+                                        onMetricTile(t, on)
+                                    })).labelsHidden()
+                            }
+                        }
+                        Note("Four fit comfortably across the popover; more will crowd.")
                     }
                     SettingsGroup(header: "Thresholds") {
                         Stepper2("Warn when a cache is unused for", $staleDays, "days")

@@ -14,6 +14,8 @@ struct Metrics: Sendable, Equatable {
     var freeGb: Double = 0
     var totalGb: Double = 0
     var thermal: String = "Normal"
+    /// Real SoC die temperature, nil when the sensors cannot be read.
+    var tempC: Double? = nil
     var netDownBps: Double = 0
     var netUpBps: Double = 0
     var batteryPercent: Int = -1        // -1 = no battery
@@ -37,6 +39,7 @@ final class LiveMetrics: @unchecked Sendable {
         let bat = battery()
         return Metrics(cpuPercent: cpu(), memUsedGb: mem.used, memTotalGb: mem.total,
                        freeGb: disk.free, totalGb: disk.total, thermal: thermalLevel(),
+                       tempC: ThermalSensors.socCelsius(),
                        netDownBps: net.down, netUpBps: net.up,
                        batteryPercent: bat.percent, batteryCharging: bat.charging)
     }
@@ -173,4 +176,5 @@ final class MetricsStore: ObservableObject {
     var memSeries: [Double] { history.map(\.memPercent) }
     var netDownSeries: [Double] { history.map(\.netDownBps) }
     var netUpSeries: [Double] { history.map(\.netUpBps) }
+    var tempSeries: [Double] { history.compactMap(\.tempC) }
 }

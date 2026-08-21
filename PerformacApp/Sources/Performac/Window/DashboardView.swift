@@ -98,10 +98,10 @@ struct DashboardView: View {
                       values: live.netDownSeries, tint: PC.accent,
                       secondary: (values: live.netUpSeries, tint: PC.amber,
                                   caption: "\(rate(live.current.netUpBps)) up"))
-        case .disk:
-            GraphCard(title: "Free space",
-                      value: String(format: "%.0f GB", live.current.freeGb),
-                      values: live.history.map(\.freeGb), tint: PC.amber)
+        case .temperature:
+            GraphCard(title: "Temperature",
+                      value: live.current.tempC.map { String(format: "%.0f°C", $0) } ?? "unavailable",
+                      values: live.tempSeries, tint: PC.red)
         }
     }
 }

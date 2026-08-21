@@ -112,6 +112,8 @@ struct MainWindow: View {
                     popoverGraphs: store.popoverGraphs,
                     dashboardGraphs: store.dashboardGraphs,
                     popoverFindings: store.popoverShowsFindings,
+                    metricTiles: store.metricTiles,
+                    onMetricTile: { store.setMetricTile($0, $1) },
                     onPopoverGraph: { store.setPopoverGraph($0, $1) },
                     onDashboardGraph: { store.setDashboardGraph($0, $1) },
                     onPopoverFindings: { store.setPopoverShowsFindings($0) },

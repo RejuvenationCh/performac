@@ -36,6 +36,7 @@ if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "metrics" {
                  s.diskUsedPercent, s.freeGb, s.totalGb,
                  s.netDownBps / 1024, s.netUpBps / 1024,
                  s.batteryPercent, s.batteryCharging ? " (charging)" : "", s.thermal))
+    print(String(format: "  SoC temperature: %@", s.tempC.map { String(format: "%.1f C", $0) } ?? "unavailable"))
     exit(0)
 }
 if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "rowsbench" {
