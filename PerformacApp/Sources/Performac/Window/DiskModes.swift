@@ -10,6 +10,8 @@ struct OutlineList: View {
     let basePath: String
     let loadChildren: (String) -> [SizeEntry]
     let onReveal: (String) -> Void
+    @Binding var infoTarget: RowInfo?
+    @Binding var trashTarget: RowInfo?
     private var maxBytes: Int64 { entries.map(\.bytes).max() ?? 1 }
 
     var body: some View {
@@ -19,7 +21,8 @@ struct OutlineList: View {
                     OutlineRow(entry: e,
                                path: (basePath as NSString).appendingPathComponent(e.name),
                                depth: 0, maxBytes: maxBytes,
-                               loadChildren: loadChildren, onReveal: onReveal)
+                               loadChildren: loadChildren, onReveal: onReveal,
+                               infoTarget: $infoTarget, trashTarget: $trashTarget)
                 }
             }
         }
@@ -33,6 +36,8 @@ private struct OutlineRow: View {
     let maxBytes: Int64
     let loadChildren: (String) -> [SizeEntry]
     let onReveal: (String) -> Void
+    @Binding var infoTarget: RowInfo?
+    @Binding var trashTarget: RowInfo?
 
     @State private var expanded = false
     @State private var kids: [SizeEntry] = []
@@ -73,6 +78,10 @@ private struct OutlineRow: View {
             .contentShape(Rectangle())
             .onTapGesture(count: 2) { toggle() }
             .onHover { hover = $0 }
+            .rowActions(RowInfo(path: path, name: entry.name, bytes: entry.bytes,
+                                items: entry.items, isFolder: isFolder),
+                        onOpen: isFolder ? { toggle() } : nil,
+                        infoTarget: $infoTarget, trashTarget: $trashTarget)
 
             if expanded {
                 ForEach(kids) { k in
@@ -80,7 +89,8 @@ private struct OutlineRow: View {
                                path: (path as NSString).appendingPathComponent(k.name),
                                depth: depth + 1,
                                maxBytes: kids.map(\.bytes).max() ?? 1,
-                               loadChildren: loadChildren, onReveal: onReveal)
+                               loadChildren: loadChildren, onReveal: onReveal,
+                               infoTarget: $infoTarget, trashTarget: $trashTarget)
                 }
             }
         }
@@ -98,10 +108,20 @@ private struct OutlineRow: View {
 struct CompactList: View {
     let entries: [SizeEntry]
     let onOpen: (String) -> Void
+    let basePath: String
+    @Binding var infoTarget: RowInfo?
+    @Binding var trashTarget: RowInfo?
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                ForEach(entries) { e in CompactRow(entry: e, onOpen: onOpen) }
+                ForEach(entries) { e in
+                    CompactRow(entry: e, onOpen: onOpen)
+                        .rowActions(RowInfo(path: (basePath as NSString).appendingPathComponent(e.name),
+                                            name: e.name, bytes: e.bytes, items: e.items,
+                                            isFolder: e.symbol == "folder.fill"),
+                                    onOpen: { onOpen(e.name) },
+                                    infoTarget: $infoTarget, trashTarget: $trashTarget)
+                }
             }
             .padding(.vertical, 2)
         }

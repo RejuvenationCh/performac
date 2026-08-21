@@ -339,6 +339,23 @@ final class EngineStore: ObservableObject {
         }
     }
 
+    /// Trash one item chosen in the browser. The allowlist is that single path, so this can
+    /// never widen to anything the user did not point at.
+    func trashPath(_ path: String) {
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        let r = Trash.moveToTrash([path], allowed: [path], db: db, now: now)
+        lastTrashSummary = r.first?.ok == true
+            ? "Moved \((path as NSString).lastPathComponent) to the Trash."
+            : "Could not move it: \(r.first?.message ?? "unknown error")"
+        // drop it from the current listing so the row does not linger as a ghost
+        if r.first?.ok == true {
+            let name = (path as NSString).lastPathComponent
+            diskEntries.removeAll { $0.name == name }
+            db.prepare("DELETE FROM scan_entries WHERE parent = ? AND name = ?")
+                .run([.text((path as NSString).deletingLastPathComponent), .text(name)])
+        }
+    }
+
     // MARK: uninstaller
 
     @Published var apps: [InstalledApp] = []

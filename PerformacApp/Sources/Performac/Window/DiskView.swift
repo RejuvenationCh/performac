@@ -27,10 +27,19 @@ struct DiskView: View {
     var childrenOf: (String) -> [SizeEntry] = { _ in [] }
     var browsePath: String = ""
     var onReveal: (String) -> Void = { _ in }
+    var onTrashPath: (String) -> Void = { _ in }
+    @State private var infoTarget: RowInfo? = nil
+    @State private var trashTarget: RowInfo? = nil
     var rightMode: RightPanelMode = .treemap
     var onRightMode: (RightPanelMode) -> Void = { _ in }
     var onCancel: () -> Void = {}
     private var maxBytes: Int64 { entries.map(\.bytes).max() ?? 1 }
+
+    private func rowInfo(_ e: SizeEntry) -> RowInfo {
+        RowInfo(path: (browsePath as NSString).appendingPathComponent(e.name),
+                name: e.name, bytes: e.bytes, items: e.items,
+                isFolder: e.symbol == "folder.fill")
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -88,18 +97,22 @@ struct DiskView: View {
                     switch mode {
                     case .outline:
                         OutlineList(entries: entries, basePath: browsePath,
-                                    loadChildren: childrenOf, onReveal: onReveal)
+                                    loadChildren: childrenOf, onReveal: onReveal,
+                                    infoTarget: $infoTarget, trashTarget: $trashTarget)
                     case .list:
                         ScrollView {
                             LazyVStack(spacing: 0) {
                                 ForEach(entries) { e in
                                     SizeRow(entry: e, maxBytes: maxBytes, onOpen: { onOpen(e.name) })
+                                        .rowActions(rowInfo(e), onOpen: { onOpen(e.name) },
+                                                    infoTarget: $infoTarget, trashTarget: $trashTarget)
                                     Divider().overlay(PC.hairline)
                                 }
                             }
                         }
                     case .compact:
-                        CompactList(entries: entries, onOpen: onOpen)
+                        CompactList(entries: entries, onOpen: onOpen, basePath: browsePath,
+                                    infoTarget: $infoTarget, trashTarget: $trashTarget)
                     }
                     Spacer(minLength: 0)
                     HStack(spacing: PC.gutter) {
@@ -145,6 +158,11 @@ struct DiskView: View {
         }
         .onAppear(perform: onAppear)
         .onDisappear(perform: onDisappear)
+        .sheet(item: $infoTarget) { RowInfoSheet(info: $0) { infoTarget = nil } }
+        .sheet(item: $trashTarget) { t in
+            RowTrashSheet(info: t, onCancel: { trashTarget = nil },
+                          onConfirm: { trashTarget = nil; onTrashPath(t.path) })
+        }
     }
 }
 
