@@ -45,18 +45,21 @@ struct DiskView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: PC.gutter) {
+            // One toolbar row, one control size, centred on a shared baseline. A .large
+            // glassProminent button is an iOS-scale control: in a macOS toolbar it reads as
+            // a glowing pill and towers over the segmented picker beside it.
+            HStack(alignment: .center, spacing: PC.gutter) {
                 ScanTargetPicker(root: scanRoot, targets: targets, onPick: onPickRoot)
                 if scanning {
-                    Button("Cancel", action: onCancel).controlSize(.large).buttonStyle(.glass)
+                    Button("Cancel", action: onCancel)
+                        .controlSize(.regular).buttonStyle(.bordered)
                 } else {
                     Button {
                         onScan()
                     } label: {
                         Label(entries.isEmpty ? "Scan" : "Rescan", systemImage: "magnifyingglass")
-                            .font(.pcTitle)
                     }
-                    .buttonStyle(.glassProminent).controlSize(.large)
+                    .controlSize(.regular).buttonStyle(.borderedProminent)
                     .keyboardShortcut("r", modifiers: .command)
                     .help("Scan the selected location. Cmd-R")
                 }
@@ -66,10 +69,11 @@ struct DiskView: View {
                         Image(systemName: m.symbol).help(m.label).tag(m)
                     }
                 }
-                .pickerStyle(.segmented).labelsHidden().frame(width: 150)
+                .pickerStyle(.segmented).labelsHidden()
+                .controlSize(.regular).frame(width: 132)
                 StorageBar(freeBytes: Int64(freeGb * 1_073_741_824), totalBytes: Int64(totalGb * 1_073_741_824))
             }
-            .padding(.horizontal, PC.stack).padding(.vertical, PC.gutter)
+            .padding(.horizontal, PC.stack).padding(.vertical, PC.s2 + 2)
             .pcGlassChrome().pcHairline(.bottom)
 
             if !crumbs.isEmpty {

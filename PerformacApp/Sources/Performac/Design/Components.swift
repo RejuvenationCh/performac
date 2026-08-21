@@ -115,20 +115,21 @@ struct StorageBar: View {
     private var usedFrac: Double { 1 - Double(freeBytes) / Double(totalBytes) }
     private var tint: Color { usedFrac > 0.92 ? PC.red : usedFrac > 0.85 ? PC.amber : PC.accentFill }
     var body: some View {
-        VStack(alignment: .trailing, spacing: PC.s1) {
-            HStack(spacing: 4) {
-                Text(Fmt.bytes(freeBytes)).font(.pcNum).fontWeight(.semibold).foregroundStyle(tint)
-                Text("free of \(Fmt.bytes(totalBytes)) — \(Int(usedFrac * 100))% full")
-                    .font(.pcSmall).foregroundStyle(PC.ink2)
-            }
-            GeometryReader { g in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(PC.fill3)
+        // Single line so it centres with the controls beside it: the old two-line stack made
+        // the toolbar taller than its own contents and pushed everything off-centre.
+        HStack(spacing: PC.s2) {
+            Text(Fmt.bytes(freeBytes)).font(.pcNum).fontWeight(.semibold).foregroundStyle(tint)
+            Text("free of \(Fmt.bytes(totalBytes))").font(.pcSmall).foregroundStyle(PC.ink2)
+            ZStack(alignment: .leading) {
+                Capsule().fill(PC.fill3)
+                GeometryReader { g in
                     Capsule().fill(tint).frame(width: g.size.width * usedFrac)
                 }
             }
-            .frame(width: 180, height: 4)
+            .frame(width: 96, height: 5)
+            Text("\(Int(usedFrac * 100))%").font(.pcNum).foregroundStyle(tint)
         }
+        .help("\(Fmt.bytes(freeBytes)) free of \(Fmt.bytes(totalBytes)) — \(Int(usedFrac * 100))% full")
     }
 }
 
