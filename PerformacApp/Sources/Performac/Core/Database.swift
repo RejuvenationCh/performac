@@ -89,6 +89,32 @@ final class DB: @unchecked Sendable {
         } else {
             sqlite3_exec(handle, "PRAGMA journal_mode = WAL;", nil, nil, nil)
             sqlite3_exec(handle, SCHEMA, nil, nil, nil)
+            migrate()
+        }
+    }
+
+    /// CREATE TABLE IF NOT EXISTS never alters an existing table, so a column added to
+    /// SCHEMA is simply absent on any database that already existed. Adding mtime to
+    /// scan_entries that way crashed the app on launch. Every future column belongs here.
+    ///
+    /// ALTER TABLE ADD COLUMN on an existing column is an error, not a no-op, so each is
+    /// checked first via table_info.
+    private func migrate() {
+        let additions: [(table: String, column: String, decl: String)] = [
+            ("scan_entries", "mtime", "INTEGER NOT NULL DEFAULT 0"),
+        ]
+        for a in additions {
+            var exists = false
+            var s: OpaquePointer?
+            if sqlite3_prepare_v2(handle, "PRAGMA table_info(\(a.table))", -1, &s, nil) == SQLITE_OK, let s {
+                while sqlite3_step(s) == SQLITE_ROW {
+                    if let c = sqlite3_column_text(s, 1), String(cString: c) == a.column { exists = true }
+                }
+                sqlite3_finalize(s)
+            }
+            if !exists {
+                sqlite3_exec(handle, "ALTER TABLE \(a.table) ADD COLUMN \(a.column) \(a.decl)", nil, nil, nil)
+            }
         }
     }
 
@@ -102,14 +128,23 @@ final class DB: @unchecked Sendable {
 }
 
 final class Stmt: @unchecked Sendable {
-    private let stmt: OpaquePointer
+    /// nil when the statement could not be prepared; every operation then no-ops.
+    private let stmt: OpaquePointer?
     private let db: DB    // strong: the connection must outlive every statement
 
     init(db: DB, sql: String) {
         self.db = db
         var s: OpaquePointer?
         guard sqlite3_prepare_v2(db.handle, sql, -1, &s, nil) == SQLITE_OK, let s else {
-            fatalError("prepare failed: \(sql)")
+            // Was fatalError, which turned any schema drift into a launch crash: adding an
+            // mtime column to scan_entries did exactly that, because CREATE TABLE IF NOT
+            // EXISTS never alters an existing table. A statement that cannot be prepared is
+            // now inert — it reads as empty and writes nothing — so a bad query costs a
+            // feature, never the app.
+            let msg = String(cString: sqlite3_errmsg(db.handle))
+            FileHandle.standardError.write(Data("[db] prepare failed: \(msg) — \(sql)\n".utf8))
+            stmt = nil
+            return
         }
         stmt = s
     }
@@ -156,14 +191,16 @@ final class Stmt: @unchecked Sendable {
 
     /// execute without reading rows
     func run(_ args: [SQLValue] = []) {
-        withLock {
+        guard stmt != nil else { return  }
+        return withLock {
             bind(args)
             _ = sqlite3_step(stmt)
         }
     }
 
     func get(_ args: [SQLValue] = []) -> DBRow? {
-        withLock {
+        guard stmt != nil else { return nil }
+        return withLock {
             bind(args)
             guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
             return readRow()
@@ -171,7 +208,8 @@ final class Stmt: @unchecked Sendable {
     }
 
     func all(_ args: [SQLValue] = []) -> [DBRow] {
-        withLock {
+        guard stmt != nil else { return [] }
+        return withLock {
             bind(args)
             var out: [DBRow] = []
             while sqlite3_step(stmt) == SQLITE_ROW { out.append(readRow()) }
