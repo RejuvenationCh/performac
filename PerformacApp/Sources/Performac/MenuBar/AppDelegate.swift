@@ -142,6 +142,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let winMenu = NSMenu(title: "Window")
         winMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         winMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        winMenu.addItem(.separator())
+        // Fill the screen but stay a normal window: menu bar visible, no Space switch,
+        // no animation. Option-clicking the green button "zooms", which is close but
+        // leaves gaps and toggles unpredictably; this is explicit.
+        let fill = NSMenuItem(title: "Fill Screen", action: #selector(fillScreen), keyEquivalent: "f")
+        fill.keyEquivalentModifierMask = [.command, .option]
+        fill.target = self
+        winMenu.addItem(fill)
+        let restore = NSMenuItem(title: "Restore Size", action: #selector(restoreSize), keyEquivalent: "f")
+        restore.keyEquivalentModifierMask = [.command, .option, .shift]
+        restore.target = self
+        winMenu.addItem(restore)
+        winMenu.addItem(.separator())
+        let fs = NSMenuItem(title: "Enter Full Screen",
+                            action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
+        fs.keyEquivalentModifierMask = [.command, .control]
+        winMenu.addItem(fs)
         winItem.submenu = winMenu
         main.addItem(winItem)
         NSApp.mainMenu = main
@@ -219,6 +236,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return prefix + "0"
     }
 
+    /// Remembered so Restore Size can put it back where it was.
+    private var preFillFrame: NSRect?
+
+    @objc private func fillScreen() {
+        guard let w = window, let screen = w.screen ?? NSScreen.main else { return }
+        if w.styleMask.contains(.fullScreen) { return }      // already full screen proper
+        if preFillFrame == nil { preFillFrame = w.frame }
+        w.setFrame(screen.visibleFrame, display: true, animate: false)
+    }
+
+    @objc private func restoreSize() {
+        guard let w = window, let f = preFillFrame else { return }
+        w.setFrame(f, display: true, animate: false)
+        preFillFrame = nil
+    }
+
     /// Menu bar space is scarce: keep the first few words, never the whole sentence.
     private func shortHeadline(_ h: String) -> String {
         let words = h.split(separator: " ").prefix(4).joined(separator: " ")
@@ -272,6 +305,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered, defer: false)
         w.title = "Performac"
         w.titlebarAppearsTransparent = true
+        // Both are offered: the green button still enters macOS full screen (its own Space,
+        // menu bar hidden), and Fill Screen below maximises within the current Space, which
+        // is what most people actually want from a "maximise" and macOS has no button for.
+        w.collectionBehavior.insert(.fullScreenPrimary)
         w.isReleasedWhenClosed = false
         w.contentView = NSHostingView(rootView: MainWindow())
         w.center()
