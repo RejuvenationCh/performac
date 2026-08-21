@@ -54,6 +54,8 @@ struct CacheEntry: Identifiable, Sendable {
     var path: String
     /// Off the cleaner's allowlist → shown and measured, but never selectable or trashable.
     var cleanable = true
+    /// Emptied rather than removed (see CleanPolicy.contentsOnly).
+    var contentsOnly = false
     var selected = false
 }
 

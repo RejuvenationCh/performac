@@ -144,7 +144,8 @@ final class EngineStore: ObservableObject {
                 safe: policy.safe,
                 why: policy.consequence,
                 path: path,
-                cleanable: policy.cleanable))
+                cleanable: policy.cleanable,
+                contentsOnly: policy.contentsOnly))
         }
         cacheEntries = entries
     }
@@ -497,9 +498,23 @@ final class EngineStore: ObservableObject {
     func trashSelected(_ selected: [CacheEntry]) {
         let allowed = Set(cacheEntries.filter(\.cleanable)
             .map { ($0.path as NSString).expandingTildeInPath })
-        let items = selected.filter(\.cleanable)
-            .map { (name: $0.name, path: ($0.path as NSString).expandingTildeInPath) }
-        runTrash(items, allowed: allowed)
+        var items: [(name: String, path: String)] = []
+        var extraAllowed = allowed
+        for e in selected where e.cleanable {
+            let path = (e.path as NSString).expandingTildeInPath
+            let policy = Allowlist.policy(for: CacheTarget(id: "", label: e.name, path: path))
+            let byId = cacheEntries.first { $0.path == e.path }
+            _ = byId
+            if e.contentsOnly || policy.contentsOnly {
+                // empty it rather than remove it: the folder itself is undeletable
+                let kids = Trash.childrenOf(path)
+                extraAllowed.formUnion(kids)
+                items += kids.map { (name: ($0 as NSString).lastPathComponent, path: $0) }
+            } else {
+                items.append((name: e.name, path: path))
+            }
+        }
+        runTrash(items, allowed: extraAllowed)
     }
 
     /// Re-measure the paths just trashed and write fresh samples.
@@ -529,24 +544,29 @@ final class EngineStore: ObservableObject {
         let db = self.db
         Task.detached(priority: .userInitiated) { [weak self] in
             var ok = 0, failed = 0
+            var firstError: String?
             for (i, item) in items.enumerated() {
                 await MainActor.run {
                     self?.trashProgress = "Moving \(item.name) (\(i + 1) of \(items.count))…"
                 }
                 let now = Int64(Date().timeIntervalSince1970 * 1000)
                 let r = Trash.moveToTrash([item.path], allowed: allowed, db: db, now: now)
-                if r.first?.ok == true { ok += 1 } else { failed += 1 }
+                if r.first?.ok == true { ok += 1 } else {
+                    failed += 1
+                    if firstError == nil { firstError = r.first?.message }
+                }
             }
             // fresh sizes before the UI reads them again
             Self.remeasure(db, items.map(\.path), Int64(Date().timeIntervalSince1970 * 1000))
-            let done = ok, bad = failed
+            let done = ok, bad = failed, err = firstError
             await MainActor.run {
                 guard let self else { return }
                 self.trashing = false
                 self.trashProgress = ""
+                // name the actual reason rather than pointing at a log the user cannot see
                 self.lastTrashSummary = bad == 0
                     ? "Moved \(done) item\(done == 1 ? "" : "s") to the Trash."
-                    : "Moved \(done), could not move \(bad) — see Trash history."
+                    : "Moved \(done), \(bad) could not be moved: \(err ?? "unknown reason")"
                 self.refreshCacheEntries()
                 trashTick(self.db)          // the Trash card should reflect this immediately
                 self.refreshFromDatabase()

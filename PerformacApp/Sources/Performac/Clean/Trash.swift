@@ -19,6 +19,14 @@ enum Trash {
 
     /// `allowed` is the set of absolute paths the cleaner currently offers. A path must BE
     /// one of them — not merely live under one — so a crafted subpath cannot widen scope.
+    /// Expand a folder to its children, for paths that can be emptied but not removed.
+    static func childrenOf(_ path: String) -> [String] {
+        let p = (path as NSString).expandingTildeInPath
+        return ((try? FileManager.default.contentsOfDirectory(atPath: p)) ?? [])
+            .filter { !$0.hasPrefix(".") }
+            .map { (p as NSString).appendingPathComponent($0) }
+    }
+
     static func moveToTrash(_ paths: [String], allowed: Set<String>, db: DB?, now: Int64) -> [Outcome] {
         var out: [Outcome] = []
         let fm = FileManager.default

@@ -8,7 +8,7 @@ enum DupCheck {
         let root = NSTemporaryDirectory() + "performac-dup-\(UUID().uuidString)"
         let a = root + "/a", b = root + "/b"
         for d in [a, b] { try? fm.createDirectory(atPath: d, withIntermediateDirectories: true) }
-        defer { try? fm.trashItem(at: URL(fileURLWithPath: root), resultingItemURL: nil) }
+        // fixtures live in NSTemporaryDirectory and are left for the system to purge
 
         // three identical 1 MiB files in different directories
         let payload = Data(repeating: 0x41, count: 1_048_576)

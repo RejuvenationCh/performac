@@ -60,7 +60,7 @@ enum PathsCheck {
         do {
             let dir = NSTemporaryDirectory() + "performac-paths-\(UUID().uuidString)"
             try! FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-            defer { try? FileManager.default.trashItem(at: URL(fileURLWithPath: dir), resultingItemURL: nil) }
+            // left for the system to purge: trashing fixtures would litter the user's Bin
             try! Data(count: 1024).write(to: URL(fileURLWithPath: dir + "/a.bin"))
             try! FileManager.default.createDirectory(atPath: dir + "/sub", withIntermediateDirectories: true)
             try! Data(count: 2048).write(to: URL(fileURLWithPath: dir + "/sub/b.bin"))

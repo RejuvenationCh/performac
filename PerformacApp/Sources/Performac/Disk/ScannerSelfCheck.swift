@@ -13,8 +13,8 @@ enum ScannerSelfCheck {
 
         let fm = FileManager.default
         let root = fm.temporaryDirectory.appendingPathComponent("performac-check-\(UUID().uuidString)")
-        // trashItem even for our own temp tree — the only deletion path allowed in this codebase
-        defer { try? fm.trashItem(at: root, resultingItemURL: nil) }
+        // fixtures are left in NSTemporaryDirectory for the system to purge
+        // fixtures live in NSTemporaryDirectory and are left for the system to purge
         try? fm.createDirectory(at: root.appendingPathComponent("dirA"), withIntermediateDirectories: true)
         try? fm.createDirectory(at: root.appendingPathComponent("dirB/sub"), withIntermediateDirectories: true)
         var payload = Data(count: 100 * 1024)

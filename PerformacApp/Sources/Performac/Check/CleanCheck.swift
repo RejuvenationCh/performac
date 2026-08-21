@@ -40,7 +40,8 @@ enum CleanCheck {
         c.check("clean: allowlisted path is trashed", ok.first?.ok == true)
         c.check("clean: trashed item still exists in the Trash",
                 ok.first?.trashedTo.map { FileManager.default.fileExists(atPath: $0) } == true)
-        if let dest = ok.first?.trashedTo { try? FileManager.default.trashItem(at: URL(fileURLWithPath: dest), resultingItemURL: nil) }
+        // the trashed fixture is left in place: it proves recoverability, and re-trashing
+        // it would only add a second entry to the Bin
         // ---- Trash card ----
         let cfg = Config.defaults
         c.check("trash: silent below the threshold",

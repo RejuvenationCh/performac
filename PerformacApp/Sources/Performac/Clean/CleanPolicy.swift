@@ -11,6 +11,12 @@ struct CleanPolicy: Sendable {
     var safe: Bool
     /// What actually happens if you trash it. Shown on the row — never omitted.
     var consequence: String
+    /// Trash the contents, not the folder itself.
+    ///
+    /// ~/Library/Logs carries an ACL of "group:everyone deny delete", so macOS refuses to
+    /// remove the folder no matter who asks. Emptying it is both possible and what you
+    /// actually want: the folder should survive, its contents should not.
+    var contentsOnly: Bool = false
 }
 
 enum Allowlist {
@@ -39,7 +45,8 @@ enum Allowlist {
         "gen-homebrew": .init(cleanable: true, safe: true,
             consequence: "Downloaded installers Homebrew keeps after installing. Re-downloaded if ever needed."),
         "gen-logs": .init(cleanable: true, safe: true,
-            consequence: "Application logs. Only useful when diagnosing a crash you are actively chasing."),
+            consequence: "Application logs. Only useful when diagnosing a crash you are actively chasing.",
+            contentsOnly: true),
         "gen-xcode-devicesupport": .init(cleanable: true, safe: true,
             consequence: "Symbols for iOS versions you have debugged. Re-fetched next time you attach that device."),
         "gen-xcode-archives": .init(cleanable: true, safe: false,

@@ -27,9 +27,12 @@ enum UninstallCheck {
         let mine = appSupport + "/PerformacCheckVendor Studio"
         try? fm.createDirectory(atPath: shared, withIntermediateDirectories: true)
         try? fm.createDirectory(atPath: mine, withIntermediateDirectories: true)
+        // These two live under ~/Library/Application Support because the matcher looks
+        // there, so they DO have to go — but into the system temp area, not the user's Bin.
         defer {
-            try? fm.trashItem(at: URL(fileURLWithPath: shared), resultingItemURL: nil)
-            try? fm.trashItem(at: URL(fileURLWithPath: mine), resultingItemURL: nil)
+            let tmp = NSTemporaryDirectory()
+            try? fm.moveItem(atPath: shared, toPath: tmp + "pc-check-shared-\(UUID().uuidString)")
+            try? fm.moveItem(atPath: mine, toPath: tmp + "pc-check-mine-\(UUID().uuidString)")
         }
         let child = InstalledApp(name: "PerformacCheckVendor Studio", bundleID: "com.pcv.studio",
                                  path: "/x", bytes: 0, isRunning: false, isSystem: false)
