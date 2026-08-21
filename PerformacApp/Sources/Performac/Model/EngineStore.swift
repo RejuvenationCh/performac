@@ -603,6 +603,34 @@ final class EngineStore: ObservableObject {
             }
     }
 
+    // MARK: configurable surfaces
+
+    private func graphs(_ key: String, _ fallback: [GraphKind]) -> [GraphKind] {
+        guard let raw = getSetting(readDB, key)?.objectVal?["items"]?.arrayVal else { return fallback }
+        let on = Set(raw.compactMap { $0.stringVal })
+        return GraphKind.allCases.filter { on.contains($0.rawValue) }
+    }
+    private func setGraph(_ key: String, _ current: [GraphKind], _ g: GraphKind, _ on: Bool) {
+        var set = Set(current.map(\.rawValue))
+        if on { set.insert(g.rawValue) } else { set.remove(g.rawValue) }
+        setSetting(db, key, JSONValue.from(["items": Array(set)]))
+        objectWillChange.send()
+    }
+
+    var popoverGraphs: [GraphKind] { graphs("popoverGraphs", GraphKind.popoverDefaults) }
+    func setPopoverGraph(_ g: GraphKind, _ on: Bool) { setGraph("popoverGraphs", popoverGraphs, g, on) }
+    var dashboardGraphs: [GraphKind] { graphs("dashboardGraphs", GraphKind.dashboardDefaults) }
+    func setDashboardGraph(_ g: GraphKind, _ on: Bool) { setGraph("dashboardGraphs", dashboardGraphs, g, on) }
+
+    /// Whether the popover lists findings under its graphs.
+    var popoverShowsFindings: Bool {
+        getSetting(readDB, "popoverFindings")?.objectVal?["on"]?.boolVal ?? true
+    }
+    func setPopoverShowsFindings(_ on: Bool) {
+        setSetting(db, "popoverFindings", JSONValue.from(["on": on]))
+        objectWillChange.send()
+    }
+
     // MARK: browse history
     //
     // Real back/forward, so the mouse's side buttons and a two-finger swipe do what they do

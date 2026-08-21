@@ -184,3 +184,26 @@ enum MenuBarItem: String, CaseIterable, Sendable, Identifiable {
     /// Default set matches what a diagnostic bar is usually for.
     static let defaults: [MenuBarItem] = [.cpu, .memory]
 }
+
+
+/// A live trace that can be shown in the popover, the dashboard, or both.
+enum GraphKind: String, CaseIterable, Sendable, Identifiable {
+    case cpu, memory, network, disk
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .cpu: "CPU"; case .memory: "Memory"
+        case .network: "Network"; case .disk: "Free space"
+        }
+    }
+    var detail: String {
+        switch self {
+        case .cpu: "Percentage across all cores"
+        case .memory: "Share of physical memory in use"
+        case .network: "Download and upload throughput"
+        case .disk: "Free space on the boot volume"
+        }
+    }
+    static let popoverDefaults: [GraphKind] = [.cpu, .memory, .network]
+    static let dashboardDefaults: [GraphKind] = [.cpu, .memory, .network, .disk]
+}

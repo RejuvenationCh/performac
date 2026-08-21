@@ -4,11 +4,11 @@ import SwiftUI
 import AppKit
 
 enum Route: String, CaseIterable, Identifiable {
-    case today, digest, disk, clean, apps, duplicates, settings
+    case dashboard, digest, disk, clean, apps, duplicates, settings
     var id: String { rawValue }
     var symbol: String {
         switch self {
-        case .today: "sparkles"; case .digest: "text.alignleft"; case .disk: "internaldrive"
+        case .dashboard: "gauge.with.dots.needle.33percent"; case .digest: "text.alignleft"; case .disk: "internaldrive"
         case .clean: "trash"; case .apps: "square.stack.3d.up"
         case .duplicates: "doc.on.doc"; case .settings: "gearshape"
         }
@@ -18,19 +18,22 @@ enum Route: String, CaseIterable, Identifiable {
 
 struct MainWindow: View {
     @ObservedObject var store = EngineStore.shared
-    @State private var route: Route = .today
+    @State private var route: Route = .dashboard
     var body: some View {
         HStack(spacing: 0) {
             Rail(route: $route)
             Group {
                 switch route {
-                case .today: TodayView(
-                    findings: store.live,
-                    quitAction: { store.requestQuit($0) },
+                case .dashboard: DashboardView(
+                    findings: store.digest,
+                    graphs: store.dashboardGraphs,
+                    facts: store.quietFacts,
+                    trendPoints: store.trend.points,
+                    trendNote: store.trend.note,
                     updatedAt: store.findingsAt,
                     busy: store.refreshing,
                     onRefresh: { (NSApp.delegate as? AppDelegate)?.refreshNow() },
-                    facts: store.quietFacts)
+                    quitAction: { store.requestQuit($0) })
                 case .digest: DigestView(
                     findings: store.digest,
                     quitAction: { store.requestQuit($0) },
@@ -106,6 +109,12 @@ struct MainWindow: View {
                     fdaGranted: store.fdaGranted,
                     menuBarItems: store.menuBarItems,
                     databaseSummary: store.databaseSummary,
+                    popoverGraphs: store.popoverGraphs,
+                    dashboardGraphs: store.dashboardGraphs,
+                    popoverFindings: store.popoverShowsFindings,
+                    onPopoverGraph: { store.setPopoverGraph($0, $1) },
+                    onDashboardGraph: { store.setDashboardGraph($0, $1) },
+                    onPopoverFindings: { store.setPopoverShowsFindings($0) },
                     onMenuBarItem: { store.setMenuBarItem($0, $1) },
                     onSave: { key, value in _ = store.saveSetting(key, value) })
                 }

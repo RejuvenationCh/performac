@@ -15,6 +15,23 @@ struct PopoverView: View {
     /// live kinds left the popover blank on a healthy machine, which read as broken.
     private var cards: [Finding] { store.live.isEmpty ? store.digest : store.live }
 
+    @ViewBuilder private func tile(_ g: GraphKind) -> some View {
+        switch g {
+        case .cpu:
+            GraphTile(label: "CPU", value: String(format: "%.0f%%", live.current.cpuPercent),
+                      values: live.cpuSeries, tint: PC.accentFill, ceiling: 100)
+        case .memory:
+            GraphTile(label: "MEMORY", value: String(format: "%.0f%%", live.current.memPercent),
+                      values: live.memSeries, tint: PC.green, ceiling: 100)
+        case .network:
+            GraphTile(label: "NETWORK", value: rate(live.current.netDownBps),
+                      values: live.netDownSeries, tint: PC.accent)
+        case .disk:
+            GraphTile(label: "FREE", value: String(format: "%.0f GB", live.current.freeGb),
+                      values: live.history.map(\.freeGb), tint: PC.amber)
+        }
+    }
+
     private func rate(_ bps: Double) -> String {
         let mb = bps / 1_048_576
         if mb >= 1 { return String(format: "%.1f MB/s", mb) }
@@ -40,22 +57,18 @@ struct PopoverView: View {
                 VStack(spacing: PC.gutter) {
                     // Percentages are pinned to 100 so the trace is comparable minute to
                     // minute; throughput scales to its own peak because it has no ceiling.
-                    HStack(spacing: PC.s2) {
-                        GraphTile(label: "CPU",
-                                  value: String(format: "%.0f%%", live.current.cpuPercent),
-                                  values: live.cpuSeries, tint: PC.accentFill, ceiling: 100)
-                        GraphTile(label: "MEMORY",
-                                  value: String(format: "%.0f%%", live.current.memPercent),
-                                  values: live.memSeries, tint: PC.green, ceiling: 100)
-                    }
-                    HStack(spacing: PC.s2) {
-                        GraphTile(label: "DOWN", value: rate(live.current.netDownBps),
-                                  values: live.netDownSeries, tint: PC.accent)
-                        GraphTile(label: "UP", value: rate(live.current.netUpBps),
-                                  values: live.netUpSeries, tint: PC.amber)
+                    // two per row, in whatever order Settings has them enabled
+                    let tiles = store.popoverGraphs
+                    ForEach(Array(stride(from: 0, to: tiles.count, by: 2)), id: \.self) { i in
+                        HStack(spacing: PC.s2) {
+                            tile(tiles[i])
+                            if i + 1 < tiles.count { tile(tiles[i + 1]) } else { Spacer() }
+                        }
                     }
 
-                    if cards.isEmpty {
+                    if !store.popoverShowsFindings {
+                        EmptyView()
+                    } else if cards.isEmpty {
                         VStack(spacing: PC.s2) {
                             Image(systemName: "checkmark.seal.fill")
                                 .font(.system(size: 24)).foregroundStyle(PC.green)
