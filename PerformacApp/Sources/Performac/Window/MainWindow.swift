@@ -93,6 +93,8 @@ struct MainWindow: View {
                 case .settings: SettingsView(
                     config: store.config,
                     fdaGranted: store.fdaGranted,
+                    menuBarMode: store.menuBarMode,
+                    onMenuBar: { store.setMenuBarMode($0) },
                     onSave: { key, value in _ = store.saveSetting(key, value) })
                 }
             }

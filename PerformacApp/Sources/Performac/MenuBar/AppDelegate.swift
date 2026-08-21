@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var engineCfg: Config?
     private var engineDeps: LiveDeps?
     private var engineSampler: Sampler?
+    private var metricsTimer: Timer?
     private var engineTasks: [Task<Void, Never>] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -29,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startEngine()
 
         installMainMenu()
+        startMetricsTimer()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         configureStatusButton()
 
@@ -149,6 +151,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.sampler?.stop()
         store.cancelDiskScan()
         for t in engineTasks { t.cancel() }
+    }
+
+    /// Stats-style live readout. Two seconds is frequent enough to feel live and cheap
+    /// enough to ignore: each sample is three kernel calls, no subprocess.
+    private func startMetricsTimer() {
+        _ = LiveMetrics.shared.cpu()          // prime the tick delta so the first read is real
+        let t = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.store.metrics = LiveMetrics.shared.sample()
+                self.updateStatusTitle()
+            }
+        }
+        RunLoop.main.add(t, forMode: .common)  // keeps ticking while menus are open
+        metricsTimer = t
+    }
+
+    /// What the menu bar shows, per the Settings picker: the live numbers, or the worst
+    /// finding, or just free space.
+    private func updateStatusTitle() {
+        guard let b = statusItem?.button else { return }
+        let m = store.metrics
+        let mode = getSetting(store.db, "menuBarShows")?.objectVal?["mode"]?.stringVal ?? "metrics"
+        let worst = store.worst
+
+        switch mode {
+        case "finding":
+            b.image = NSImage(systemSymbolName: worst == nil ? "gauge.with.dots.needle.33percent"
+                                                             : worst!.severity.symbol,
+                              accessibilityDescription: "Performac")
+            b.image?.isTemplate = true
+            b.title = worst == nil ? "" : " " + shortHeadline(worst!.headline)
+        case "free":
+            b.image = nil
+            b.title = String(format: "%.0f GB", m.freeGb)
+        default:                                   // live metrics, the Stats-like default
+            b.image = nil
+            b.title = String(format: "%.0f%%  %.0f%%", m.cpuPercent, m.memPercent)
+        }
+        b.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        b.toolTip = String(format: "CPU %.0f%%   Memory %.1f of %.0f GB   Free %.0f GB   %@",
+                           m.cpuPercent, m.memUsedGb, m.memTotalGb, m.freeGb, m.thermal)
+            + (worst.map { "\n\n" + $0.headline } ?? "")
+    }
+
+    /// Menu bar space is scarce: keep the first few words, never the whole sentence.
+    private func shortHeadline(_ h: String) -> String {
+        let words = h.split(separator: " ").prefix(4).joined(separator: " ")
+        return words.count > 26 ? String(words.prefix(26)) + "…" : words
     }
 
     /// The title states the most severe finding, or stays a bare glyph when all is quiet.

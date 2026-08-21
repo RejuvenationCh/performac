@@ -9,13 +9,14 @@ struct PopoverView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                MetricTile(label: "CPU", value: "34%")
+                MetricTile(label: "CPU", value: String(format: "%.0f%%", store.metrics.cpuPercent))
                 Divider().frame(height: 26)
-                MetricTile(label: "RAM", value: "12.1/16 GB")
+                MetricTile(label: "RAM", value: String(format: "%.1f/%.0f GB",
+                                                       store.metrics.memUsedGb, store.metrics.memTotalGb))
                 Divider().frame(height: 26)
-                MetricTile(label: "FREE", value: "66 GB")
+                MetricTile(label: "FREE", value: String(format: "%.0f GB", store.metrics.freeGb))
                 Divider().frame(height: 26)
-                MetricTile(label: "TEMP", value: "Normal")
+                MetricTile(label: "TEMP", value: store.metrics.thermal)
             }
             .padding(.vertical, PC.gutter)
             .pcHairline(.bottom)
@@ -38,5 +39,8 @@ struct PopoverView: View {
         }
         .frame(width: 380, height: 520)
         .background(VisualEffect())
+        // NSVisualEffectView follows the system appearance, so with the app pinned to light
+        // the popover was rendering dark while every other surface was light.
+        .environment(\.colorScheme, .light)
     }
 }

@@ -302,6 +302,8 @@ final class EngineStore: ObservableObject {
 
     // MARK: Digest coach intro (Gemini, opt-in)
 
+    /// Live kernel metrics, refreshed every couple of seconds by the menu bar timer.
+    @Published var metrics = Metrics()
     @Published var coachIntro: String? = nil
     @Published var coachAt: Date? = nil
     @Published var coachBusy = false
@@ -443,6 +445,14 @@ final class EngineStore: ObservableObject {
             out.append((v, p))
         }
         return out
+    }
+
+    var menuBarMode: String {
+        getSetting(db, "menuBarShows")?.objectVal?["mode"]?.stringVal ?? "metrics"
+    }
+
+    func setMenuBarMode(_ m: String) {
+        setSetting(db, "menuBarShows", JSONValue.from(["mode": m]))
     }
 
     func setDiskViewMode(_ m: DiskViewMode) {
