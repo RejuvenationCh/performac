@@ -35,6 +35,21 @@ enum Allowlist {
         "premiere-analyzer": .init(cleanable: true, safe: true,
             consequence: "Media-intelligence analysis, regenerated on demand."),
 
+        // ---- reclaimable, with the real cost stated ----
+        "gen-homebrew": .init(cleanable: true, safe: true,
+            consequence: "Downloaded installers Homebrew keeps after installing. Re-downloaded if ever needed."),
+        "gen-logs": .init(cleanable: true, safe: true,
+            consequence: "Application logs. Only useful when diagnosing a crash you are actively chasing."),
+        "gen-xcode-devicesupport": .init(cleanable: true, safe: true,
+            consequence: "Symbols for iOS versions you have debugged. Re-fetched next time you attach that device."),
+        "gen-xcode-archives": .init(cleanable: true, safe: false,
+            consequence: "Built archives of apps you shipped — the only copy of those exact builds."),
+        "gen-simulators": .init(cleanable: true, safe: true,
+            consequence: "Simulator caches, rebuilt on next launch."),
+        // Not cleanable. If the phone is lost or wiped, this backup is the only copy.
+        "gen-ios-backups": .init(cleanable: false, safe: false,
+            consequence: "Your device backups — the only copy if a phone is lost. Remove them in Finder if you truly mean to."),
+
         // ---- Lightroom ----
         "lr-default": .init(cleanable: true, safe: false,
             consequence: "Lightroom rebuilds previews on demand; a large catalog takes a while."),

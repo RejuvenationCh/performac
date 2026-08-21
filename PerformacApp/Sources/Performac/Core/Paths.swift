@@ -91,6 +91,14 @@ func cacheTargets(_ cfg: Config, inputs: CacheTargetsInputs = CacheTargetsInputs
         ("gen-google", "Google Chrome cache", home + "/Library/Caches/Google", "check-first"),
         ("gen-brave", "Brave cache", home + "/Library/Caches/BraveSoftware", "check-first"),
         ("gen-zen", "Zen cache", home + "/Library/Caches/zen", "check-first"),
+        // Space that piles up quietly and is genuinely re-downloadable or regenerated.
+        ("gen-homebrew", "Homebrew downloads", home + "/Library/Caches/Homebrew", "safe"),
+        ("gen-logs", "Application logs", home + "/Library/Logs", "safe"),
+        ("gen-xcode-devicesupport", "Xcode device support", home + "/Library/Developer/Xcode/iOS DeviceSupport", "safe"),
+        ("gen-xcode-archives", "Xcode archives", home + "/Library/Developer/Xcode/Archives", "check-first"),
+        ("gen-simulators", "iOS Simulator runtimes", home + "/Library/Developer/CoreSimulator/Caches", "safe"),
+        // iPhone/iPad backups. Large, and the only copy if the device is lost — never "safe".
+        ("gen-ios-backups", "iPhone & iPad backups", home + "/Library/Application Support/MobileSync/Backup", "check-first"),
     ]
     for (id, label, path, safety) in generic {
         targets.append(CacheTarget(id: id, label: label, path: path, safety: safety))

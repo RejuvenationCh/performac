@@ -70,6 +70,11 @@ struct CacheRules: Codable, Sendable {
 }
 /// Login-audit knobs. minHistoryDays exists because the headline claims evidence:
 /// with a fresh database there is none, and the honest output is silence.
+/// Below this the Trash is not worth a card.
+struct TrashCfg: Codable, Sendable {
+    var minBytes: Int64 = 1_000_000_000      // 1 GB
+}
+
 struct Login: Codable, Sendable {
     var minHistoryDays: Int = 7
 }
@@ -113,6 +118,7 @@ struct Config: Codable, Sendable {
     var cacheRules: CacheRules = CacheRules()
     var drift: Drift = Drift()
     var login: Login = Login()
+    var trash: TrashCfg = TrashCfg()
     var dup: Dup = Dup()
     var notifyCooldownHours: Int = 24
     var weeklyDigestNotify: Bool = true

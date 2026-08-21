@@ -41,6 +41,20 @@ enum CleanCheck {
         c.check("clean: trashed item still exists in the Trash",
                 ok.first?.trashedTo.map { FileManager.default.fileExists(atPath: $0) } == true)
         if let dest = ok.first?.trashedTo { try? FileManager.default.trashItem(at: URL(fileURLWithPath: dest), resultingItemURL: nil) }
+        // ---- Trash card ----
+        let cfg = Config.defaults
+        c.check("trash: silent below the threshold",
+                Rules.trashHolding(500_000_000, 3, cfg, 0).isEmpty)
+        c.check("trash: silent when empty even if bytes reported",
+                Rules.trashHolding(5_000_000_000, 0, cfg, 0).isEmpty)
+        let tf = Rules.trashHolding(18_000_000_000, 42, cfg, 0)
+        c.check("trash: fires when holding real space", tf.count == 1)
+        c.check("trash: headline names the size", tf.first?.headline.contains("GB") == true)
+        // the app must never offer to empty it — the Trash is the undo for everything
+        c.check("trash: only reveals, never empties", tf.first?.linkKind == "reveal")
+        c.check("trash: detail says Performac will not empty it",
+                tf.first?.detail.contains("never empties") == true)
+
         c.check("clean: missing path reports cleanly",
                 Trash.moveToTrash(["/nope/nope"], allowed: ["/nope/nope"], db: nil, now: 0).first?.ok == false)
     }

@@ -140,6 +140,22 @@ enum Rules {
         init(label: String, program: String? = nil) { self.label = label; self.program = program }
     }
 
+    /// The Trash holds space until it is emptied — and this app puts things there. Without
+    /// this card you clean 18 GB, watch free space not move, and conclude the app is broken.
+    ///
+    /// Performac deliberately does NOT offer to empty it. The Trash is the undo for every
+    /// destructive thing this app can do; emptying it is the one step that must stay the
+    /// user's own deliberate act.
+    static func trashHolding(_ bytes: Int64, _ items: Int, _ cfg: Config, _ now: Int64) -> [EngineFinding] {
+        guard bytes >= cfg.trash.minBytes, items > 0 else { return [] }
+        return [EngineFinding(
+            id: "trash-holding", kind: "trash", severity: "info",
+            headline: "Your Trash is holding \(sizeTextMb(Double(bytes) / 1_048_576))",
+            why: "Space in the Trash is still used. Emptying it is the only step that actually gives it back.",
+            detail: "\(items) item\(items == 1 ? "" : "s"). Performac never empties the Trash — it is the undo for everything this app removes, so that stays your call.",
+            linkKind: "reveal", linkTarget: NSHomeDirectory() + "/.Trash")]
+    }
+
     static func loginItemsAudit(_ items: [String], _ agents: [LoginAgent], _ procNames: [String],
                                 _ runningLabels: Set<String>, _ historyDays: Double,
                                 _ cfg: Config, _ now: Int64) -> [EngineFinding] {

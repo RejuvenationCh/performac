@@ -71,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await cacheTick(db, cfg, deps)
                 await backupTick(db, cfg, deps)
                 await loginTick(db, deps)
+                trashTick(db)
                 await driftTick(db, cfg, deps)
                 sweep(db, cfg, deps.now())
                 await mondayDigestCheck(db, cfg, deps.now(), { bin, args in try await deps.execFile(bin, args) })

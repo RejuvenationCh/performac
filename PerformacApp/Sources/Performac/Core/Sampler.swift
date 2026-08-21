@@ -66,6 +66,11 @@ func refreshFindings(_ db: DB, _ cfg: Config, _ now: Int64,
             .all([.int(now - 3_600_000)])),
         rowsToEvents(db.prepare("SELECT * FROM events WHERE kind = 'front_app'").all()),
         cfg, now)
+    findings += {
+        let t = getSetting(db, "trashState")?.objectVal
+        return Rules.trashHolding(Int64(t?["bytes"]?.doubleVal ?? 0),
+                                  Int(t?["items"]?.doubleVal ?? 0), cfg, now)
+    }()
     findings += Rules.storageTrend(rowsToDiskSamples(db.prepare("SELECT * FROM disk_samples").all()), cfg, now)
     findings += Rules.drift(driftEntries(db), cfg, now)
     findings += {
@@ -549,6 +554,16 @@ func driftTick(_ db: DB, _ cfg: Config, _ deps: any SamplerDeps) async {
 
 /// Resolve ~/Library/LaunchAgents to {label, program} and ask launchd which labels are
 /// actually running. Both are ground truth the label-matching rule never had.
+/// Measure the Trash. Cheap: a shallow count plus the walker already used for caches.
+func trashTick(_ db: DB) {
+    let trash = NSHomeDirectory() + "/.Trash"
+    let items = ((try? FileManager.default.contentsOfDirectory(atPath: trash)) ?? [])
+        .filter { !$0.hasPrefix(".") }
+    let m = measure(trash)
+    setSetting(db, "trashState", JSONValue.from(["bytes": Double(m.sizeMb) * 1_048_576,
+                                                 "items": Double(items.count)]))
+}
+
 func loginTick(_ db: DB, _ deps: any SamplerDeps) async {
     let dir = NSHomeDirectory() + "/Library/LaunchAgents"
     var agents: [[String: Any]] = []
