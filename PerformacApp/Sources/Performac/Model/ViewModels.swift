@@ -122,3 +122,22 @@ enum Fmt {
               paths: ["~/Movies/Raw/", "~/Documents/Upacara/"]),
     ]
 }
+
+
+/// How the Disk view draws the current folder. Outline is the default: it is the only mode
+/// that shows depth without losing your place.
+enum DiskViewMode: String, CaseIterable, Sendable {
+    case outline, list, compact, bubbles
+    var label: String {
+        switch self {
+        case .outline: "Outline"; case .list: "List"
+        case .compact: "Compact"; case .bubbles: "Bubbles"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .outline: "list.bullet.indent"; case .list: "list.bullet"
+        case .compact: "rectangle.compress.vertical"; case .bubbles: "circle.circle"
+        }
+    }
+}

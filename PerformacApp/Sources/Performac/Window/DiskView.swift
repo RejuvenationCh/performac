@@ -22,6 +22,11 @@ struct DiskView: View {
     var crumbs: [(name: String, path: String)] = []
     var onOpen: (String) -> Void = { _ in }
     var onCrumb: (String) -> Void = { _ in }
+    var mode: DiskViewMode = .outline
+    var onMode: (DiskViewMode) -> Void = { _ in }
+    var childrenOf: (String) -> [SizeEntry] = { _ in [] }
+    var browsePath: String = ""
+    var onReveal: (String) -> Void = { _ in }
     var onCancel: () -> Void = {}
     private var maxBytes: Int64 { entries.map(\.bytes).max() ?? 1 }
 
@@ -43,6 +48,12 @@ struct DiskView: View {
                     .help("Scan the selected location. Cmd-R")
                 }
                 Spacer()
+                Picker("", selection: Binding(get: { mode }, set: onMode)) {
+                    ForEach(DiskViewMode.allCases, id: \.self) { m in
+                        Image(systemName: m.symbol).help(m.label).tag(m)
+                    }
+                }
+                .pickerStyle(.segmented).labelsHidden().frame(width: 150)
                 StorageBar(freeBytes: 70_866_000_000, totalBytes: 1_068_000_000_000)
             }
             .padding(.horizontal, PC.stack).padding(.vertical, PC.gutter)
@@ -60,6 +71,7 @@ struct DiskView: View {
 
             HSplitView {
                 VStack(spacing: 0) {
+                    if mode == .outline || mode == .list {
                     HStack(spacing: PC.gutter) {
                         Text("NAME").font(.pcLabel).foregroundStyle(PC.meta)
                         Spacer()
@@ -69,14 +81,25 @@ struct DiskView: View {
                     }
                     .padding(.horizontal, PC.gutter).padding(.vertical, PC.s2)
                     .background(PC.canvas).pcHairline(.bottom)
+                    }
 
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(entries) { e in
-                                SizeRow(entry: e, maxBytes: maxBytes, onOpen: { onOpen(e.name) })
-                                Divider().overlay(PC.hairline)
+                    switch mode {
+                    case .outline:
+                        OutlineList(entries: entries, basePath: browsePath,
+                                    loadChildren: childrenOf, onReveal: onReveal)
+                    case .list:
+                        ScrollView {
+                            LazyVStack(spacing: 0) {
+                                ForEach(entries) { e in
+                                    SizeRow(entry: e, maxBytes: maxBytes, onOpen: { onOpen(e.name) })
+                                    Divider().overlay(PC.hairline)
+                                }
                             }
                         }
+                    case .compact:
+                        CompactList(entries: entries, onOpen: onOpen)
+                    case .bubbles:
+                        BubbleView(entries: entries, onOpen: onOpen)
                     }
                     Spacer(minLength: 0)
                     HStack(spacing: PC.gutter) {

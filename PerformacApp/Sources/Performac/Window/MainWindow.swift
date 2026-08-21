@@ -1,6 +1,7 @@
 // MainWindow.swift — 64pt icon rail + content. The rail is the ONLY navigation
 // (DESIGN.md §Do not carry over: no competing top tabs).
 import SwiftUI
+import AppKit
 
 enum Route: String, CaseIterable, Identifiable {
     case today, digest, disk, clean, duplicates, settings
@@ -43,6 +44,11 @@ struct MainWindow: View {
                     crumbs: store.breadcrumb,
                     onOpen: { store.browse(into: $0) },
                     onCrumb: { store.browse(to: $0) },
+                    mode: store.diskViewMode,
+                    onMode: { store.setDiskViewMode($0) },
+                    childrenOf: { store.childrenOf($0) },
+                    browsePath: store.browsePath,
+                    onReveal: { NSWorkspace.shared.selectFile($0, inFileViewerRootedAtPath: "") },
                     onCancel: { store.cancelDiskScan() })
                 case .clean: CleanView(caches: store.cacheEntries, onTrash: { store.trashSelected($0) })
                 case .duplicates: DuplicatesView(
