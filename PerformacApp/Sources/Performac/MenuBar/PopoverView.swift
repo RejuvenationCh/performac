@@ -1,11 +1,25 @@
-// PopoverView.swift — 380x520 menu bar surface: metric strip, advisory cards, two actions.
-// It never scrolls past a few cards; more than that is what the window is for.
+// PopoverView.swift — 380x520 menu bar surface.
+//
+// Metric strip, live graphs, then whatever is actually worth telling you. The graphs earn
+// their place: a number alone cannot show that CPU has been pinned for a minute rather than
+// spiking as you looked.
 import SwiftUI
 
 struct PopoverView: View {
     @ObservedObject var store = EngineStore.shared
     @ObservedObject var live = MetricsStore.shared
     var onOpenWindow: () -> Void = {}
+    var onScan: () -> Void = {}
+
+    /// Time-sensitive findings first; if there are none, everything else. Showing only the
+    /// live kinds left the popover blank on a healthy machine, which read as broken.
+    private var cards: [Finding] { store.live.isEmpty ? store.digest : store.live }
+
+    private func rate(_ bps: Double) -> String {
+        let mb = bps / 1_048_576
+        if mb >= 1 { return String(format: "%.1f MB/s", mb) }
+        return String(format: "%.0f KB/s", bps / 1024)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,13 +38,44 @@ struct PopoverView: View {
 
             ScrollView {
                 VStack(spacing: PC.gutter) {
-                    ForEach(store.live) { CoachCardView(finding: $0, onQuit: { store.requestQuit($0) }) }
+                    // Percentages are pinned to 100 so the trace is comparable minute to
+                    // minute; throughput scales to its own peak because it has no ceiling.
+                    HStack(spacing: PC.s2) {
+                        GraphTile(label: "CPU",
+                                  value: String(format: "%.0f%%", live.current.cpuPercent),
+                                  values: live.cpuSeries, tint: PC.accentFill, ceiling: 100)
+                        GraphTile(label: "MEMORY",
+                                  value: String(format: "%.0f%%", live.current.memPercent),
+                                  values: live.memSeries, tint: PC.green, ceiling: 100)
+                    }
+                    HStack(spacing: PC.s2) {
+                        GraphTile(label: "DOWN", value: rate(live.current.netDownBps),
+                                  values: live.netDownSeries, tint: PC.accent)
+                        GraphTile(label: "UP", value: rate(live.current.netUpBps),
+                                  values: live.netUpSeries, tint: PC.amber)
+                    }
+
+                    if cards.isEmpty {
+                        VStack(spacing: PC.s2) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.system(size: 24)).foregroundStyle(PC.green)
+                            Text("Nothing worth doing").font(.pcTitle).foregroundStyle(PC.ink)
+                            Text("Caches are in range and drives are steady.")
+                                .font(.pcSmall).foregroundStyle(PC.ink2)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity).padding(.vertical, 24)
+                    } else {
+                        ForEach(cards) { f in
+                            CoachCardView(finding: f, onQuit: { store.requestQuit($0) })
+                        }
+                    }
                 }
                 .padding(PC.gutter)
             }
 
             HStack {
-                Button("Scan Disk") {}.controlSize(.small)
+                Button("Scan Disk", action: onScan).controlSize(.small)
                 Spacer()
                 Button("Open Performac", action: onOpenWindow)
                     .controlSize(.small).buttonStyle(.borderedProminent)
@@ -39,11 +84,7 @@ struct PopoverView: View {
             .pcHairline(.top)
         }
         .frame(width: 380, height: 520)
-        // A popover is the floating layer by definition, so it is the clearest case for
-        // glass. Replaces the NSVisualEffectView vibrancy this used before.
         .pcGlassPanel(PC.rXl)
-        // NSVisualEffectView follows the system appearance, so with the app pinned to light
-        // the popover was rendering dark while every other surface was light.
         .environment(\.colorScheme, .light)
     }
 }

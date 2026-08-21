@@ -156,5 +156,21 @@ final class LiveMetrics: @unchecked Sendable {
 @MainActor
 final class MetricsStore: ObservableObject {
     static let shared = MetricsStore()
-    @Published var current = Metrics()
+    @Published var current = Metrics() {
+        didSet { push(current) }
+    }
+    /// Rolling window for the popover graphs. 90 samples at one every 2s is three minutes,
+    /// which is enough to see a spike arrive and pass without holding anything meaningful.
+    @Published private(set) var history: [Metrics] = []
+    private let cap = 90
+
+    private func push(_ m: Metrics) {
+        history.append(m)
+        if history.count > cap { history.removeFirst(history.count - cap) }
+    }
+
+    var cpuSeries: [Double] { history.map(\.cpuPercent) }
+    var memSeries: [Double] { history.map(\.memPercent) }
+    var netDownSeries: [Double] { history.map(\.netDownBps) }
+    var netUpSeries: [Double] { history.map(\.netUpBps) }
 }

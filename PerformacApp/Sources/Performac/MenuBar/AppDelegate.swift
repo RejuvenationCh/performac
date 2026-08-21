@@ -39,7 +39,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         popover.behavior = .transient
         popover.contentSize = NSSize(width: 380, height: 520)
         popover.contentViewController = NSHostingController(
-            rootView: PopoverView(onOpenWindow: { [weak self] in self?.openWindow() })
+            rootView: PopoverView(
+                onOpenWindow: { [weak self] in self?.openWindow() },
+                onScan: { [weak self] in
+                    self?.openWindow()
+                    EngineStore.shared.startDiskScan()
+                })
         )
 
         // Dev builds open the window on launch: on a notched MacBook with a full menu bar
