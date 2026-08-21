@@ -1,9 +1,12 @@
 // CleanView.swift — replaces Purge. Allowlisted caches only, Trash-only, every row explains why.
 import SwiftUI
+import AppKit
 
 struct CleanView: View {
     @State private var caches: [CacheEntry]
     @State private var confirming = false
+    /// Anchor for shift-click range selection.
+    @State private var lastToggled: Int? = nil
 
     private let onTrash: ([CacheEntry]) -> Void
 
@@ -12,6 +15,23 @@ struct CleanView: View {
         self.onTrash = onTrash
     }
     private var selected: [CacheEntry] { caches.filter { $0.selected && $0.cleanable } }
+
+    /// Click anywhere on a row to toggle it. Shift-click selects the whole run from the last
+    /// row you touched, the way a file list does — clicking twelve checkboxes to clear a
+    /// cache list is busywork.
+    private func toggle(_ i: Int, shift: Bool) {
+        guard caches.indices.contains(i), caches[i].cleanable else { return }
+        if shift, let anchor = lastToggled, anchor != i {
+            let range = anchor < i ? anchor...i : i...anchor
+            // the anchor's state is what the whole run becomes, so a shift-click extends
+            // a selection rather than inverting a mixed run into confetti
+            let target = caches[anchor].selected
+            for j in range where caches[j].cleanable { caches[j].selected = target }
+        } else {
+            caches[i].selected.toggle()
+            lastToggled = i
+        }
+    }
     private var selectedBytes: Int64 { selected.reduce(0) { $0 + $1.bytes } }
 
     var body: some View {
@@ -34,8 +54,8 @@ struct CleanView: View {
 
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach($caches) { $c in
-                            CacheRow(entry: $c)
+                        ForEach(Array($caches.enumerated()), id: \.element.id) { i, $c in
+                            CacheRow(entry: $c, onRowTap: { shift in toggle(i, shift: shift) })
                             Divider().overlay(PC.hairline)
                         }
                     }
@@ -72,11 +92,14 @@ struct CleanView: View {
 
 struct CacheRow: View {
     @Binding var entry: CacheEntry
+    var onRowTap: (Bool) -> Void = { _ in }
     @State private var hover = false
     var body: some View {
         HStack(alignment: .top, spacing: PC.gutter) {
             if entry.cleanable {
-                Toggle("", isOn: $entry.selected).labelsHidden().toggleStyle(.checkbox).padding(.top, 1)
+                // the checkbox reflects state; the row is the hit target
+                Toggle("", isOn: $entry.selected).labelsHidden().toggleStyle(.checkbox)
+                    .padding(.top, 1).allowsHitTesting(false)
             } else {
                 // Protected: measured and shown, but the app will not trash it.
                 Image(systemName: "lock.fill").font(.system(size: 10)).foregroundStyle(PC.meta)
@@ -98,8 +121,15 @@ struct CacheRow: View {
                 .frame(width: 96, alignment: .leading)
         }
         .padding(.horizontal, PC.gutter).padding(.vertical, PC.s2 + 1)
-        .background(hover ? PC.fill1.opacity(0.6) : .clear)
+        .background(entry.selected ? PC.fill2 : (hover ? PC.fill1.opacity(0.6) : .clear))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard entry.cleanable else { return }
+            onRowTap(NSEvent.modifierFlags.contains(.shift))
+        }
         .onHover { hover = $0 }
+        .help(entry.cleanable ? "Click to select. Shift-click to select a range."
+                              : "Not on the cleaner's allowlist — Performac will not trash this.")
     }
 }
 
