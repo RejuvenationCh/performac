@@ -122,9 +122,7 @@ struct StorageBar: View {
             Text("free of \(Fmt.bytes(totalBytes))").font(.pcSmall).foregroundStyle(PC.ink2)
             ZStack(alignment: .leading) {
                 Capsule().fill(PC.fill3)
-                GeometryReader { g in
-                    Capsule().fill(tint).frame(width: g.size.width * usedFrac)
-                }
+                Capsule().fill(tint).frame(width: 96 * usedFrac)
             }
             .frame(width: 96, height: 5)
             Text("\(Int(usedFrac * 100))%").font(.pcNum).foregroundStyle(tint)
@@ -160,14 +158,8 @@ struct SizeRow: View {
                 .frame(width: 64, alignment: .trailing)
             Text(Fmt.bytes(entry.bytes)).font(.pcNum).foregroundStyle(PC.ink)
                 .frame(width: 72, alignment: .trailing)
-            GeometryReader { g in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(PC.fill3)
-                    Capsule().fill(PC.accentFill)
-                        .frame(width: g.size.width * (Double(entry.bytes) / Double(max(maxBytes, 1))))
-                }
-            }
-            .frame(width: 90, height: 4)
+            ProportionBar(fraction: Double(entry.bytes) / Double(max(maxBytes, 1)),
+                          width: 90, height: 4)
         }
         .padding(.horizontal, PC.gutter).padding(.vertical, 7)
         .background(hover ? PC.fill1 : .clear)

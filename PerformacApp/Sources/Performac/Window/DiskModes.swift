@@ -91,7 +91,6 @@ private struct OutlineRow: View {
 
     var body: some View {
         HStack(spacing: PC.s2) {
-            Color.clear.frame(width: CGFloat(depth) * 14, height: 1)
             Button(action: onToggle) {
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                     .font(.system(size: 9, weight: .semibold))
@@ -111,10 +110,10 @@ private struct OutlineRow: View {
             }
             Text(Fmt.bytes(entry.bytes)).font(.pcNum).foregroundStyle(PC.ink)
                 .frame(width: 70, alignment: .trailing)
-            ProportionBar(fraction: Double(entry.bytes) / Double(max(maxBytes, 1)))
-                .frame(width: 70, height: 4)
+            ProportionBar(fraction: Double(entry.bytes) / Double(max(maxBytes, 1)), width: 70)
         }
-        .padding(.horizontal, PC.gutter).padding(.vertical, 5)
+        .padding(.leading, PC.gutter + CGFloat(depth) * 14)
+        .padding(.trailing, PC.gutter).padding(.vertical, 5)
         .background(hover ? PC.fill1 : .clear)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { if isFolder { onToggle() } }
@@ -288,15 +287,22 @@ private struct Bubble: View {
 
 // MARK: - shared bits
 
+/// Fixed width by contract, so the fill is computed directly.
+///
+/// This used to wrap a GeometryReader. One per row is one extra layout pass per row, and a
+/// sample of the running app showed the cost was almost entirely SwiftUI layout
+/// (LayoutEngineBox.sizeThatFits, StackLayout.placeChildren) rather than data.
 struct ProportionBar: View {
     let fraction: Double
+    var width: CGFloat = 70
+    var height: CGFloat = 4
     var body: some View {
-        GeometryReader { g in
-            ZStack(alignment: .leading) {
-                Capsule().fill(PC.fill3)
-                Capsule().fill(PC.accentFill).frame(width: g.size.width * min(max(fraction, 0), 1))
-            }
+        ZStack(alignment: .leading) {
+            Capsule().fill(PC.fill3)
+            Capsule().fill(PC.accentFill)
+                .frame(width: width * min(max(fraction, 0), 1))
         }
+        .frame(width: width, height: height)
     }
 }
 

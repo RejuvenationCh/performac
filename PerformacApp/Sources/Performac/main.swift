@@ -31,6 +31,24 @@ if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "metrics" {
                  s.batteryPercent, s.batteryCharging ? " (charging)" : "", s.thermal))
     exit(0)
 }
+if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "rowsbench" {
+    let db = DB(path: NSHomeDirectory() + "/Library/Application Support/com.chris.performac.v2/performac.db")
+    func children(_ path: String) -> Int {
+        db.prepare("SELECT name, items, bytes, is_dir FROM scan_entries WHERE parent = ? ORDER BY bytes DESC")
+            .all([.text(path)]).count
+    }
+    let home = NSHomeDirectory()
+    var t = Date()
+    let top = children(home)
+    print(String(format: "  one childrenOf(home): %.1f ms (%d rows)", Date().timeIntervalSince(t) * 1000, top))
+    t = Date()
+    for _ in 0..<50 { _ = children(home) }
+    print(String(format: "  50x childrenOf(home): %.1f ms", Date().timeIntervalSince(t) * 1000))
+    t = Date()
+    for _ in 0..<50 { _ = children(home + "/Library") }
+    print(String(format: "  50x childrenOf(~/Library): %.1f ms", Date().timeIntervalSince(t) * 1000))
+    exit(0)
+}
 if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "check" {
     let scanner = await ScannerSelfCheck.run()
     let engine = await runAllChecks()
@@ -40,7 +58,7 @@ if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "check" {
 // Any argument we do not recognise exits with usage. Falling through to the GUI meant a
 // mistyped flag started a windowless app and hung the caller until it was killed.
 if CommandLine.arguments.count > 1 {
-    let known = ["scan", "check", "metrics", "dbcopy", "parity"]
+    let known = ["scan", "check", "metrics", "dbcopy", "parity", "rowsbench"]
     let arg = CommandLine.arguments[1]
     if !known.contains(arg) {
         let usage = """

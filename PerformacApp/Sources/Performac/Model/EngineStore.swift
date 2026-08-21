@@ -346,8 +346,8 @@ final class EngineStore: ObservableObject {
 
     // MARK: Digest coach intro (Gemini, opt-in)
 
-    /// Live kernel metrics, refreshed every couple of seconds by the menu bar timer.
-    @Published var metrics = Metrics()
+    /// Read-through to MetricsStore. NOT @Published here: see MetricsStore for why.
+    var metrics: Metrics { MetricsStore.shared.current }
     @Published var coachIntro: String? = nil
     @Published var coachAt: Date? = nil
     @Published var coachBusy = false

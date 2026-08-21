@@ -177,7 +177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let t = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                self.store.metrics = LiveMetrics.shared.sample()
+                MetricsStore.shared.current = LiveMetrics.shared.sample()
                 self.updateStatusTitle()
             }
         }

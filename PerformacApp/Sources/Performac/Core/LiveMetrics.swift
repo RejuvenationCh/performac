@@ -146,3 +146,15 @@ final class LiveMetrics: @unchecked Sendable {
         }
     }
 }
+
+
+/// Metrics live in their own observable object on purpose.
+///
+/// They were @Published on EngineStore, which every view observes — so a reading twice a
+/// second invalidated the disk table, the outline, the cache list, everything. Isolating
+/// them means only the surfaces that actually show a live number redraw.
+@MainActor
+final class MetricsStore: ObservableObject {
+    static let shared = MetricsStore()
+    @Published var current = Metrics()
+}

@@ -4,19 +4,20 @@ import SwiftUI
 
 struct PopoverView: View {
     @ObservedObject var store = EngineStore.shared
+    @ObservedObject var live = MetricsStore.shared
     var onOpenWindow: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                MetricTile(label: "CPU", value: String(format: "%.0f%%", store.metrics.cpuPercent))
+                MetricTile(label: "CPU", value: String(format: "%.0f%%", live.current.cpuPercent))
                 Divider().frame(height: 26)
                 MetricTile(label: "RAM", value: String(format: "%.1f/%.0f GB",
-                                                       store.metrics.memUsedGb, store.metrics.memTotalGb))
+                                                       live.current.memUsedGb, live.current.memTotalGb))
                 Divider().frame(height: 26)
-                MetricTile(label: "FREE", value: String(format: "%.0f GB", store.metrics.freeGb))
+                MetricTile(label: "FREE", value: String(format: "%.0f GB", live.current.freeGb))
                 Divider().frame(height: 26)
-                MetricTile(label: "TEMP", value: store.metrics.thermal)
+                MetricTile(label: "TEMP", value: live.current.thermal)
             }
             .padding(.vertical, PC.gutter)
             .pcHairline(.bottom)
