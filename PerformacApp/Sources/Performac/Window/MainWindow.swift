@@ -24,10 +24,18 @@ struct MainWindow: View {
             Rail(route: $route)
             Group {
                 switch route {
-                case .today: TodayView(findings: store.live, quitAction: { store.requestQuit($0) })
+                case .today: TodayView(
+                    findings: store.live,
+                    quitAction: { store.requestQuit($0) },
+                    updatedAt: store.findingsAt,
+                    busy: store.refreshing,
+                    onRefresh: { (NSApp.delegate as? AppDelegate)?.refreshNow() })
                 case .digest: DigestView(
                     findings: store.digest,
                     quitAction: { store.requestQuit($0) },
+                    updatedAt: store.findingsAt,
+                    busy: store.refreshing,
+                    onRefresh: { (NSApp.delegate as? AppDelegate)?.refreshNow() },
                     trendPoints: store.trend.points,
                     trendWindow: store.trend.window,
                     trendNote: store.trend.note)

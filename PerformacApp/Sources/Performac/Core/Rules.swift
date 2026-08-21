@@ -78,6 +78,13 @@ enum Rules {
         return (id, false, "unsafe", "")
     }
 
+    /// "today" / "yesterday" / "16 days ago". ageText omits "ago" so it can be composed;
+    /// this is the form for sentences that end there.
+    static func ageTextAgo(_ ageDays: Double?) -> String {
+        let t = ageText(ageDays)
+        return (t == "today" || t == "yesterday" || t == "a while") ? t : t + " ago"
+    }
+
     static func ageText(_ ageDays: Double?) -> String {
         guard let ageDays else { return "a while" }
         if ageDays < 1 { return "today" }
@@ -665,8 +672,8 @@ enum Rules {
                     ? "\(m.app)'s \(media) is \(String(format: "%.1f", sizeGb)) GB and in active use"
                     : "\(m.app)'s \(media) is \(String(format: "%.1f", sizeGb)) GB"
                 why = fresh
-                    ? "Last written \(ageText(ageDays)); in active use — leave it."
-                    : "Last written \(ageText(ageDays)) and still under your \(cfg.cacheRules.staleDays)-day staleness line — leave it."
+                    ? "Last written \(ageTextAgo(ageDays)); in active use — leave it."
+                    : "Last written \(ageTextAgo(ageDays)) and still under your \(cfg.cacheRules.staleDays)-day staleness line — leave it."
             } else {
                 severity = sizeGb >= cfg.cacheRules.redGb ? "red" : "amber"
                 headline = "\(m.app)'s \(media) is \(String(format: "%.1f", sizeGb)) GB and hasn't been written to in \(Int(ageDays!.rounded())) days"

@@ -1,10 +1,42 @@
 import SwiftUI
 
+/// "Updated 2 minutes ago" plus the control that actually re-measures. Findings are computed
+/// on a schedule, so without this a card gives no clue how old its numbers are.
+struct FreshnessBar: View {
+    let at: Date?
+    let busy: Bool
+    let onRefresh: () -> Void
+    private var text: String {
+        guard let at else { return "Not measured yet" }
+        let s = Int(Date().timeIntervalSince(at))
+        if s < 45 { return "Updated just now" }
+        if s < 5400 { return "Updated \(s / 60) min ago" }
+        if s < 172_800 { return "Updated \(s / 3600) hours ago" }
+        return "Updated \(s / 86_400) days ago"
+    }
+    var body: some View {
+        HStack(spacing: PC.s2) {
+            if busy { ProgressView().controlSize(.small).scaleEffect(0.7) }
+            Text(busy ? "Measuring…" : text).font(.pcSmall).foregroundStyle(PC.meta)
+            Button { onRefresh() } label: {
+                Label("Refresh", systemImage: "arrow.clockwise").font(.pcLabel)
+            }
+            .controlSize(.small).disabled(busy)
+            .keyboardShortcut("r", modifiers: [.command, .shift])
+            .help("Re-measure caches, backups, drift and the Trash. Cmd-Shift-R")
+        }
+    }
+}
+
 struct TodayView: View {
     var findings: [Finding] = Sample.findings
     var quitAction: (String) -> Void = { _ in }
+    var updatedAt: Date? = nil
+    var busy: Bool = false
+    var onRefresh: () -> Void = {}
     var body: some View {
-        Page(title: "Today", subtitle: "Live view — drives, thermals, and anything time-sensitive.") {
+        Page(title: "Today", subtitle: "Live view — drives, thermals, and anything time-sensitive.",
+             trailing: AnyView(FreshnessBar(at: updatedAt, busy: busy, onRefresh: onRefresh))) {
             if findings.isEmpty { QuietState() }
             else {
                 ScrollView {
@@ -62,6 +94,9 @@ private struct QuietTile: View {
 struct DigestView: View {
     var findings: [Finding] = Sample.findings
     var quitAction: (String) -> Void = { _ in }
+    var updatedAt: Date? = nil
+    var busy: Bool = false
+    var onRefresh: () -> Void = {}
     var trendPoints: [Double] = []
     var trendWindow: String = ""
     var trendNote: String = ""
@@ -82,7 +117,8 @@ struct DigestView: View {
         return "\(head), biggest first. Each card carries the evidence behind it — the age, the trend, or the count that made it worth showing."
     }
     var body: some View {
-        Page(title: "Digest", subtitle: "Weekly read — the trends behind the cards.") {
+        Page(title: "Digest", subtitle: "Weekly read — the trends behind the cards.",
+             trailing: AnyView(FreshnessBar(at: updatedAt, busy: busy, onRefresh: onRefresh))) {
             ScrollView {
                 VStack(alignment: .leading, spacing: PC.gutter) {
                     VStack(alignment: .leading, spacing: PC.s2) {

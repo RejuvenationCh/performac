@@ -14,6 +14,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
 
     let store = EngineStore.shared
+    // kept so a manual refresh can re-run the same ticks the schedulers do
+    private var engineCfg: Config?
+    private var engineDeps: LiveDeps?
+    private var engineSampler: Sampler?
     private var engineTasks: [Task<Void, Never>] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -48,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let deps = LiveDeps()
         let sampler = Sampler(db: db, cfg: cfg, deps: deps)
         store.sampler = sampler
+        engineCfg = cfg; engineDeps = deps; engineSampler = sampler
         let store = store
 
         // 30s tick: samples + streams + refreshFindings (rules + findings table + notify)
@@ -90,6 +95,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // first refresh so the UI has real data before the first tick lands
         Task { [store] in
             await MainActor.run { store.refreshFromDatabase() }
+        }
+    }
+
+    /// Manual refresh: re-run the measurement ticks, not just re-read the table. A refresh
+    /// that only re-reads would report the same numbers and look broken.
+    func refreshNow() {
+        guard let cfg = engineCfg, let deps = engineDeps, let sampler = engineSampler else { return }
+        let db = store.db
+        let store = store
+        store.refreshing = true
+        Task.detached(priority: .userInitiated) {
+            await sampler.tick()
+            await cacheTick(db, cfg, deps)
+            await backupTick(db, cfg, deps)
+            await loginTick(db, deps)
+            trashTick(db)
+            await driftTick(db, cfg, deps)
+            await refreshFindings(db, loadConfig(db), deps.now(), { b, a in try await deps.execFile(b, a) })
+            await MainActor.run { store.refreshFromDatabase(); store.refreshing = false }
         }
     }
 

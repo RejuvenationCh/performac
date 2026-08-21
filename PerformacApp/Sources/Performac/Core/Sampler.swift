@@ -520,7 +520,10 @@ func driftTick(_ db: DB, _ cfg: Config, _ deps: any SamplerDeps) async {
     var entries: [[String: Any]] = []
     var eperm: [String] = []
     for p in cfg.drift.paths {
-        let dir = p.hasPrefix("~/") ? home + String(p.dropFirst(2)) : p
+        // dropFirst(2) removed "~/" including the separator, so "~/Downloads" became
+        // "/Users/youDownloads" — a path that never exists. Every drift walk then
+        // failed with EPERM and the app blamed macOS permissions for its own typo.
+        let dir = (p as NSString).expandingTildeInPath
         guard let tops = try? FileManager.default.contentsOfDirectory(at: URL(fileURLWithPath: dir), includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey]) else {
             eperm.append(dir)
             continue

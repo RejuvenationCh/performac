@@ -106,6 +106,7 @@ final class EngineStore: ObservableObject {
         refreshCacheEntries()
         refreshDupGroups()
         refreshTrend()
+        findingsAt = Date()
         config = loadConfig(db)
         fdaGranted = EngineStore.checkFullDiskAccess()
     }
@@ -243,6 +244,9 @@ final class EngineStore: ObservableObject {
         var hasEnoughHistory = false
     }
     @Published var trend = Trend()
+    /// When the visible findings were last recomputed, so a card is never mistaken for live.
+    @Published var findingsAt: Date? = nil
+    @Published var refreshing = false
 
     /// Reads the boot volume's samples. Never invents a slope: below the same four days
     /// storageTrend requires, it says how little history there is instead of guessing.
