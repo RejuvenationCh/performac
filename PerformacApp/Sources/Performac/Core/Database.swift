@@ -19,6 +19,14 @@ enum SQLValue: Equatable, Sendable {
         switch self { case .text(let v): return v; default: return "" }
     }
     var isNull: Bool { self == .null }
+    var doubleVal: Double {
+        switch self {
+        case .real(let v): v
+        case .int(let v): Double(v)
+        case .text(let t): Double(t) ?? 0
+        case .null: 0
+        }
+    }
 }
 
 typealias DBRow = [String: SQLValue]
@@ -53,6 +61,10 @@ CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS trash_log(
   ts INTEGER NOT NULL, path TEXT NOT NULL, ok INTEGER NOT NULL, detail TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS idx_trash_ts ON trash_log(ts);
+-- Die temperature, sampled with the 30s tick. Kept as its own table rather than an event
+-- because it is a continuous series, not an occurrence.
+CREATE TABLE IF NOT EXISTS temp_samples(ts INTEGER NOT NULL, celsius REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_temp_ts ON temp_samples(ts);
 -- The last disk scan's tree. Kept in a table rather than a settings blob so browsing a
 -- stale scan is the same indexed lookup as browsing a fresh one — one code path, and a
 -- ~100k-node home directory never has to be held in memory or re-parsed as JSON.

@@ -46,6 +46,10 @@ struct Export: Codable, Sendable {
     var minMinutes: Int = 10
 }
 struct Thermal: Codable, Sendable {
+    /// Degrees, not a pressure level. The die sensors are readable (see ThermalSensors), so
+    /// the rule can say 87C instead of "elevated".
+    var hotC: Double = 85
+    var minHotMinutes: Int = 5
     var minElevatedMinutes: Int = 10
 }
 struct Drive: Codable, Sendable {

@@ -42,7 +42,9 @@ func refreshFindings(_ db: DB, _ cfg: Config, _ now: Int64,
     findings += Rules.cacheGrowth(rowsToCacheSamples(db.prepare("SELECT * FROM cache_samples").all()), cfg, now)
     findings += Rules.thermalDuringExport(
         rowsToProcSamples(db.prepare("SELECT * FROM proc_samples ORDER BY ts").all()),
-        rowsToEvents(db.prepare("SELECT * FROM events WHERE kind = 'thermal' ORDER BY ts").all()),
+        db.prepare("SELECT ts, celsius FROM temp_samples ORDER BY ts").all().map {
+            TempSample(ts: $0["ts"]?.intVal ?? 0, celsius: $0["celsius"]?.doubleVal ?? 0)
+        },
         cfg, now, lastPower)
     findings += Rules.driveInstability(
         rowsToEvents(db.prepare("SELECT * FROM events WHERE kind IN ('mount','unmount','sleep_gap') ORDER BY ts").all()),
@@ -70,6 +72,25 @@ func refreshFindings(_ db: DB, _ cfg: Config, _ now: Int64,
         let t = getSetting(db, "trashState")?.objectVal
         return Rules.trashHolding(Int64(t?["bytes"]?.doubleVal ?? 0),
                                   Int(t?["items"]?.doubleVal ?? 0), cfg, now)
+    }()
+    findings += {
+        // Compare the top level of every scanned root. scan_entries already holds the sizes,
+        // so this is a couple of indexed reads rather than another walk.
+        let roots = db.prepare("SELECT DISTINCT parent FROM scan_entries WHERE parent NOT LIKE ?%")
+            .all([.text("")]).compactMap { $0["parent"]?.stringVal }
+        let home = NSHomeDirectory()
+        let volumes = ((try? FileManager.default.contentsOfDirectory(atPath: "/Volumes")) ?? [])
+            .map { "/Volumes/" + $0 }
+        let candidates = ([home] + volumes).filter { roots.contains($0) }
+        guard candidates.count >= 1 else { return [] as [EngineFinding] }
+        let statuses = CopyCheck.compare(roots: candidates, minBytes: 5 * 1_073_741_824) { root in
+            db.prepare("SELECT name, bytes, is_dir FROM scan_entries WHERE parent = ?")
+                .all([.text(root)])
+                .map { (name: $0["name"]?.stringVal ?? "",
+                        bytes: $0["bytes"]?.intVal ?? 0,
+                        isDir: ($0["is_dir"]?.intVal ?? 0) == 1) }
+        }
+        return Rules.singleCopy(statuses, cfg, now)
     }()
     findings += Rules.storageTrend(rowsToDiskSamples(db.prepare("SELECT * FROM disk_samples").all()), cfg, now)
     findings += Rules.drift(driftEntries(db), cfg, now)
@@ -354,6 +375,10 @@ final class Sampler: @unchecked Sendable {
         lastVolumes = vols
 
         lastTickTs = t
+        // real die temperature, so the export rule can talk in degrees
+        if let c = ThermalSensors.socCelsius() {
+            db.prepare("INSERT INTO temp_samples(ts, celsius) VALUES(?,?)").run([.int(t), .real(c)])
+        }
         lastTickAt = t
         await refreshFindings(db, loadConfig(db), t, { @Sendable [deps] bin, args in try await deps.execFile(bin, args) })
     }

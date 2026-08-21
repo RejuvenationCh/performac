@@ -161,72 +161,48 @@ enum RulesCheck {
         }
 
         // ---- thermalDuringExport ----
+        // Rebuilt on real degrees. The old version read pmset pressure levels and never
+        // fired once on this machine, because pmset has never recorded a warning level.
         do {
-            let T0 = NOW
-            let procs = exportSamples("Adobe Media Encoder 2026", T0, 40, 320, 480)
-            let therm = [thermEvent(T0 + 10 * 60_000, 1), thermEvent(T0 + 28 * 60_000, 0)]
-            let fs = Rules.thermalDuringExport(procs, therm, tcfg, T0 + 40 * 60_000, nil)
-            c.check("thermal: one amber", fs.count == 1 && fs[0].severity == "amber")
-            c.eq("thermal: exact headline", fs.first?.headline,
-                 "Thermal pressure ran elevated for 18 min during your Adobe Media Encoder 2026 export")
-            c.check("thermal: cites export length + peak", fs.count == 1 && fs[0].why.contains("40 min") && fs[0].why.contains("480%"), fs.first?.why ?? "")
-            c.check("thermal: no link", fs.first?.linkKind == nil)
-            c.check("thermal: fan detail", fs.count == 1 && fs[0].detail.contains("fan"), fs.first?.detail ?? "")
-        }
-        do {
-            let T0 = NOW
-            let procs = exportSamples("Adobe Media Encoder 2026", T0, 40, 400, 400)
-            let therm = [thermEvent(T0 + 2 * 60_000, 1), thermEvent(T0 + 38 * 60_000, 0)]
-            c.check("thermal: ≥30 min → red", Rules.thermalDuringExport(procs, therm, tcfg, T0 + 40 * 60_000, nil).first?.severity == "red")
-        }
-        do {
-            let T0 = NOW
-            let procs = exportSamples("Adobe Media Encoder 2026", T0, 40, 400, 400)
-            let therm = [thermEvent(T0 + 2 * 60_000, 2), thermEvent(T0 + 14 * 60_000, 0)]
-            c.check("thermal: level ≥ 2 → red even when short", Rules.thermalDuringExport(procs, therm, tcfg, T0 + 40 * 60_000, nil).first?.severity == "red")
-        }
-        do {
-            let T0 = NOW
-            let procs = exportSamples("Adobe Media Encoder 2026", T0, 40, 400, 400)
-            c.check("thermal: no thermal events → none (absence ≠ finding)",
-                    Rules.thermalDuringExport(procs, [], tcfg, T0 + 40 * 60_000, nil).isEmpty)
-        }
-        do {
-            let T0 = NOW
-            let procs = exportSamples("Zen", T0, 40, 10, 20)
-            let therm = [thermEvent(T0 + 2 * 60_000, 1), thermEvent(T0 + 38 * 60_000, 0)]
-            c.check("thermal: no export window → none",
-                    Rules.thermalDuringExport(procs, therm, tcfg, T0 + 40 * 60_000, nil).isEmpty)
-        }
-        do {
-            let T0 = NOW
-            let procs = exportSamples("Adobe Media Encoder 2026", T0, 40, 320, 480)
-            let therm = [thermEvent(T0 + 10 * 60_000, 1), thermEvent(T0 + 28 * 60_000, 0)]
-            let onBatt = Rules.thermalDuringExport(procs, therm, tcfg, T0 + 40 * 60_000,
-                                                   EventRow(ts: 0, kind: "power", key: "Battery Power", detail: ""))
-            c.check("thermal: battery → info", onBatt.count == 1 && onBatt[0].severity == "info")
-            c.check("thermal: battery why", onBatt.count == 1 && onBatt[0].why.contains("battery"), onBatt.first?.why ?? "")
-            let onAc = Rules.thermalDuringExport(procs, therm, tcfg, T0 + 40 * 60_000,
-                                                 EventRow(ts: 0, kind: "power", key: "AC Power", detail: ""))
-            c.check("thermal: AC → amber", onAc.count == 1 && onAc[0].severity == "amber")
-            c.check("thermal: no power context → amber",
-                    Rules.thermalDuringExport(procs, therm, tcfg, T0 + 40 * 60_000, nil).first?.severity == "amber")
-        }
-        do {
-            let T0 = NOW
-            let a = exportSamples("Adobe Media Encoder 2026", T0, 9, 400, 400)
-            let b = exportSamples("Adobe Media Encoder 2026", T0 + 11 * 60_000 + 30_000, 9, 400, 400)
-            let therm = [thermEvent(T0, 1), thermEvent(T0 + 25 * 60_000, 0)]
-            c.check("thermal: ≥2 min gap splits windows → none",
-                    Rules.thermalDuringExport(a + b, therm, tcfg, T0 + 25 * 60_000, nil).isEmpty)
-        }
-        do {
-            let T0 = NOW
-            let a = exportSamples("Adobe Media Encoder 2026", T0, 9, 400, 400)
-            let b = exportSamples("Adobe Media Encoder 2026", T0 + 10 * 60_000, 9, 400, 400)
-            let therm = [thermEvent(T0 + 1 * 60_000, 1), thermEvent(T0 + 19 * 60_000, 0)]
-            let fs = Rules.thermalDuringExport(a + b, therm, tcfg, T0 + 25 * 60_000, nil)
-            c.check("thermal: <2 min gap merges", fs.count == 1 && fs[0].headline.contains("18 min"), fs.first?.headline ?? "")
+            let T0: Int64 = NOW - 40 * 60_000
+            func exportRun(_ name: String, _ minutes: Int) -> [ProcSample] {
+                stride(from: 0, to: minutes * 60_000, by: 30_000).map {
+                    ProcSample(ts: T0 + Int64($0), pid: 1, name: name, cpu: 320, rssMb: 900)
+                }
+            }
+            func temps(_ minutes: Int, _ c: Double) -> [TempSample] {
+                stride(from: 0, to: minutes * 60_000, by: 30_000).map {
+                    TempSample(ts: T0 + Int64($0), celsius: c)
+                }
+            }
+            let cfgT = Config.defaults
+
+            // hot for long enough → amber, and the headline speaks in degrees
+            let hot = Rules.thermalDuringExport(exportRun("Adobe Media Encoder 2026", 30),
+                                                temps(30, 91), cfgT, NOW, nil)
+            c.check("thermal: a hot export is reported", hot.count == 1)
+            c.check("thermal: headline carries the peak in degrees",
+                    hot.first?.headline.contains("91°C") == true, hot.first?.headline ?? "")
+            c.check("thermal: 30 hot minutes is amber", hot.first?.severity == "amber")
+
+            // a cool export still reports, and says nothing was throttled
+            let cool = Rules.thermalDuringExport(exportRun("Adobe Media Encoder 2026", 30),
+                                                 temps(30, 62), cfgT, NOW, nil)
+            c.check("thermal: a cool export says so", cool.first?.severity == "info")
+            c.check("thermal: cool wording mentions no throttling",
+                    cool.first?.why.contains("nothing was throttled") == true)
+
+            // too short to count as an export
+            c.check("thermal: a brief burst is not an export",
+                    Rules.thermalDuringExport(exportRun("Resolve", 3), temps(3, 95), cfgT, NOW, nil).isEmpty)
+            // no readings at all → silence, never a guess
+            c.check("thermal: no temperature data means no card",
+                    Rules.thermalDuringExport(exportRun("Resolve", 30), [], cfgT, NOW, nil).isEmpty)
+            // battery is a different explanation and must be named as one
+            let onBatt = Rules.thermalDuringExport(exportRun("Resolve", 30), temps(30, 92), cfgT, NOW,
+                                                   EventRow(ts: NOW, kind: "power", key: "Battery Power", detail: ""))
+            c.check("thermal: battery is explained, not blamed on cooling",
+                    onBatt.first?.detail.contains("battery") == true)
         }
 
         // ---- driveInstability ----

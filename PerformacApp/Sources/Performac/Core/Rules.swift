@@ -38,6 +38,13 @@ struct CacheSample: Sendable {
     var fileCount: Int
 }
 
+/// One die-temperature reading. Top level, like ProcSample and EventRow.
+struct TempSample: Sendable {
+    var ts: Int64
+    var celsius: Double
+    init(ts: Int64, celsius: Double) { self.ts = ts; self.celsius = celsius }
+}
+
 struct EventRow: Sendable {
     var ts: Int64
     var kind: String
@@ -161,6 +168,25 @@ enum Rules {
             why: "Space in the Trash is still used. Emptying it is the only step that actually gives it back.",
             detail: "\(items) item\(items == 1 ? "" : "s"). Performac never empties the Trash — it is the undo for everything this app removes, so that stays your call.",
             linkKind: "reveal", linkTarget: NSHomeDirectory() + "/.Trash")]
+    }
+
+    /// Folders with no second copy anywhere the app can see.
+    ///
+    /// Phrased as a fact about specific folders, never as advice about backups. The user has
+    /// declined a backup drive twice; repeating that would be nagging. Naming the three
+    /// folders that are one failure from gone is information they can act on.
+    static func singleCopy(_ statuses: [CopyStatus], _ cfg: Config, _ now: Int64) -> [EngineFinding] {
+        let alone = statuses.filter { !$0.hasCopy }
+        guard !alone.isEmpty else { return [] }
+        let total = alone.reduce(Int64(0)) { $0 + $1.bytes }
+        let named = alone.prefix(3).map(\.name).joined(separator: ", ")
+        let more = alone.count > 3 ? " and \(alone.count - 3) more" : ""
+        return [EngineFinding(
+            id: "single-copy", kind: "copies", severity: "amber",
+            headline: "\(alone.count) folder\(alone.count == 1 ? "" : "s") exist in only one place (\(sizeTextMb(Double(total) / 1_048_576)))",
+            why: "\(named)\(more) — no copy of these was found on any other drive Performac can see.",
+            detail: "This is not a backup check: it only sees drives that are connected. A folder listed here has nothing standing between it and a drive failure.",
+            linkKind: nil, linkTarget: nil)]
     }
 
     static func loginItemsAudit(_ items: [String], _ agents: [LoginAgent], _ procNames: [String],
@@ -575,26 +601,21 @@ enum Rules {
 
     // export windows (≥ export.cpuPct sustained ≥ export.minMinutes, gaps < 2 min merged)
     // × elevated intervals from thermlog level events (1/2 opens, 0 closes, open at now stays open).
-    static func thermalDuringExport(_ procSamples: [ProcSample], _ thermalEvents: [EventRow], _ cfg: Config, _ now: Int64, _ power: EventRow?) -> [EngineFinding] {
-        let therm = thermalEvents
-            .filter { $0.kind == "thermal" && $0.key == "thermlog" }
-            .sorted { $0.ts < $1.ts }
-        var intervals: [(start: Int64, end: Int64, maxLevel: Int64)] = []
-        var open: Int64?
-        var maxLevel: Int64 = 0
-        for e in therm {
-            let level = Int64(e.detail) ?? 0
-            if level >= 1 {
-                if open == nil { open = e.ts }
-                maxLevel = max(maxLevel, level)
-            } else if let opened = open {
-                intervals.append((opened, e.ts, maxLevel))
-                open = nil
-                maxLevel = 0
-            }
-        }
-        if let open { intervals.append((open, now, maxLevel)) }
+    /// Thermals tied to a workflow event, in degrees.
+    ///
+    /// This was the second Tier 1 feature in the original scope doc and it never once fired:
+    /// it was built on `pmset -g thermlog`, which has never emitted a warning level on this
+    /// machine, so it had zero events to reason about. The die sensors turn out to be
+    /// readable unprivileged, so it now works from actual temperature.
+    ///
+    /// An export is expected to be hot. What is worth telling someone is how hot, for how
+    /// long — a number they can compare between exports and act on (a stand, a cleaned fan
+    /// intake, a shorter timeline).
+    static func thermalDuringExport(_ procSamples: [ProcSample], _ temps: [TempSample],
+                                    _ cfg: Config, _ now: Int64, _ power: EventRow?) -> [EngineFinding] {
+        guard !temps.isEmpty else { return [] }
 
+        // export windows: an export-class process sustaining real load
         var byPrefix: [String: [ProcSample]] = [:]
         for s in procSamples {
             guard let prefix = cfg.exportProcs.first(where: { s.name.hasPrefix($0) }) else { continue }
@@ -603,50 +624,40 @@ enum Rules {
         }
 
         var out: [EngineFinding] = []
-        for (_, samples) in byPrefix.sorted(by: { $0.key < $1.key }) {
+        for (app, samples) in byPrefix {
             let sorted = samples.sorted { $0.ts < $1.ts }
-            var winStart: Int64?
-            var lastTs: Int64?
-            var peak = 0.0
-            var winName = ""
+            guard let first = sorted.first?.ts, let last = sorted.last?.ts else { continue }
+            let minutes = Double(last - first) / 60_000
+            guard minutes >= Double(cfg.export.minMinutes) else { continue }
 
-            func closeWindow() {
-                guard let winStart, let lastTs else { return }
-                if lastTs - winStart < Int64(cfg.export.minMinutes * 60_000) { return }
-                for iv in intervals {
-                    let overlap = min(lastTs, iv.end) - max(winStart, iv.start)
-                    if overlap < Int64(cfg.thermal.minElevatedMinutes * 60_000) { continue }
-                    // ponytail: 30-min red line is plan-literal (not a DEFAULTS knob)
-                    let red = overlap >= 30 * 60_000 || iv.maxLevel >= 2
-                    let onBattery = power?.key == "Battery Power"
-                    out.append(EngineFinding(
-                        id: "thermal-export-\(slug(winName))", kind: "thermal",
-                        severity: onBattery ? "info" : (red ? "red" : "amber"),
-                        headline: "Thermal pressure ran elevated for \(Int((Double(overlap) / 60_000).rounded())) min during your \(winName) export",
-                        why: "Your export ran ~\(Int((Double(lastTs - winStart) / 60_000).rounded())) min with a peak of \(Int(peak.rounded()))% CPU, and thermal warning level \(iv.maxLevel) overlapped for \(Int((Double(overlap) / 60_000).rounded())) of those minutes — sustained encode heat, not a spike.\(onBattery ? " On battery, macOS throttles by design — plug in for full speed." : "")",
-                        detail: "Check fan intakes for dust and consider a stand that improves airflow under load.",
-                        linkKind: nil, linkTarget: nil))
-                    break   // one card per export window
-                }
-            }
+            let during = temps.filter { $0.ts >= first && $0.ts <= last }
+            guard let peak = during.map(\.celsius).max() else { continue }
+            // each reading covers one tick, so counting them is counting time
+            let hotCount = during.filter { $0.celsius >= cfg.thermal.hotC }.count
+            let hotMinutes = Double(hotCount) * Double(cfg.tickSec) / 60
 
-            for s in sorted {
-                if winStart == nil {
-                    winStart = s.ts; lastTs = s.ts; peak = s.cpu; winName = s.name
-                } else if s.ts - lastTs! >= 2 * 60_000 {
-                    closeWindow()
-                    winStart = s.ts; lastTs = s.ts; peak = s.cpu; winName = s.name
-                } else {
-                    lastTs = s.ts
-                    peak = max(peak, s.cpu)
-                }
+            let onBattery = power?.key == "Battery Power"
+            if hotMinutes >= Double(cfg.thermal.minHotMinutes) {
+                out.append(EngineFinding(
+                    id: "thermal-\(slug(app))", kind: "thermal",
+                    severity: hotMinutes >= 20 ? "amber" : "info",
+                    headline: "\(app) ran at \(Int(peak.rounded()))°C during a \(Int(minutes))-minute export",
+                    why: "It held above \(Int(cfg.thermal.hotC))°C for \(Int(hotMinutes)) of those minutes, which is where this Mac starts throttling — the export takes longer than the work requires.",
+                    detail: onBattery
+                        ? "This ran on battery, where macOS limits performance by design. On mains it would run cooler and finish sooner."
+                        : "Worth checking the vents are clear and the machine is not sitting on something soft.",
+                    linkKind: nil, linkTarget: nil))
+            } else {
+                out.append(EngineFinding(
+                    id: "thermal-\(slug(app))", kind: "thermal", severity: "info",
+                    headline: "\(app) peaked at \(Int(peak.rounded()))°C during a \(Int(minutes))-minute export",
+                    why: "It stayed under \(Int(cfg.thermal.hotC))°C throughout, so nothing was throttled.",
+                    detail: "", linkKind: nil, linkTarget: nil))
             }
-            closeWindow()
         }
         return out
     }
 
-    // one Finding per cache id over the amber threshold; red/amber when stale, info when active
     static func cacheGrowth(_ cacheSamples: [CacheSample], _ cfg: Config, _ now: Int64) -> [EngineFinding] {
         var byId: [String: [CacheSample]] = [:]
         for s in cacheSamples {
