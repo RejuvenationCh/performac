@@ -104,10 +104,14 @@ private struct OutlineRow: View {
             Text(entry.name).font(.pcBody).foregroundStyle(PC.ink).lineLimit(1)
             Spacer(minLength: PC.s2)
             if hover { IconButtonAction("magnifyingglass", help: "Reveal in Finder") { onReveal(path) } }
-            if entry.items > 0 {
-                Text(Fmt.count(entry.items)).font(.pcNum).foregroundStyle(PC.meta)
-                    .frame(width: 58, alignment: .trailing)
-            }
+            Text(entry.mtime > 0
+                 ? Ago.text(Date(timeIntervalSince1970: Double(entry.mtime) / 1000))
+                 : "—")
+                .font(.pcNum).foregroundStyle(PC.meta)
+                .frame(width: 84, alignment: .trailing).lineLimit(1)
+            Text(entry.items > 0 ? Fmt.count(entry.items) : "")
+                .font(.pcNum).foregroundStyle(PC.meta)
+                .frame(width: 58, alignment: .trailing)
             Text(Fmt.bytes(entry.bytes)).font(.pcNum).foregroundStyle(PC.ink)
                 .frame(width: 70, alignment: .trailing)
             ProportionBar(fraction: Double(entry.bytes) / Double(max(maxBytes, 1)), width: 70)

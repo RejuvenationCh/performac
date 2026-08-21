@@ -42,6 +42,43 @@ enum CleanCheck {
                 ok.first?.trashedTo.map { FileManager.default.fileExists(atPath: $0) } == true)
         // the trashed fixture is left in place: it proves recoverability, and re-trashing
         // it would only add a second entry to the Bin
+        // ---- sorting ----
+        do {
+            var st = SortState()
+            c.check("sort: size opens largest first", st.key == .size && !st.ascending)
+            st.toggle(.size)
+            c.check("sort: clicking the active column flips it", st.ascending)
+            st.toggle(.name)
+            c.check("sort: a new column takes its own natural direction",
+                    st.key == .name && st.ascending)      // names read A to Z
+            st.toggle(.items)
+            c.check("sort: counts open largest first", st.key == .items && !st.ascending)
+
+            let rows = [
+                SizeEntry(name: "beta", items: 3, bytes: 30, mtime: 300),
+                SizeEntry(name: "Alpha", items: 10, bytes: 10, mtime: 100),
+                SizeEntry(name: "gamma", items: 1, bytes: 20, mtime: 200),
+            ]
+            c.check("sort: by size descending",
+                    rows.sorted(by: SortState(key: .size, ascending: false)).map(\.name) == ["beta", "gamma", "Alpha"])
+            // case-insensitive and digit-aware, so "Alpha" leads and file10 follows file9
+            c.check("sort: by name is case-insensitive",
+                    rows.sorted(by: SortState(key: .name, ascending: true)).map(\.name) == ["Alpha", "beta", "gamma"])
+            c.check("sort: by items ascending",
+                    rows.sorted(by: SortState(key: .items, ascending: true)).map(\.name) == ["gamma", "beta", "Alpha"])
+            c.check("sort: by date newest first",
+                    rows.sorted(by: SortState(key: .date, ascending: false)).map(\.name) == ["beta", "gamma", "Alpha"])
+
+            let caches = [
+                CacheEntry(name: "big", bytes: 900, age: "1 day", ageDays: 1, safe: false, why: "", path: "/a"),
+                CacheEntry(name: "old", bytes: 100, age: "40 days", ageDays: 40, safe: true, why: "", path: "/b"),
+            ]
+            c.check("sort: caches by age oldest first",
+                    caches.sorted(by: SortState(key: .date, ascending: false)).map(\.name) == ["old", "big"])
+            c.check("sort: caches by status puts safe first",
+                    caches.sorted(by: SortState(key: .status, ascending: true)).map(\.name) == ["old", "big"])
+        }
+
         // ---- Trash card ----
         let cfg = Config.defaults
         c.check("trash: silent below the threshold",

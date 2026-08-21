@@ -36,9 +36,11 @@ struct DiskView: View {
     var totalGb: Double = 0
     @State private var infoTarget: RowInfo? = nil
     @State private var trashTarget: RowInfo? = nil
+    @State private var sort = SortState()
     var rightMode: RightPanelMode = .treemap
     var onRightMode: (RightPanelMode) -> Void = { _ in }
     var onCancel: () -> Void = {}
+    private var sorted: [SizeEntry] { entries.sorted(by: sort) }
     private var maxBytes: Int64 { entries.map(\.bytes).max() ?? 1 }
 
     private func rowInfo(_ e: SizeEntry) -> RowInfo {
@@ -105,10 +107,10 @@ struct DiskView: View {
                 VStack(spacing: 0) {
                     if mode == .outline || mode == .list {
                     HStack(spacing: PC.gutter) {
-                        Text("NAME").font(.pcLabel).foregroundStyle(PC.meta)
-                        Spacer()
-                        Text("ITEMS").font(.pcLabel).foregroundStyle(PC.meta).frame(width: 64, alignment: .trailing)
-                        Text("SIZE").font(.pcLabel).foregroundStyle(PC.meta).frame(width: 72, alignment: .trailing)
+                        SortHeader(title: "NAME", key: .name, state: $sort)
+                        SortHeader(title: "MODIFIED", key: .date, state: $sort, width: 84, alignment: .trailing)
+                        SortHeader(title: "ITEMS", key: .items, state: $sort, width: 64, alignment: .trailing)
+                        SortHeader(title: "SIZE", key: .size, state: $sort, width: 72, alignment: .trailing)
                         Text("PROPORTION").font(.pcLabel).foregroundStyle(PC.meta).frame(width: 90, alignment: .leading)
                     }
                     .padding(.horizontal, PC.gutter).padding(.vertical, PC.s2)
@@ -117,13 +119,13 @@ struct DiskView: View {
 
                     switch mode {
                     case .outline:
-                        OutlineList(entries: entries, basePath: browsePath,
+                        OutlineList(entries: sorted, basePath: browsePath,
                                     loadChildren: childrenOf, onReveal: onReveal,
                                     infoTarget: $infoTarget, trashTarget: $trashTarget)
                     case .list:
                         ScrollView {
                             LazyVStack(spacing: 0) {
-                                ForEach(entries) { e in
+                                ForEach(sorted) { e in
                                     SizeRow(entry: e, maxBytes: maxBytes, onOpen: { onOpen(e.name) })
                                         .rowActions(rowInfo(e), onOpen: { onOpen(e.name) },
                                                     infoTarget: $infoTarget, trashTarget: $trashTarget)
@@ -132,7 +134,7 @@ struct DiskView: View {
                             }
                         }
                     case .compact:
-                        CompactList(entries: entries, onOpen: onOpen, basePath: browsePath,
+                        CompactList(entries: sorted, onOpen: onOpen, basePath: browsePath,
                                     infoTarget: $infoTarget, trashTarget: $trashTarget)
                     }
                     Spacer(minLength: 0)
@@ -167,9 +169,9 @@ struct DiskView: View {
                     .padding(.horizontal, PC.gutter).padding(.top, PC.s2)
 
                     if rightMode == .treemap {
-                        TreeMap(entries: entries).padding(PC.s2)
+                        TreeMap(entries: sorted).padding(PC.s2)
                     } else {
-                        BubbleView(entries: entries, onOpen: onOpen).padding(PC.s2)
+                        BubbleView(entries: sorted, onOpen: onOpen).padding(PC.s2)
                     }
                     TreeMapLegend().padding(.horizontal, PC.gutter).padding(.bottom, PC.gutter)
                 }

@@ -7,6 +7,7 @@ struct CleanView: View {
     @State private var confirming = false
     /// Anchor for shift-click range selection.
     @State private var lastToggled: Int? = nil
+    @State private var sort = SortState()
 
     private let onTrash: ([CacheEntry]) -> Void
     var busy: Bool = false
@@ -19,6 +20,14 @@ struct CleanView: View {
         _caches = State(initialValue: caches)
         self.onTrash = onTrash
     }
+    /// Indices into `caches`, in the order the sort asks for.
+    private var displayOrder: [Int] {
+        let wanted = caches.sorted(by: sort).map(\.id)
+        var index: [UUID: Int] = [:]
+        for (i, c) in caches.enumerated() { index[c.id] = i }
+        return wanted.compactMap { index[$0] }
+    }
+
     private var selected: [CacheEntry] { caches.filter { $0.selected && $0.cleanable } }
 
     /// Click anywhere on a row to toggle it. Shift-click selects the whole run from the last
@@ -27,11 +36,14 @@ struct CleanView: View {
     private func toggle(_ i: Int, shift: Bool) {
         guard caches.indices.contains(i), caches[i].cleanable else { return }
         if shift, let anchor = lastToggled, anchor != i {
-            let range = anchor < i ? anchor...i : i...anchor
-            // the anchor's state is what the whole run becomes, so a shift-click extends
-            // a selection rather than inverting a mixed run into confetti
+            // walk the DISPLAYED order: a range should be what the user sees between two
+            // rows, not whatever happens to sit between them in the unsorted array.
+            let order = displayOrder
+            guard let a = order.firstIndex(of: anchor), let b = order.firstIndex(of: i) else { return }
             let target = caches[anchor].selected
-            for j in range where caches[j].cleanable { caches[j].selected = target }
+            for k in min(a, b)...max(a, b) where caches[order[k]].cleanable {
+                caches[order[k]].selected = target
+            }
         } else {
             caches[i].selected.toggle()
             lastToggled = i
@@ -48,19 +60,20 @@ struct CleanView: View {
                         get: { let c = caches.filter(\.cleanable); return !c.isEmpty && c.allSatisfy(\.selected) },
                         set: { v in for i in caches.indices where caches[i].cleanable { caches[i].selected = v } }))
                         .labelsHidden().toggleStyle(.checkbox)
-                    Text("NAME").font(.pcLabel).foregroundStyle(PC.meta)
-                    Spacer()
-                    Text("SIZE").font(.pcLabel).foregroundStyle(PC.meta).frame(width: 70, alignment: .trailing)
-                    Text("LAST WRITTEN").font(.pcLabel).foregroundStyle(PC.meta).frame(width: 100, alignment: .trailing)
-                    Text("STATUS").font(.pcLabel).foregroundStyle(PC.meta).frame(width: 96, alignment: .leading)
+                    SortHeader(title: "NAME", key: .name, state: $sort)
+                    SortHeader(title: "SIZE", key: .size, state: $sort, width: 70, alignment: .trailing)
+                    SortHeader(title: "LAST WRITTEN", key: .date, state: $sort, width: 100, alignment: .trailing)
+                    SortHeader(title: "STATUS", key: .status, state: $sort, width: 96, alignment: .leading)
                 }
                 .padding(.horizontal, PC.gutter).padding(.vertical, PC.s2)
                 .background(PC.canvas).pcHairline(.bottom)
 
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(Array($caches.enumerated()), id: \.element.id) { i, $c in
-                            CacheRow(entry: $c, onRowTap: { shift in toggle(i, shift: shift) })
+                        // Sorted for display, but each row keeps a binding into the real
+                        // array — sorting a list must never scramble which row a click hits.
+                        ForEach(displayOrder, id: \.self) { i in
+                            CacheRow(entry: $caches[i], onRowTap: { shift in toggle(i, shift: shift) })
                             Divider().overlay(PC.hairline)
                         }
                     }

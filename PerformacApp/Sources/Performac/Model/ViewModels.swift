@@ -31,6 +31,8 @@ struct SizeEntry: Identifiable, Sendable {
     var name: String, items: Int, bytes: Int64
     var symbol = "folder.fill"
     var kind: FileKind = .other
+    /// Newest modification beneath this entry, epoch ms. 0 when unknown.
+    var mtime: Int64 = 0
 }
 
 enum FileKind: String, CaseIterable, Sendable {
@@ -49,6 +51,8 @@ enum FileKind: String, CaseIterable, Sendable {
 struct CacheEntry: Identifiable, Sendable {
     let id = UUID()
     var name: String, bytes: Int64, age: String
+    /// Numeric age for sorting; the `age` string is for display.
+    var ageDays: Double = 0
     var safe: Bool                // true → "Safe to clean", false → "Check first"
     var why: String
     var path: String
@@ -224,4 +228,57 @@ enum MetricTileKind: String, CaseIterable, Sendable, Identifiable {
         }
     }
     static let defaults: [MetricTileKind] = [.cpu, .ram, .free, .temp]
+}
+
+
+/// Sort orders for the disk browser and the cleaner. Each view uses the subset it has
+/// columns for, so the enum stays one thing rather than two near-identical ones.
+enum SortKey: String, Sendable {
+    case name, items, size, date, status
+    /// Sizes and counts open largest-first; names and dates open the way you read them.
+    var defaultAscending: Bool {
+        switch self {
+        case .name, .status: true
+        case .items, .size, .date: false
+        }
+    }
+}
+
+struct SortState: Sendable, Equatable {
+    var key: SortKey = .size
+    var ascending: Bool = false
+
+    /// Clicking the active column flips it; clicking another switches to that column's
+    /// natural direction rather than inheriting the previous one.
+    mutating func toggle(_ k: SortKey) {
+        if key == k { ascending.toggle() } else { key = k; ascending = k.defaultAscending }
+    }
+}
+
+extension Array where Element == SizeEntry {
+    func sorted(by s: SortState) -> [SizeEntry] {
+        let asc = s.ascending
+        switch s.key {
+        case .name:  return sorted { asc ? $0.name.localizedStandardCompare($1.name) == .orderedAscending
+                                         : $0.name.localizedStandardCompare($1.name) == .orderedDescending }
+        case .items: return sorted { asc ? $0.items < $1.items : $0.items > $1.items }
+        case .date:  return sorted { asc ? $0.mtime < $1.mtime : $0.mtime > $1.mtime }
+        default:     return sorted { asc ? $0.bytes < $1.bytes : $0.bytes > $1.bytes }
+        }
+    }
+}
+
+extension Array where Element == CacheEntry {
+    func sorted(by s: SortState) -> [CacheEntry] {
+        let asc = s.ascending
+        switch s.key {
+        case .name:   return sorted { asc ? $0.name.localizedStandardCompare($1.name) == .orderedAscending
+                                          : $0.name.localizedStandardCompare($1.name) == .orderedDescending }
+        case .date:   return sorted { asc ? $0.ageDays < $1.ageDays : $0.ageDays > $1.ageDays }
+        // safe-to-clean first when ascending: the ones you can act on without thinking
+        case .status: return sorted { asc ? ($0.safe ? 1 : 0) > ($1.safe ? 1 : 0)
+                                          : ($0.safe ? 1 : 0) < ($1.safe ? 1 : 0) }
+        default:      return sorted { asc ? $0.bytes < $1.bytes : $0.bytes > $1.bytes }
+        }
+    }
 }

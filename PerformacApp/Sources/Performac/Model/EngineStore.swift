@@ -141,6 +141,7 @@ final class EngineStore: ObservableObject {
                 name: meta.app,
                 bytes: bytes,
                 age: Rules.ageText(ageDays) + (mtime == nil ? "" : " ago"),
+                ageDays: ageDays ?? 0,
                 safe: policy.safe,
                 why: policy.consequence,
                 path: path,
@@ -666,18 +667,18 @@ final class EngineStore: ObservableObject {
     private func buildTree(_ sum: ScanSummary) {
         db.prepare("BEGIN").run([])
         db.prepare("DELETE FROM scan_entries").run([])
-        let ins = db.prepare("INSERT INTO scan_entries(parent,name,items,bytes,is_dir) VALUES(?,?,?,?,?)")
+        let ins = db.prepare("INSERT INTO scan_entries(parent,name,items,bytes,is_dir,mtime) VALUES(?,?,?,?,?,?)")
         for e in sum.entries {
             ins.run([.text(e.parent), .text(e.name),
                      .int(Int64(e.isDirectory ? e.files : 0)), .int(e.bytes),
-                     .int(e.isDirectory ? 1 : 0)])
+                     .int(e.isDirectory ? 1 : 0), .int(e.mtime)])
         }
         db.prepare("COMMIT").run([])
     }
 
     /// Reads from the table, so a scan from last week browses exactly like a fresh one.
     func childrenOf(_ path: String) -> [SizeEntry] {
-        readDB.prepare("SELECT name, items, bytes, is_dir FROM scan_entries WHERE parent = ? ORDER BY bytes DESC")
+        readDB.prepare("SELECT name, items, bytes, is_dir, mtime FROM scan_entries WHERE parent = ? ORDER BY bytes DESC")
             .all([.text(path)])
             .map { r in
                 let isDir = (r["is_dir"]?.intVal ?? 1) == 1
@@ -687,7 +688,8 @@ final class EngineStore: ObservableObject {
                     items: Int(r["items"]?.intVal ?? 0),
                     bytes: r["bytes"]?.intVal ?? 0,
                     symbol: isDir ? "folder.fill" : "doc.fill",
-                    kind: Self.fileKind(forPath: (path as NSString).appendingPathComponent(name)))
+                    kind: Self.fileKind(forPath: (path as NSString).appendingPathComponent(name)),
+                    mtime: r["mtime"]?.intVal ?? 0)
             }
     }
 

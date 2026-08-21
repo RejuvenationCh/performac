@@ -161,6 +161,11 @@ struct SizeRow: View {
                 }
                 .transition(.opacity)
             }
+            Text(entry.mtime > 0
+                 ? Ago.text(Date(timeIntervalSince1970: Double(entry.mtime) / 1000))
+                 : "—")
+                .font(.pcNum).foregroundStyle(PC.meta)
+                .frame(width: 84, alignment: .trailing).lineLimit(1)
             Text(Fmt.count(entry.items)).font(.pcNum).foregroundStyle(PC.meta)
                 .frame(width: 64, alignment: .trailing)
             Text(Fmt.bytes(entry.bytes)).font(.pcNum).foregroundStyle(PC.ink)
@@ -293,5 +298,41 @@ struct GraphTile: View {
         .padding(PC.s2)
         .background(PC.fill1.opacity(0.55))
         .clipShape(RoundedRectangle(cornerRadius: PC.rLg))
+    }
+}
+
+
+/// A column header that is also the sort control. The label IS the button — a separate
+/// sort menu would be a second place to look for something the header already implies.
+struct SortHeader: View {
+    let title: String
+    let key: SortKey
+    @Binding var state: SortState
+    var width: CGFloat? = nil
+    var alignment: Alignment = .leading
+    @State private var hover = false
+
+    private var active: Bool { state.key == key }
+
+    var body: some View {
+        Button {
+            state.toggle(key)
+        } label: {
+            HStack(spacing: 3) {
+                if alignment == .trailing { Spacer(minLength: 0) }
+                Text(title).font(.pcLabel)
+                    .foregroundStyle(active ? PC.ink : (hover ? PC.ink2 : PC.meta))
+                // only the active column shows a direction; an arrow on every one is noise
+                Image(systemName: state.ascending ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundStyle(active ? PC.accent : .clear)
+                if alignment == .leading { Spacer(minLength: 0) }
+            }
+            .frame(width: width, alignment: alignment)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .help("Sort by \(title.lowercased())")
     }
 }

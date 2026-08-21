@@ -58,7 +58,7 @@ CREATE INDEX IF NOT EXISTS idx_trash_ts ON trash_log(ts);
 -- ~100k-node home directory never has to be held in memory or re-parsed as JSON.
 CREATE TABLE IF NOT EXISTS scan_entries(
   parent TEXT NOT NULL, name TEXT NOT NULL, items INTEGER NOT NULL,
-  bytes INTEGER NOT NULL, is_dir INTEGER NOT NULL);
+  bytes INTEGER NOT NULL, is_dir INTEGER NOT NULL, mtime INTEGER NOT NULL DEFAULT 0);
 CREATE INDEX IF NOT EXISTS idx_scan_parent ON scan_entries(parent);
 """
 
