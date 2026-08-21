@@ -8,7 +8,7 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
     private var window: NSWindow?
@@ -239,6 +239,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Remembered so Restore Size can put it back where it was.
     private var preFillFrame: NSRect?
 
+    /// Double-clicking the title bar (and the green button's zoom) asks the delegate what
+    /// "standard size" means. AppKit's default leaves gaps; Fill Screen is what people
+    /// actually expect from a maximise, so make zoom mean exactly that.
+    ///
+    /// This routes through the system setting rather than around it: if the user has set
+    /// double-click to Minimize or Do Nothing, that still wins — we only define what
+    /// happens when it does zoom.
+    func windowWillUseStandardFrame(_ window: NSWindow, defaultFrame: NSRect) -> NSRect {
+        guard let screen = window.screen ?? NSScreen.main else { return defaultFrame }
+        // Remember the pre-zoom frame so the second double-click, and Restore Size, both
+        // return to where it actually was.
+        if !window.frame.equalTo(screen.visibleFrame) { preFillFrame = window.frame }
+        return screen.visibleFrame
+    }
+
     @objc private func fillScreen() {
         guard let w = window, let screen = w.screen ?? NSScreen.main else { return }
         if w.styleMask.contains(.fullScreen) { return }      // already full screen proper
@@ -309,6 +324,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // menu bar hidden), and Fill Screen below maximises within the current Space, which
         // is what most people actually want from a "maximise" and macOS has no button for.
         w.collectionBehavior.insert(.fullScreenPrimary)
+        w.delegate = self
         w.isReleasedWhenClosed = false
         w.contentView = NSHostingView(rootView: MainWindow())
         w.center()
