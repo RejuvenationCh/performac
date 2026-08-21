@@ -101,22 +101,37 @@ struct CompactList: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                ForEach(entries) { e in
-                    HStack(spacing: PC.s2) {
-                        Image(systemName: e.symbol).font(.system(size: 10))
-                            .foregroundStyle(e.kind.color).frame(width: 12)
-                        Text(e.name).font(.pcSmall).foregroundStyle(PC.ink).lineLimit(1)
-                        Spacer(minLength: PC.s1)
-                        Text(Fmt.bytes(e.bytes)).font(.system(size: 11).monospacedDigit())
-                            .foregroundStyle(PC.ink2)
-                    }
-                    .padding(.horizontal, PC.gutter).padding(.vertical, 2)
-                    .contentShape(Rectangle())
-                    .onTapGesture(count: 2) { onOpen(e.name) }
-                }
+                ForEach(entries) { e in CompactRow(entry: e, onOpen: onOpen) }
             }
             .padding(.vertical, 2)
         }
+    }
+}
+
+private struct CompactRow: View {
+    let entry: SizeEntry
+    let onOpen: (String) -> Void
+    @State private var hover = false
+    private var isFolder: Bool { entry.symbol == "folder.fill" }
+    var body: some View {
+        HStack(spacing: PC.s2) {
+            Image(systemName: entry.symbol).font(.system(size: 10))
+                .foregroundStyle(entry.kind.color).frame(width: 12)
+            Text(entry.name).font(.pcSmall).foregroundStyle(PC.ink).lineLimit(1)
+            if isFolder {
+                Image(systemName: "chevron.right").font(.system(size: 7))
+                    .foregroundStyle(hover ? PC.accent : PC.meta.opacity(0.45))
+            }
+            Spacer(minLength: PC.s1)
+            Text(Fmt.bytes(entry.bytes)).font(.system(size: 11).monospacedDigit())
+                .foregroundStyle(PC.ink2)
+        }
+        .padding(.horizontal, PC.gutter).padding(.vertical, 2)
+        .background(hover ? PC.fill1 : .clear)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { if isFolder { onOpen(entry.name) } }
+        .onHover { h in withAnimation(.easeOut(duration: 0.10)) { hover = h } }
+        .help(isFolder ? "Double-click to open \(entry.name)" : entry.name)
     }
 }
 
@@ -196,19 +211,24 @@ private struct Bubble: View {
             Circle()
                 .fill(entry.kind.color.opacity(hover ? 0.42 : 0.26))
                 .overlay(Circle().stroke(entry.kind.color.opacity(0.85), lineWidth: hover ? 2 : 1))
-            if radius > 26 {
+            // Label anything that can hold text. Only genuinely tiny circles stay bare —
+            // a clipped half-word is worse than none.
+            if radius > 15 {
                 VStack(spacing: 1) {
-                    Image(systemName: isOther ? "ellipsis" : entry.symbol)
-                        .font(.system(size: min(radius * 0.30, 16)))
-                        .foregroundStyle(PC.ink2)
-                    if radius > 38 {
-                        Text(entry.name).font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(PC.ink).lineLimit(1)
-                            .frame(maxWidth: radius * 1.6)
-                        Text(Fmt.bytes(entry.bytes)).font(.system(size: 9).monospacedDigit())
+                    if radius > 30 {
+                        Image(systemName: isOther ? "ellipsis" : entry.symbol)
+                            .font(.system(size: min(radius * 0.26, 15)))
                             .foregroundStyle(PC.ink2)
                     }
+                    Text(entry.name)
+                        .font(.system(size: min(max(radius * 0.19, 8), 12), weight: .medium))
+                        .foregroundStyle(PC.ink).lineLimit(1).minimumScaleFactor(0.7)
+                        .frame(maxWidth: radius * 1.7)
+                    Text(Fmt.bytes(entry.bytes))
+                        .font(.system(size: min(max(radius * 0.17, 8), 11)).monospacedDigit())
+                        .foregroundStyle(PC.ink2).lineLimit(1)
                 }
+                .padding(.horizontal, 2)
             }
         }
         .frame(width: radius * 2, height: radius * 2)

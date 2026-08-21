@@ -50,6 +50,8 @@ struct MainWindow: View {
                     childrenOf: { store.childrenOf($0) },
                     browsePath: store.browsePath,
                     onReveal: { NSWorkspace.shared.selectFile($0, inFileViewerRootedAtPath: "") },
+                    rightMode: store.rightPanelMode,
+                    onRightMode: { store.setRightPanelMode($0) },
                     onCancel: { store.cancelDiskScan() })
                 case .apps: AppsView(
                     apps: store.apps,

@@ -141,3 +141,11 @@ enum DiskViewMode: String, CaseIterable, Sendable {
         }
     }
 }
+
+
+/// What the right-hand panel draws: proportional rectangles or Space Lens circles.
+enum RightPanelMode: String, CaseIterable, Sendable {
+    case treemap, bubbles
+    var label: String { self == .treemap ? "Treemap" : "Bubbles" }
+    var symbol: String { self == .treemap ? "square.grid.2x2" : "circle.circle" }
+}

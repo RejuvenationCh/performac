@@ -27,6 +27,8 @@ struct DiskView: View {
     var childrenOf: (String) -> [SizeEntry] = { _ in [] }
     var browsePath: String = ""
     var onReveal: (String) -> Void = { _ in }
+    var rightMode: RightPanelMode = .treemap
+    var onRightMode: (RightPanelMode) -> Void = { _ in }
     var onCancel: () -> Void = {}
     private var maxBytes: Int64 { entries.map(\.bytes).max() ?? 1 }
 
@@ -121,7 +123,22 @@ struct DiskView: View {
                 .background(PC.surface)
 
                 VStack(spacing: 0) {
-                    TreeMap(entries: entries).padding(PC.s2)
+                    HStack {
+                        Picker("", selection: Binding(get: { rightMode }, set: onRightMode)) {
+                            ForEach(RightPanelMode.allCases, id: \.self) { m in
+                                Image(systemName: m.symbol).help(m.label).tag(m)
+                            }
+                        }
+                        .pickerStyle(.segmented).labelsHidden().frame(width: 86)
+                        Spacer()
+                    }
+                    .padding(.horizontal, PC.gutter).padding(.top, PC.s2)
+
+                    if rightMode == .treemap {
+                        TreeMap(entries: entries).padding(PC.s2)
+                    } else {
+                        BubbleView(entries: entries, onOpen: onOpen).padding(PC.s2)
+                    }
                     TreeMapLegend().padding(.horizontal, PC.gutter).padding(.bottom, PC.gutter)
                 }
                 .frame(minWidth: 260)
@@ -281,10 +298,21 @@ struct TreeMap: View {
                         .fill(e.kind.color)
                         .overlay(RoundedRectangle(cornerRadius: PC.r).stroke(.white.opacity(0.7), lineWidth: 1))
                         .overlay(alignment: .topLeading) {
-                            if r.width > 54 && r.height > 22 {
-                                Text(e.name).font(.system(size: 10, weight: .medium))
-                                    .foregroundStyle(.black.opacity(0.65))
-                                    .padding(4).lineLimit(1)
+                            // Name with its size beneath, whenever the tile can hold both.
+                            if r.width > 54 && r.height > 20 {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    Text(e.name).font(.system(size: 10, weight: .medium))
+                                        .foregroundStyle(.black.opacity(0.72))
+                                        .lineLimit(1)
+                                    if r.height > 32 {
+                                        Text(Fmt.bytes(e.bytes))
+                                            .font(.system(size: 9).monospacedDigit())
+                                            .foregroundStyle(.black.opacity(0.52))
+                                            .lineLimit(1)
+                                    }
+                                }
+                                .padding(4)
+                                .frame(maxWidth: r.width - 4, alignment: .leading)
                             }
                         }
                         .frame(width: r.width, height: r.height)

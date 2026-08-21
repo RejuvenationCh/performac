@@ -35,6 +35,8 @@ final class EngineStore: ObservableObject {
     private var scanStart: Date?
     /// Display mode for the Disk view. Persisted; defaults to the expandable outline.
     @Published var diskViewMode: DiskViewMode = .outline
+    /// Right-hand panel shape. Persisted alongside the list mode.
+    @Published var rightPanelMode: RightPanelMode = .treemap
     /// Where the browser currently is. Starts at the scan root; clicking a folder descends.
     @Published var browsePath: String = NSHomeDirectory()
     /// What gets scanned. Never assumed: the user picks home, a mounted volume, or any folder.
@@ -344,6 +346,11 @@ final class EngineStore: ObservableObject {
         setSetting(db, "diskViewMode", JSONValue.from(["mode": m.rawValue]))
     }
 
+    func setRightPanelMode(_ m: RightPanelMode) {
+        rightPanelMode = m
+        setSetting(db, "rightPanelMode", JSONValue.from(["mode": m.rawValue]))
+    }
+
     func setScanRoot(_ path: String) {
         scanRoot = path
         setSetting(db, "diskScanRoot", JSONValue.from(["path": path]))
@@ -448,6 +455,8 @@ final class EngineStore: ObservableObject {
         if let saved = getSetting(db, "diskScanRoot")?.objectVal?["path"]?.stringVal { scanRoot = saved }
         if let m = getSetting(db, "diskViewMode")?.objectVal?["mode"]?.stringVal,
            let mode = DiskViewMode(rawValue: m) { diskViewMode = mode }
+        if let r = getSetting(db, "rightPanelMode")?.objectVal?["mode"]?.stringVal,
+           let rm = RightPanelMode(rawValue: r) { rightPanelMode = rm }
         guard let o = getSetting(db, "lastDiskScan")?.objectVal else { return }
         lastScanAt = o["ts"]?.doubleVal.map { Int64($0) }
         // The tree lives in scan_entries, so a stale scan is fully browsable on relaunch.
