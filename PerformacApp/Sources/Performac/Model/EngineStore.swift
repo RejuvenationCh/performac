@@ -486,6 +486,28 @@ final class EngineStore: ObservableObject {
         }
     }
 
+    // MARK: updates
+
+    @Published var outdated: [OutdatedItem] = []
+    @Published var checkingUpdates = false
+    @Published var brewMetadataAge: TimeInterval? = nil
+    var brewMissing: Bool { Updates.brewPath == nil }
+
+    func loadUpdates(force: Bool = false) {
+        guard !checkingUpdates, force || outdated.isEmpty else { return }
+        guard !brewMissing else { return }
+        checkingUpdates = true
+        Task { [weak self] in
+            let items = await Updates.outdated()
+            let age = Updates.metadataAge()
+            await MainActor.run {
+                self?.outdated = items
+                self?.brewMetadataAge = age
+                self?.checkingUpdates = false
+            }
+        }
+    }
+
     // MARK: cache breakdown
 
     @Published var breakdowns: [String: CacheBreakdown] = [:]

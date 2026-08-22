@@ -4,12 +4,13 @@ import SwiftUI
 import AppKit
 
 enum Route: String, CaseIterable, Identifiable {
-    case dashboard, digest, disk, clean, apps, duplicates, settings
+    case dashboard, digest, disk, clean, apps, updates, duplicates, settings
     var id: String { rawValue }
     var symbol: String {
         switch self {
         case .dashboard: "gauge.with.dots.needle.33percent"; case .digest: "text.alignleft"; case .disk: "internaldrive"
         case .clean: "trash"; case .apps: "square.stack.3d.up"
+        case .updates: "arrow.triangle.2.circlepath"
         case .duplicates: "doc.on.doc"; case .settings: "gearshape"
         }
     }
@@ -95,6 +96,13 @@ struct MainWindow: View {
                     onSelect: { store.selectAppAsync($0) },
                     onToggle: { i, v in if store.leftovers.indices.contains(i) { store.leftovers[i].selected = v } },
                     onUninstall: { store.uninstallSelected() })
+                case .updates: UpdatesView(
+                    items: store.outdated,
+                    loading: store.checkingUpdates,
+                    metadataAge: store.brewMetadataAge,
+                    brewMissing: store.brewMissing,
+                    onAppear: { store.loadUpdates() },
+                    onRefresh: { store.loadUpdates(force: true) })
                 case .clean: CleanView(
                     caches: store.cacheEntries,
                     busy: store.trashing,
