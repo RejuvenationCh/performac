@@ -51,6 +51,32 @@ enum UpdatesCheck {
         c.check("major: unparseable versions do not claim a jump", !item("x", "abc", "def").isMajorJump)
         c.check("updates: rows are selected by default", item("x", "1.0", "2.0").selected)
 
+        // real output from the zulu@17 run: a cask with a pkg payload only root can replace
+        let sudoFailure = """
+        ==> Uninstalling packages with `sudo` (which may request your password)...
+        com.azulsystems.zulu.17
+        sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper
+        sudo: a password is required
+        Error: zulu@17: Failure while executing; `/usr/bin/sudo -u root -E -- /usr/bin/xargs -0 -- /bin/rm --` exited with 1.
+        """
+        c.check("upgrade: a sudo prompt is recognised, not filed as a plain failure",
+                Updates.needsPassword(sudoFailure))
+        c.check("upgrade: an ordinary brew error is not mistaken for a password prompt",
+                !Updates.needsPassword("Error: ffmpeg: undefined method `foo' for nil"))
+        c.check("upgrade: a success is not a password prompt",
+                !Updates.needsPassword("==> Upgrading yt-dlp\n==> Pouring yt-dlp.bottle.tar.gz"))
+
+        // brew writes colour codes whenever it believes it has a terminal; the log pane showed
+        // them raw as [32m==> until HOMEBREW_COLOR was swapped for HOMEBREW_NO_COLOR
+        c.eq("upgrade: colour codes are stripped from log lines",
+             Updates.stripANSI("\u{1B}[32m==>\u{1B}[0m \u{1B}[1mUpgrading zulu@17\u{1B}[0m"),
+             "==> Upgrading zulu@17")
+        c.eq("upgrade: plain text passes through untouched",
+             Updates.stripANSI("==> Pouring yt-dlp.bottle.tar.gz"),
+             "==> Pouring yt-dlp.bottle.tar.gz")
+        c.eq("upgrade: a lone escape at the end does not run off the string",
+             Updates.stripANSI("done\u{1B}"), "done")
+
         c.check("updates: results are sorted by name",
                 f.map { $0.name } == f.map { $0.name }.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending })
     }

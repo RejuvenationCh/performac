@@ -36,7 +36,38 @@ struct OutdatedItem: Identifiable, Sendable {
     }
 }
 
+/// What actually happened to one package. "Failed" and "needs your password" look the same
+/// in an exit status and are nothing alike to the person reading it: one is a broken formula,
+/// the other is a cask with a pkg payload that only root can replace, and Performac will not
+/// ask for a password. That one is finished in Terminal, by hand.
+enum UpgradeOutcome: Sendable { case ok, failed, needsPassword }
+
 enum Updates {
+    /// brew writes escape codes whenever it thinks it has a terminal. Stripping them here
+    /// keeps the log pane readable instead of full of [32m==>.
+    static func stripANSI(_ s: String) -> String {
+        var out = ""
+        var i = s.startIndex
+        while i < s.endIndex {
+            if s[i] == "\u{1B}" || s[i] == "\u{9B}" {
+                // skip the CSI introducer and everything up to the final letter
+                var j = s.index(after: i)
+                if j < s.endIndex, s[j] == "[" { j = s.index(after: j) }
+                while j < s.endIndex, !s[j].isLetter { j = s.index(after: j) }
+                i = j < s.endIndex ? s.index(after: j) : j
+            } else {
+                out.append(s[i]); i = s.index(after: i)
+            }
+        }
+        return out
+    }
+
+    /// sudo asking for a password it has no terminal to read from. Homebrew prints this when
+    /// a cask ships a pkg or a privileged helper.
+    static func needsPassword(_ text: String) -> Bool {
+        text.contains("a password is required")
+            || text.contains("a terminal is required to read the password")
+    }
     /// Formula lines read `name (1.2.3) < 1.3.0`; a package installed several times lists
     /// every version, so the newest installed one is the one worth comparing against.
     /// Cask lines use `!=` instead of `<` because casks are not always ordered versions.
@@ -99,8 +130,9 @@ enum Updates {
     /// One package at a time rather than one big `brew upgrade`: a single failure in a batch
     /// tells you nothing about which package failed, and this way a broken formula does not
     /// take the rest of the run down with it.
-    static func upgrade(_ item: OutdatedItem, onLine: @escaping @Sendable (String) -> Void) async -> Bool {
-        guard let brew = brewPath else { return false }
+    static func upgrade(_ item: OutdatedItem,
+                        onLine: @escaping @Sendable (String) -> Void) async -> UpgradeOutcome {
+        guard let brew = brewPath else { return .failed }
         let args = item.kind == .cask ? ["upgrade", "--cask", item.name] : ["upgrade", item.name]
         let p = Process()
         p.executableURL = URL(fileURLWithPath: brew)
@@ -109,12 +141,14 @@ enum Updates {
                          "HOME": NSHomeDirectory(),
                          "HOMEBREW_NO_AUTO_UPDATE": "1",     // upgrade what was shown, nothing else
                          "HOMEBREW_NO_ENV_HINTS": "1",
-                         "HOMEBREW_COLOR": "0"]
+                         // NO_COLOR, not COLOR=0 — HOMEBREW_COLOR forces colour on at any value
+                         "HOMEBREW_NO_COLOR": "1"]
         let pipe = Pipe()
         p.standardOutput = pipe
         p.standardError = pipe
-        guard (try? p.run()) != nil else { return false }
+        guard (try? p.run()) != nil else { return .failed }
 
+        var sawPasswordPrompt = false
         var buffer = Data()
         let handle = pipe.fileHandleForReading
         while true {
@@ -124,12 +158,14 @@ enum Updates {
             while let nl = buffer.firstIndex(of: 0x0A) {
                 let line = String(data: buffer[..<nl], encoding: .utf8) ?? ""
                 buffer.removeSubrange(...nl)
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                let trimmed = stripANSI(line).trimmingCharacters(in: .whitespaces)
+                if needsPassword(trimmed) { sawPasswordPrompt = true }
                 if !trimmed.isEmpty { onLine(trimmed) }
             }
         }
         p.waitUntilExit()
-        return p.terminationStatus == 0
+        if p.terminationStatus == 0 { return .ok }
+        return sawPasswordPrompt ? .needsPassword : .failed
     }
 
     static func outdated() async -> [OutdatedItem] {

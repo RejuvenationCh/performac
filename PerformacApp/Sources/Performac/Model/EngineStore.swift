@@ -398,6 +398,7 @@ final class EngineStore: ObservableObject {
         let parent = (path as NSString).deletingLastPathComponent
         trashing = true
         trashProgress = "Moving \(name)…"
+        forgetTrashed([path])
         let db = self.db
         Task.detached(priority: .userInitiated) { [weak self] in
             let now = Int64(Date().timeIntervalSince1970 * 1000)
@@ -412,8 +413,7 @@ final class EngineStore: ObservableObject {
                     ? "Moved \(name) to the Trash."
                     : "Could not move it: \(msg)"
                 if good {
-                    // drop it from the listing so the row does not linger as a ghost
-                    self.diskEntries.removeAll { $0.name == name }
+                    Feedback.trashed()
                     db.prepare("DELETE FROM scan_entries WHERE parent = ? AND name = ?")
                         .run([.text(parent), .text(name)])
                 }
@@ -510,6 +510,10 @@ final class EngineStore: ObservableObject {
     }
 
     @Published var upgrading = false
+    /// Per package, so a row can say what happened to it rather than leaving the reader to
+    /// find its name in forty lines of brew output.
+    @Published var upgradeState: [String: UpgradeOutcome] = [:]
+    @Published var upgradingID: String? = nil
     @Published var upgradeProgress = ""
     @Published var upgradeLog: [String] = []
     @Published var upgradeSummary: String? = nil
@@ -529,11 +533,14 @@ final class EngineStore: ObservableObject {
         upgrading = true
         upgradeLog = []
         upgradeSummary = nil
+        upgradeState = [:]
+        upgradingID = nil
         Task { [weak self] in
-            var ok = 0, failed: [String] = []
+            var ok = 0, failed: [String] = [], locked: [String] = []
             for (i, item) in items.enumerated() {
                 await MainActor.run {
                     self?.upgradeProgress = "\(item.name) (\(i + 1) of \(items.count))"
+                    self?.upgradingID = item.id
                     self?.upgradeLog.append("$ \(item.upgradeCommand)")
                 }
                 let good = await Updates.upgrade(item) { line in
@@ -544,16 +551,29 @@ final class EngineStore: ObservableObject {
                         if self.upgradeLog.count > 400 { self.upgradeLog.removeFirst(self.upgradeLog.count - 400) }
                     }
                 }
-                if good { ok += 1 } else { failed.append(item.name) }
+                await MainActor.run { self?.upgradeState[item.id] = good }
+                switch good {
+                case .ok:            ok += 1
+                case .needsPassword: locked.append(item.name)
+                case .failed:        failed.append(item.name)
+                }
             }
-            let done = ok, bad = failed
+            let done = ok, bad = failed, needsPass = locked
             await MainActor.run {
                 guard let self else { return }
                 self.upgrading = false
                 self.upgradeProgress = ""
-                self.upgradeSummary = bad.isEmpty
-                    ? "Upgraded \(done) package\(done == 1 ? "" : "s")."
-                    : "Upgraded \(done); \(bad.count) failed: \(bad.prefix(3).joined(separator: ", "))"
+                self.upgradingID = nil
+                var parts = ["Upgraded \(done) package\(done == 1 ? "" : "s")."]
+                if !needsPass.isEmpty {
+                    // not a failure — an admin password, which this app will never ask for
+                    parts.append("\(needsPass.count) need an admin password: "
+                                 + needsPass.joined(separator: ", ") + ". Run those in Terminal.")
+                }
+                if !bad.isEmpty {
+                    parts.append("\(bad.count) failed: \(bad.prefix(3).joined(separator: ", "))")
+                }
+                self.upgradeSummary = parts.joined(separator: " ")
                 self.loadUpdates(force: true)     // re-read, never assume it worked
             }
         }
@@ -630,12 +650,50 @@ final class EngineStore: ObservableObject {
         }
     }
 
+    /// Take the trashed paths off screen straight away.
+    ///
+    /// The move itself is a rename and finishes in milliseconds, but every list here is fed
+    /// by a database read, and those only refresh at the end of the batch. That left rows
+    /// sitting there looking untouched — a duplicate you had just removed was still offering
+    /// to be removed. Anything that fails comes back on the refresh that follows.
+    private func forgetTrashed(_ paths: Set<String>) {
+        Self.afterTrash(paths: paths, browsePath: browsePath,
+                        cacheEntries: &cacheEntries, diskEntries: &diskEntries,
+                        dupGroups: &dupGroups)
+    }
+
+    /// Which rows a trash action removes from the screen, as a pure function of what was
+    /// trashed. Pure so it can be checked without a database: it runs *before* the move
+    /// finishes, so a row it drops by mistake is a file the user believes is gone.
+    static func afterTrash(paths: Set<String>, browsePath: String,
+                           cacheEntries: inout [CacheEntry],
+                           diskEntries: inout [SizeEntry],
+                           dupGroups: inout [DupGroup]) {
+        cacheEntries.removeAll { paths.contains(($0.path as NSString).expandingTildeInPath) }
+        // a contents-only entry survives its own emptying, so it drops to zero instead
+        for i in cacheEntries.indices {
+            let dir = (cacheEntries[i].path as NSString).expandingTildeInPath + "/"
+            if paths.contains(where: { $0.hasPrefix(dir) }) { cacheEntries[i].bytes = 0 }
+        }
+        // a SizeEntry is keyed by name within the directory being browsed, so only paths
+        // whose parent IS that directory may drop a row — otherwise trashing some unrelated
+        // "Caches" folder would blank a row of the same name somewhere else entirely
+        let hereNames = Set(paths
+            .filter { ($0 as NSString).deletingLastPathComponent == browsePath }
+            .map { ($0 as NSString).lastPathComponent })
+        diskEntries.removeAll { hereNames.contains($0.name) }
+        for i in dupGroups.indices { dupGroups[i].paths.removeAll { paths.contains($0) } }
+        // one copy left is not a duplicate any more
+        dupGroups.removeAll { $0.paths.count < 2 }
+    }
+
     /// Shared by every bulk trash. Off the main actor, one item at a time so the progress
     /// line names what is actually being moved rather than spinning anonymously.
     private func runTrash(_ items: [(name: String, path: String)], allowed: Set<String>) {
         guard !trashing, !items.isEmpty else { return }
         trashing = true
         trashProgress = "Preparing…"
+        forgetTrashed(Set(items.map(\.path)))
         let db = self.db
         Task.detached(priority: .userInitiated) { [weak self] in
             var ok = 0, failed = 0
@@ -646,7 +704,11 @@ final class EngineStore: ObservableObject {
                 }
                 let now = Int64(Date().timeIntervalSince1970 * 1000)
                 let r = Trash.moveToTrash([item.path], allowed: allowed, db: db, now: now)
-                if r.first?.ok == true { ok += 1 } else {
+                if r.first?.ok == true {
+                    ok += 1
+                    // once for the batch: fifty caches moving should sound like one gesture
+                    if ok == 1 { await MainActor.run { Feedback.trashed() } }
+                } else {
                     failed += 1
                     if firstError == nil { firstError = r.first?.message }
                 }

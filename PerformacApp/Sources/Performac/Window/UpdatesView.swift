@@ -16,11 +16,24 @@ struct UpdatesView: View {
     var onSelect: (String, Bool) -> Void = { _, _ in }
     var onSelectAll: (Bool) -> Void = { _ in }
     var onUpgrade: () -> Void = {}
+    var state: [String: UpgradeOutcome] = [:]
+    var activeID: String? = nil
     @State private var copied: String? = nil
     @State private var confirming = false
 
     private var selected: [OutdatedItem] { items.filter(\.selected) }
     private var majors: [OutdatedItem] { selected.filter(\.isMajorJump) }
+    /// Packages the last run could not finish without root. The command is the only thing
+    /// Performac can offer here — it does not ask for passwords.
+    private var lockedOut: [OutdatedItem] { items.filter { state[$0.id] == .needsPassword } }
+    /// A live count during the run, so a long batch shows progress in the summary slot too.
+    private var runningTally: String? {
+        guard upgrading, !state.isEmpty else { return nil }
+        let done = state.values.filter { $0 == .ok }.count
+        let stuck = state.count - done
+        return stuck == 0 ? "\(done) done"
+                          : "\(done) done, \(stuck) need attention"
+    }
 
     private var formulae: [OutdatedItem] { items.filter { $0.kind == .formula } }
     private var casks: [OutdatedItem] { items.filter { $0.kind == .cask } }
@@ -75,16 +88,18 @@ struct UpdatesView: View {
                                 Text(upgrading ? "Upgrading \(progress)…"
                                                : "\(selected.count) of \(items.count) selected")
                                     .font(.pcTitle).foregroundStyle(PC.ink)
-                                Text(summary ?? (majors.isEmpty
+                                Text(runningTally ?? summary ?? (majors.isEmpty
                                      ? "Runs brew upgrade for each, one at a time."
                                      : "\(majors.count) of these are major version changes."))
                                     .font(.pcSmall).foregroundStyle(majors.isEmpty ? PC.meta : PC.amber)
                             }
                             Spacer()
-                            Button("Copy commands") {
-                                copy(selected.map(\.upgradeCommand).joined(separator: "\n"))
+                            Button(lockedOut.isEmpty ? "Copy commands" : "Copy \(lockedOut.count) for Terminal") {
+                                let cmds = lockedOut.isEmpty ? selected : lockedOut
+                                copy(cmds.map(\.upgradeCommand).joined(separator: "\n"))
                             }
-                            .controlSize(.small).disabled(selected.isEmpty || upgrading)
+                            .controlSize(.small)
+                            .disabled((selected.isEmpty && lockedOut.isEmpty) || upgrading)
                             Button(upgrading ? "Upgrading…" : "Update \(selected.count)") { confirming = true }
                                 .buttonStyle(.borderedProminent)
                                 .disabled(selected.isEmpty || upgrading)
@@ -142,9 +157,7 @@ struct UpdatesView: View {
             .pcHairline(.bottom)
             ForEach(rows) { item in
                 HStack(spacing: PC.gutter) {
-                    Toggle("", isOn: Binding(get: { item.selected },
-                                             set: { onSelect(item.id, $0) }))
-                        .labelsHidden().toggleStyle(.checkbox).disabled(upgrading)
+                    status(item)
                     Text(item.name).font(.pcBody).foregroundStyle(PC.ink).lineLimit(1)
                     if item.isMajorJump {
                         Pill(text: "major version", tint: PC.amber, soft: PC.amberSoft)
@@ -156,6 +169,9 @@ struct UpdatesView: View {
                         .frame(minWidth: 74, alignment: .leading)
                     Button(copied == item.id ? "Copied" : "Copy") { copy(item.upgradeCommand, id: item.id) }
                         .controlSize(.small).frame(width: 66)
+                        .help(state[item.id] == .needsPassword
+                              ? "Paste this into Terminal, where sudo can ask for your password"
+                              : item.upgradeCommand)
                 }
                 .padding(.horizontal, PC.gutter).padding(.vertical, 5)
                 .help(item.upgradeCommand)
@@ -163,6 +179,35 @@ struct UpdatesView: View {
             }
         }
         .pcCard()
+    }
+
+    /// The row's own answer to "what happened to me". While a run is going the checkbox has
+    /// nothing left to decide, so the same 16pt slot carries the outcome instead.
+    @ViewBuilder private func status(_ item: OutdatedItem) -> some View {
+        let outcome = state[item.id]
+        Group {
+            if activeID == item.id {
+                ProgressView().controlSize(.small).scaleEffect(0.55)
+            } else if let outcome {
+                switch outcome {
+                case .ok:
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(PC.green)
+                case .needsPassword:
+                    Image(systemName: "lock.fill").foregroundStyle(PC.amber)
+                case .failed:
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(PC.red)
+                }
+            } else {
+                Toggle("", isOn: Binding(get: { item.selected },
+                                         set: { onSelect(item.id, $0) }))
+                    .labelsHidden().toggleStyle(.checkbox).disabled(upgrading)
+            }
+        }
+        .font(.system(size: 12))
+        .frame(width: 16, alignment: .center)
+        .help(outcome == .ok ? "Upgraded"
+              : outcome == .needsPassword ? "Needs an admin password — run it in Terminal"
+              : outcome == .failed ? "Homebrew could not upgrade this one" : "")
     }
 
     @ViewBuilder private func empty(_ title: String, _ detail: String) -> some View {

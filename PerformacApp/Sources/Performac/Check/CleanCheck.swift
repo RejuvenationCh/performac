@@ -3,6 +3,7 @@ import Foundation
 
 enum CleanCheck {
     @MainActor static func run(_ c: CheckSuite) async {
+        forgetChecks(c)
         // default-deny: an unknown detector must not become cleanable by existing
         c.check("clean: unknown target is not cleanable",
                 !Allowlist.policy(for: CacheTarget(id: "brand-new-thing", label: "x", path: "/tmp/x")).cleanable)
@@ -119,5 +120,45 @@ enum CleanCheck {
 
         c.check("clean: missing path reports cleanly",
                 Trash.moveToTrash(["/nope/nope"], allowed: ["/nope/nope"], db: nil, now: 0).first?.ok == false)
+    }
+}
+
+extension CleanCheck {
+    /// The optimistic removal that makes a trash action look instant. It runs before the move
+    /// finishes, so what it drops has to be exactly right.
+    @MainActor static func forgetChecks(_ c: CheckSuite) {
+        var disk = [SizeEntry(name: "Caches", items: 1, bytes: 10),
+                    SizeEntry(name: "Keep", items: 1, bytes: 10)]
+        var dups = [DupGroup(bytes: 5, name: "clip.mov",
+                             paths: ["/a/clip.mov", "/b/clip.mov", "/c/clip.mov"]),
+                    DupGroup(bytes: 5, name: "two.mov",
+                             paths: ["/a/two.mov", "/b/two.mov"])]
+        var caches = [CacheEntry(name: "Media Cache", bytes: 100, age: "1d",
+                                 safe: true, why: "", path: "/tmp/pc-cache"),
+                      CacheEntry(name: "Logs", bytes: 100, age: "1d",
+                                 safe: true, why: "", path: "/tmp/pc-logs")]
+
+        EngineStore.afterTrash(
+            paths: ["/a/clip.mov", "/a/two.mov", "/tmp/pc-here/Caches",
+                    "/tmp/pc-cache", "/tmp/pc-logs/old.log"],
+            browsePath: "/tmp/pc-here",
+            cacheEntries: &caches, diskEntries: &disk, dupGroups: &dups)
+
+        c.eq("forget: the trashed cache row is gone", caches.count, 1)
+        c.eq("forget: an emptied folder survives at zero", caches.first?.bytes, 0)
+        c.eq("forget: the row in the browsed directory is gone", disk.count, 1)
+        c.eq("forget: the row that was not trashed stays", disk.first?.name, "Keep")
+        // three copies minus one is still a duplicate; two minus one is not
+        c.eq("forget: a group keeps its remaining copies", dups.count, 1)
+        c.eq("forget: the trashed copy left the group", dups.first?.paths.count, 2)
+        c.check("forget: a pair that lost a copy is no longer a duplicate",
+                !dups.contains { $0.name == "two.mov" })
+
+        // a name matching outside the browsed directory must not blank a row
+        var lone = [SizeEntry(name: "Caches", items: 1, bytes: 10)]
+        var noDups: [DupGroup] = [], noCaches: [CacheEntry] = []
+        EngineStore.afterTrash(paths: ["/somewhere/else/Caches"], browsePath: "/tmp/pc-here",
+                               cacheEntries: &noCaches, diskEntries: &lone, dupGroups: &noDups)
+        c.eq("forget: a same-named path elsewhere leaves the row alone", lone.count, 1)
     }
 }

@@ -109,7 +109,9 @@ struct MainWindow: View {
                     summary: store.upgradeSummary,
                     onSelect: { store.setUpdateSelected($0, $1) },
                     onSelectAll: { store.selectAllUpdates($0) },
-                    onUpgrade: { store.upgradeSelected() })
+                    onUpgrade: { store.upgradeSelected() },
+                    state: store.upgradeState,
+                    activeID: store.upgradingID)
                 case .clean: CleanView(
                     caches: store.cacheEntries,
                     busy: store.trashing,
