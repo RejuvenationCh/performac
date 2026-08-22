@@ -452,7 +452,8 @@ final class EngineStore: ObservableObject {
         selectedApp = app
         appRefusal = Uninstaller.refusal(for: app)
         leftovers = []
-        guard appRefusal == nil else { return }
+        // Measured even when the app refuses to remove anything: for a Homebrew formula the
+        // refusal is the point, and what it leaves behind is still worth naming.
         leftoversLoading = true
         Task.detached(priority: .userInitiated) {
             let found = Uninstaller.leftovers(for: app)

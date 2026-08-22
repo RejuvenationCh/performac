@@ -14,6 +14,29 @@ struct AppsView: View {
     var onToggle: (Int, Bool) -> Void = { _, _ in }
     var onUninstall: () -> Void = {}
     @State private var confirming = false
+    @State private var scope: Scope = .all
+    @State private var showDeps = false
+
+    /// 147 formulae are installed here and 133 of them were dragged in by something else.
+    /// Listing all of them buries the fourteen the user actually chose.
+    enum Scope: String, CaseIterable, Identifiable {
+        case all = "All", apps = "Apps", tools = "Tools"
+        var id: String { rawValue }
+    }
+
+    private var shown: [InstalledApp] {
+        apps.filter { a in
+            switch scope {
+            case .all:   return a.isFormula ? (showDeps || a.onRequest) : true
+            case .apps:  return !a.isFormula
+            case .tools: return a.isFormula && (showDeps || a.onRequest)
+            }
+        }
+    }
+
+    private var hiddenDeps: Int {
+        showDeps ? 0 : apps.filter { $0.isFormula && !$0.onRequest }.count
+    }
 
     private var reclaim: Int64 {
         (selected?.bytes ?? 0) + leftovers.filter(\.selected).reduce(0) { $0 + $1.bytes }
@@ -21,7 +44,20 @@ struct AppsView: View {
 
     var body: some View {
         Page(title: "Apps",
-             subtitle: "Remove an app together with the files it leaves behind. Everything goes to the Trash.") {
+             subtitle: "Apps and Homebrew tools, by what they take up. Removing an app takes its leftovers with it.",
+             trailing: AnyView(
+                HStack(spacing: PC.gutter) {
+                    if scope != .apps, hiddenDeps > 0 {
+                        Button("Show \(hiddenDeps) dependencies") { showDeps = true }
+                            .controlSize(.small)
+                    } else if scope != .apps, showDeps {
+                        Button("Hide dependencies") { showDeps = false }.controlSize(.small)
+                    }
+                    Picker("", selection: $scope) {
+                        ForEach(Scope.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented).labelsHidden().frame(width: 190)
+                })) {
             HSplitView {
                 VStack(spacing: 0) {
                 if appsLoading {
@@ -35,7 +71,7 @@ struct AppsView: View {
                 }
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(apps) { app in
+                        ForEach(shown) { app in
                             AppRow(app: app, isSelected: selected?.id == app.id) { onSelect(app) }
                             Divider().overlay(PC.hairline)
                         }
@@ -68,9 +104,21 @@ struct AppsView: View {
     @ViewBuilder private func detail(_ app: InstalledApp) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: PC.gutter) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(app.name).font(.pcHeadline).foregroundStyle(PC.ink)
-                    Text(app.bundleID).font(.pcSmall).foregroundStyle(PC.meta)
+                    Text(app.subtitle).font(.pcSmall).foregroundStyle(PC.meta)
+                    HStack(spacing: PC.s1) {
+                        if app.isFormula {
+                            Pill(text: app.onRequest ? "you installed this" : "dependency",
+                                 tint: app.onRequest ? PC.accent : PC.meta,
+                                 soft: app.onRequest ? PC.fill1 : PC.chip)
+                        } else if let c = app.cask {
+                            Pill(text: "cask · \(c.token)", tint: PC.accent, soft: PC.fill1)
+                        }
+                        if let at = app.installedAt {
+                            Text("installed \(Ago.text(at))").font(.pcLabel).foregroundStyle(PC.meta)
+                        }
+                    }
                 }
                 Spacer()
                 Text(Fmt.bytes(app.bytes)).font(.pcNumLg).foregroundStyle(PC.ink)
@@ -78,9 +126,43 @@ struct AppsView: View {
             .padding(PC.stack).pcHairline(.bottom)
 
             if let refusal {
-                HStack(alignment: .top, spacing: PC.s2) {
-                    Image(systemName: "hand.raised.fill").foregroundStyle(PC.amber)
-                    Text(refusal).font(.pcBody).foregroundStyle(PC.ink2)
+                VStack(alignment: .leading, spacing: PC.gutter) {
+                    HStack(alignment: .top, spacing: PC.s2) {
+                        Image(systemName: "hand.raised.fill").foregroundStyle(PC.amber)
+                        Text(refusal).font(.pcBody).foregroundStyle(PC.ink2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if !app.uninstallCommand.isEmpty, app.dependents.isEmpty {
+                        HStack(spacing: PC.s2) {
+                            Text(app.uninstallCommand)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(PC.ink)
+                                .padding(.horizontal, PC.s2).padding(.vertical, 5)
+                                .background(PC.fill1, in: RoundedRectangle(cornerRadius: PC.rLg))
+                            Button("Copy") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(app.uninstallCommand, forType: .string)
+                            }
+                            .controlSize(.small)
+                            Spacer()
+                        }
+                    }
+                    if app.isFormula, !leftovers.isEmpty {
+                        VStack(alignment: .leading, spacing: 3) {
+                            SectionHeader(text: "Also on disk")
+                            ForEach(leftovers) { l in
+                                HStack(spacing: PC.s2) {
+                                    Text(l.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+                                        .font(.pcSmall).foregroundStyle(PC.ink2)
+                                        .lineLimit(1).truncationMode(.middle)
+                                    Spacer(minLength: PC.s2)
+                                    Text(Fmt.bytes(l.bytes)).font(.pcNum).foregroundStyle(PC.ink)
+                                }
+                            }
+                            Text("brew uninstall leaves these; they are your settings and caches, not the package.")
+                                .font(.pcSmall).foregroundStyle(PC.meta)
+                        }
+                    }
                 }
                 .padding(PC.stack)
                 Spacer()
@@ -151,14 +233,18 @@ private struct AppRow: View {
     let onTap: () -> Void
     var body: some View {
         HStack(spacing: PC.s2) {
-            Image(systemName: app.isSystem ? "lock.fill" : "app.fill")
+            Image(systemName: app.isFormula ? "terminal.fill"
+                                           : app.isSystem ? "lock.fill" : "app.fill")
                 .font(.system(size: 11))
-                .foregroundStyle(app.isSystem ? PC.meta : PC.accent)
+                .foregroundStyle(app.isSystem || (app.isFormula && !app.onRequest)
+                                 ? PC.meta : PC.accent)
                 .frame(width: 14)
             VStack(alignment: .leading, spacing: 0) {
                 Text(app.name).font(.pcBody).foregroundStyle(PC.ink).lineLimit(1)
                 if app.isRunning {
                     Text("running").font(.pcLabel).foregroundStyle(PC.amber)
+                } else if app.isFormula && !app.onRequest {
+                    Text("dependency").font(.pcLabel).foregroundStyle(PC.meta)
                 }
             }
             Spacer(minLength: PC.s2)
