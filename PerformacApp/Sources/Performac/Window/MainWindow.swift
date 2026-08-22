@@ -102,7 +102,14 @@ struct MainWindow: View {
                     metadataAge: store.brewMetadataAge,
                     brewMissing: store.brewMissing,
                     onAppear: { store.loadUpdates() },
-                    onRefresh: { store.loadUpdates(force: true) })
+                    onRefresh: { store.loadUpdates(force: true) },
+                    upgrading: store.upgrading,
+                    progress: store.upgradeProgress,
+                    log: store.upgradeLog,
+                    summary: store.upgradeSummary,
+                    onSelect: { store.setUpdateSelected($0, $1) },
+                    onSelectAll: { store.selectAllUpdates($0) },
+                    onUpgrade: { store.upgradeSelected() })
                 case .clean: CleanView(
                     caches: store.cacheEntries,
                     busy: store.trashing,

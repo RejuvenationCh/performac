@@ -19,6 +19,21 @@ struct OutdatedItem: Identifiable, Sendable {
     var upgradeCommand: String {
         kind == .cask ? "brew upgrade --cask \(name)" : "brew upgrade \(name)"
     }
+    var selected: Bool = true
+
+    /// True when the leading version component changes.
+    ///
+    /// Not a reason to refuse the upgrade — just the one worth seeing before agreeing to it.
+    /// ffmpeg 8 to 9 changes flag behaviour that scripts depend on; yt-dlp 2026.7 to 2026.8
+    /// is a date and means nothing of the sort.
+    var isMajorJump: Bool {
+        func lead(_ v: String) -> Int? {
+            Int(v.prefix { $0.isNumber })
+        }
+        guard let a = lead(installed), let b = lead(available), b > a else { return false }
+        // a four-digit lead is a year, not a major version
+        return a < 1000
+    }
 }
 
 enum Updates {
@@ -77,6 +92,44 @@ enum Updates {
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
         return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    /// Run the upgrade, streaming brew's output back line by line.
+    ///
+    /// One package at a time rather than one big `brew upgrade`: a single failure in a batch
+    /// tells you nothing about which package failed, and this way a broken formula does not
+    /// take the rest of the run down with it.
+    static func upgrade(_ item: OutdatedItem, onLine: @escaping @Sendable (String) -> Void) async -> Bool {
+        guard let brew = brewPath else { return false }
+        let args = item.kind == .cask ? ["upgrade", "--cask", item.name] : ["upgrade", item.name]
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: brew)
+        p.arguments = args
+        p.environment = ["PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+                         "HOME": NSHomeDirectory(),
+                         "HOMEBREW_NO_AUTO_UPDATE": "1",     // upgrade what was shown, nothing else
+                         "HOMEBREW_NO_ENV_HINTS": "1",
+                         "HOMEBREW_COLOR": "0"]
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = pipe
+        guard (try? p.run()) != nil else { return false }
+
+        var buffer = Data()
+        let handle = pipe.fileHandleForReading
+        while true {
+            let chunk = handle.availableData
+            if chunk.isEmpty { break }
+            buffer.append(chunk)
+            while let nl = buffer.firstIndex(of: 0x0A) {
+                let line = String(data: buffer[..<nl], encoding: .utf8) ?? ""
+                buffer.removeSubrange(...nl)
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if !trimmed.isEmpty { onLine(trimmed) }
+            }
+        }
+        p.waitUntilExit()
+        return p.terminationStatus == 0
     }
 
     static func outdated() async -> [OutdatedItem] {

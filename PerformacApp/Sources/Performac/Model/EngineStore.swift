@@ -508,6 +508,56 @@ final class EngineStore: ObservableObject {
         }
     }
 
+    @Published var upgrading = false
+    @Published var upgradeProgress = ""
+    @Published var upgradeLog: [String] = []
+    @Published var upgradeSummary: String? = nil
+
+    func setUpdateSelected(_ id: String, _ on: Bool) {
+        guard let i = outdated.firstIndex(where: { $0.id == id }) else { return }
+        outdated[i].selected = on
+    }
+    func selectAllUpdates(_ on: Bool) {
+        for i in outdated.indices { outdated[i].selected = on }
+    }
+
+    /// Upgrade the ticked packages, one at a time, streaming brew's output.
+    func upgradeSelected() {
+        let items = outdated.filter(\.selected)
+        guard !upgrading, !items.isEmpty else { return }
+        upgrading = true
+        upgradeLog = []
+        upgradeSummary = nil
+        Task { [weak self] in
+            var ok = 0, failed: [String] = []
+            for (i, item) in items.enumerated() {
+                await MainActor.run {
+                    self?.upgradeProgress = "\(item.name) (\(i + 1) of \(items.count))"
+                    self?.upgradeLog.append("$ \(item.upgradeCommand)")
+                }
+                let good = await Updates.upgrade(item) { line in
+                    Task { @MainActor in
+                        guard let self else { return }
+                        self.upgradeLog.append(line)
+                        // brew is verbose; keep the tail rather than an unbounded transcript
+                        if self.upgradeLog.count > 400 { self.upgradeLog.removeFirst(self.upgradeLog.count - 400) }
+                    }
+                }
+                if good { ok += 1 } else { failed.append(item.name) }
+            }
+            let done = ok, bad = failed
+            await MainActor.run {
+                guard let self else { return }
+                self.upgrading = false
+                self.upgradeProgress = ""
+                self.upgradeSummary = bad.isEmpty
+                    ? "Upgraded \(done) package\(done == 1 ? "" : "s")."
+                    : "Upgraded \(done); \(bad.count) failed: \(bad.prefix(3).joined(separator: ", "))"
+                self.loadUpdates(force: true)     // re-read, never assume it worked
+            }
+        }
+    }
+
     // MARK: cache breakdown
 
     @Published var breakdowns: [String: CacheBreakdown] = [:]

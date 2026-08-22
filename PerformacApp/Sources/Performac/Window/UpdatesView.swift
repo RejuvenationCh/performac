@@ -9,7 +9,18 @@ struct UpdatesView: View {
     var brewMissing: Bool = false
     var onAppear: () -> Void = {}
     var onRefresh: () -> Void = {}
+    var upgrading: Bool = false
+    var progress: String = ""
+    var log: [String] = []
+    var summary: String? = nil
+    var onSelect: (String, Bool) -> Void = { _, _ in }
+    var onSelectAll: (Bool) -> Void = { _ in }
+    var onUpgrade: () -> Void = {}
     @State private var copied: String? = nil
+    @State private var confirming = false
+
+    private var selected: [OutdatedItem] { items.filter(\.selected) }
+    private var majors: [OutdatedItem] { selected.filter(\.isMajorJump) }
 
     private var formulae: [OutdatedItem] { items.filter { $0.kind == .formula } }
     private var casks: [OutdatedItem] { items.filter { $0.kind == .cask } }
@@ -40,30 +51,85 @@ struct UpdatesView: View {
                         // The app trashes files because the Trash is an undo. An upgrade has
                         // none, and bumping ffmpeg under a video editor mid-project is not a
                         // decision to make on someone's behalf.
+                        // An upgrade cannot be undone, so the caution stays visible rather
+                        // than living in a confirmation the user clicks past.
                         HStack(alignment: .top, spacing: PC.s2) {
-                            Image(systemName: "terminal").foregroundStyle(PC.meta)
-                            Text("Performac does not run upgrades. A trashed file can be put back; an upgraded package cannot, and a version bump can change how a tool behaves mid-project. Copy a command and run it when it suits you.")
+                            Image(systemName: "exclamationmark.triangle").foregroundStyle(PC.amber)
+                            Text("Upgrades cannot be undone. Anything marked as a major version can change how a tool behaves — worth leaving unticked while a project is open.")
                                 .font(.pcSmall).foregroundStyle(PC.ink2)
                             Spacer()
                         }
                         .padding(PC.gutter).frame(maxWidth: .infinity, alignment: .leading).pcCard()
 
+                        if upgrading || !log.isEmpty { logPane }
+
                         if !casks.isEmpty { section("Apps", casks) }
                         if !formulae.isEmpty { section("Command-line tools", formulae) }
 
-                        HStack {
-                            Spacer()
-                            Button("Copy command for all \(items.count)") {
-                                copy("brew upgrade" + (casks.isEmpty ? "" : " && brew upgrade --cask --greedy"))
+                        HStack(spacing: PC.gutter) {
+                            Button(selected.count == items.count ? "Deselect all" : "Select all") {
+                                onSelectAll(selected.count != items.count)
                             }
-                            .controlSize(.small)
+                            .controlSize(.small).disabled(upgrading)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(upgrading ? "Upgrading \(progress)…"
+                                               : "\(selected.count) of \(items.count) selected")
+                                    .font(.pcTitle).foregroundStyle(PC.ink)
+                                Text(summary ?? (majors.isEmpty
+                                     ? "Runs brew upgrade for each, one at a time."
+                                     : "\(majors.count) of these are major version changes."))
+                                    .font(.pcSmall).foregroundStyle(majors.isEmpty ? PC.meta : PC.amber)
+                            }
+                            Spacer()
+                            Button("Copy commands") {
+                                copy(selected.map(\.upgradeCommand).joined(separator: "\n"))
+                            }
+                            .controlSize(.small).disabled(selected.isEmpty || upgrading)
+                            Button(upgrading ? "Upgrading…" : "Update \(selected.count)") { confirming = true }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(selected.isEmpty || upgrading)
                         }
+                        .padding(PC.gutter).pcCard()
                     }
                     .padding(.horizontal, PC.stack).padding(.bottom, PC.stack)
                 }
             }
         }
         .onAppear(perform: onAppear)
+        .sheet(isPresented: $confirming) {
+            UpgradeSheet(items: selected, majors: majors,
+                         onCancel: { confirming = false },
+                         onConfirm: { confirming = false; onUpgrade() })
+        }
+    }
+
+    /// brew's own output, so a failure is visible rather than summarised away.
+    @ViewBuilder private var logPane: some View {
+        VStack(alignment: .leading, spacing: PC.s1) {
+            HStack(spacing: PC.s2) {
+                if upgrading { ProgressView().controlSize(.small).scaleEffect(0.6) }
+                SectionHeader(text: upgrading ? "Running" : "Last run")
+                Spacer()
+            }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(log.enumerated()), id: \.offset) { i, line in
+                            Text(line)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(line.hasPrefix("$") ? PC.accent : PC.ink2)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .id(i)
+                        }
+                    }
+                }
+                .frame(height: 150)
+                .onChange(of: log.count) { _, n in
+                    if n > 0 { proxy.scrollTo(n - 1, anchor: .bottom) }
+                }
+            }
+        }
+        .padding(PC.gutter).frame(maxWidth: .infinity, alignment: .leading).pcCard()
     }
 
     @ViewBuilder private func section(_ title: String, _ rows: [OutdatedItem]) -> some View {
@@ -76,7 +142,13 @@ struct UpdatesView: View {
             .pcHairline(.bottom)
             ForEach(rows) { item in
                 HStack(spacing: PC.gutter) {
+                    Toggle("", isOn: Binding(get: { item.selected },
+                                             set: { onSelect(item.id, $0) }))
+                        .labelsHidden().toggleStyle(.checkbox).disabled(upgrading)
                     Text(item.name).font(.pcBody).foregroundStyle(PC.ink).lineLimit(1)
+                    if item.isMajorJump {
+                        Pill(text: "major version", tint: PC.amber, soft: PC.amberSoft)
+                    }
                     Spacer(minLength: PC.s2)
                     Text(item.installed).font(.pcNum).foregroundStyle(PC.meta)
                     Image(systemName: "arrow.right").font(.system(size: 8)).foregroundStyle(PC.meta)
@@ -109,5 +181,71 @@ struct UpdatesView: View {
             copied = id
             Task { try? await Task.sleep(for: .seconds(2)); if copied == id { copied = nil } }
         }
+    }
+}
+
+/// The confirmation. Unlike the trash sheets, this one cannot promise recoverability — so it
+/// says the opposite plainly, and leads with the major-version changes rather than burying
+/// them in a list of forty.
+struct UpgradeSheet: View {
+    let items: [OutdatedItem]
+    let majors: [OutdatedItem]
+    var onCancel: () -> Void
+    var onConfirm: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Upgrade \(items.count) package\(items.count == 1 ? "" : "s")?")
+                .font(.pcHeadline).foregroundStyle(PC.ink)
+                .padding(.horizontal, 22).padding(.top, 20).padding(.bottom, PC.s2)
+
+            if !majors.isEmpty {
+                VStack(alignment: .leading, spacing: PC.s1) {
+                    HStack(spacing: PC.s2) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(PC.amber)
+                        Text("\(majors.count) major version change\(majors.count == 1 ? "" : "s")")
+                            .font(.pcTitle).foregroundStyle(PC.ink)
+                    }
+                    ForEach(majors) { m in
+                        Text("\(m.name)  \(m.installed) → \(m.available)")
+                            .font(.pcNum).foregroundStyle(PC.ink2)
+                    }
+                    Text("A major version can change how a tool behaves. If a project depends on one of these, cancel and untick it.")
+                        .font(.pcSmall).foregroundStyle(PC.ink2).fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(PC.gutter).frame(maxWidth: .infinity, alignment: .leading)
+                .background(PC.amberSoft)
+                .padding(.horizontal, 22).padding(.bottom, PC.gutter)
+            }
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(items) { i in
+                        Text(i.upgradeCommand)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(PC.ink2)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 22)
+            }
+            .frame(maxHeight: 150)
+
+            HStack(alignment: .top, spacing: PC.gutter) {
+                Image(systemName: "arrow.uturn.backward.circle").foregroundStyle(PC.meta)
+                Text("This cannot be undone from Performac. Homebrew keeps the old version until you run brew cleanup, so a rollback means going back through Homebrew yourself.")
+                    .font(.pcSmall).foregroundStyle(PC.ink2).lineSpacing(2)
+            }
+            .padding(.horizontal, 22).padding(.vertical, PC.stack)
+
+            HStack(spacing: PC.s2 + 2) {
+                Spacer()
+                Button("Cancel", action: onCancel).keyboardShortcut(.cancelAction)
+                Button("Upgrade \(items.count)", action: onConfirm).buttonStyle(.borderedProminent)
+            }
+            .padding(.horizontal, 22).padding(.bottom, 20)
+        }
+        .frame(width: 520)
+        .pcGlassPanel(PC.rXl)
     }
 }

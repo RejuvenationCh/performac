@@ -36,6 +36,21 @@ enum UpdatesCheck {
                 Updates.parse("thing (1.0) <", kind: .formula).isEmpty)
         c.check("updates: empty input is empty output",
                 Updates.parse("", kind: .formula).isEmpty)
+        // major-version detection decides what gets flagged before an irreversible action
+        func item(_ n: String, _ a: String, _ b: String) -> OutdatedItem {
+            OutdatedItem(name: n, installed: a, available: b, kind: .formula)
+        }
+        c.check("major: ffmpeg 8 to 9 is a major jump", item("ffmpeg", "8.1_1", "9.0.1").isMajorJump)
+        c.check("major: a minor bump is not", !item("aom", "3.13.3", "3.14.1").isMajorJump)
+        // yt-dlp versions are dates; 2026.7 to 2026.8 must not be called a major change
+        c.check("major: a date-versioned package is never a major jump",
+                !item("yt-dlp", "2026.7.4", "2026.8.19").isMajorJump)
+        c.check("major: a date year rolling over is still not a major jump",
+                !item("yt-dlp", "2025.12.1", "2026.1.1").isMajorJump)
+        c.check("major: equal majors are not a jump", !item("x", "2.1", "2.9").isMajorJump)
+        c.check("major: unparseable versions do not claim a jump", !item("x", "abc", "def").isMajorJump)
+        c.check("updates: rows are selected by default", item("x", "1.0", "2.0").selected)
+
         c.check("updates: results are sorted by name",
                 f.map { $0.name } == f.map { $0.name }.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending })
     }
