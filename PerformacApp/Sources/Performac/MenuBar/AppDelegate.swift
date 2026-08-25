@@ -23,10 +23,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var engineTasks: [Task<Void, Never>] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Light only, by user decision — the app does not follow the system appearance.
-        // Every token in Tokens.swift still carries a dark value, so dropping this line
-        // is all that is needed to restore automatic light/dark.
-        NSApp.appearance = NSAppearance(named: .aqua)
+        // Light, dark, or the system's choice. Defaults to matching the system; every token
+        // in Tokens.swift carries both values.
+        Appearance.applyStored()
 
         startEngine()
 
@@ -35,6 +34,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         startNavigationMonitor()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         configureStatusButton()
+        // nil = inherit from the menu bar's own appearance, whatever the app is set to
+        Appearance.onApply = { [weak self] in self?.statusItem.button?.appearance = nil }
+        Appearance.onApply?()
 
         popover.behavior = .transient
         popover.contentSize = NSSize(width: 380, height: 520)

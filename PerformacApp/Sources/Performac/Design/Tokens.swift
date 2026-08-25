@@ -17,8 +17,14 @@ private extension NSColor {
 
 enum PC {
     // MARK: surfaces
-    static let canvas    = dyn(NSColor(hex: 0xf7f9ff), .windowBackgroundColor)
-    static let surface   = dyn(.white,                  .controlBackgroundColor)
+    //
+    // The dark values are explicit rather than .windowBackgroundColor / .controlBackgroundColor,
+    // which both resolve to #1E1E1E in dark aqua — identical. This whole layout is white cards
+    // on a tinted ground, so the semantic pair made every card disappear into the page with
+    // only a hairline left to find it. These keep the light relationship (the card sits a step
+    // above the ground) and continue the fill ladder: 16 · 20 · 2a · 30 · 36 · 3d.
+    static let canvas    = dyn(NSColor(hex: 0xf7f9ff), NSColor(hex: 0x161719))
+    static let surface   = dyn(.white,                 NSColor(hex: 0x202226))
     static let fill1     = dyn(NSColor(hex: 0xecf4ff), NSColor(hex: 0x2a2c30))
     static let fill2     = dyn(NSColor(hex: 0xe6effa), NSColor(hex: 0x303338))
     static let fill3     = dyn(NSColor(hex: 0xe0e9f5), NSColor(hex: 0x36393f))
@@ -40,6 +46,7 @@ enum PC {
     static let green     = dyn(NSColor(hex: 0x0b7052), .systemGreen)
     static let greenSoft = dyn(NSColor(hex: 0xd8f2e7), NSColor(hex: 0x0b7052, alpha: 0.24))
     static let chip      = dyn(NSColor(hex: 0xdfe3eb), NSColor(hex: 0x3a3d43))
+    static let cardShadow = dyn(NSColor(white: 0, alpha: 0.05), NSColor(white: 0, alpha: 0.30))
 
     // MARK: geometry (DESIGN.md: deliberately small radii — this is what reads as desktop)
     static let r: CGFloat = 2, rLg: CGFloat = 4, rXl: CGFloat = 8, rPill: CGFloat = 12
@@ -73,7 +80,9 @@ extension View {
         background(PC.surface)
             .clipShape(RoundedRectangle(cornerRadius: PC.rLg))
             .overlay(RoundedRectangle(cornerRadius: PC.rLg).stroke(PC.hairline, lineWidth: 1))
-            .shadow(color: .black.opacity(0.05), radius: 1, y: 1)
+            // a black shadow does nothing on a dark ground; the surface step and the hairline
+            // carry the separation there
+            .shadow(color: PC.cardShadow, radius: 1, y: 1)
     }
 }
 

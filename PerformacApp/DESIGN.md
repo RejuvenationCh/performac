@@ -111,7 +111,7 @@ The one irreversible-feeling moment, and the artifact gets it right. Do not "fix
 | `rgba(0,0,0,0.1)` hairlines | `Divider()` / `.separatorColor` |
 | px | pt, 1:1 at these sizes |
 | flat popover background | **`NSVisualEffectView`, `.popover` material** — a flat popover reads as a screenshot pasted on the desktop |
-| `html class="light"` only | **Light only, by user decision.** `NSApp.appearance = .aqua` is pinned in `AppDelegate`, so the app does not follow the system appearance. Every token in `Tokens.swift` still carries a dark value — deleting that one line restores automatic light/dark if this is ever revisited. |
+| `html class="light"` only | **Light, dark, or the system's choice.** Settings › General › Appearance, stored in `UserDefaults` (not the settings table — it is applied before the database opens, and a late preference means the window paints light and then flips). Defaults to matching the system. |
 
 ## Do not carry over
 
@@ -128,6 +128,30 @@ Present in the artifact, wrong for this app:
    survive; per-row trash actions only, so deleting every copy can never be one misclick.
 6. The treemap is drawn as vertical strips. Build a **squarified** treemap so small items keep
    a clickable aspect ratio.
+
+## Dark mode
+
+Both values live on every token in `Tokens.swift`, and `AppearanceCheck` resolves them under
+`.aqua` and `.darkAqua` rather than reading the source, because the one real failure here was
+invisible in the code: `.windowBackgroundColor` and `.controlBackgroundColor` **both resolve to
+`#1E1E1E`** in dark aqua. This layout is cards on a ground, so the semantic pair made every card
+vanish into the page with only a hairline left to find it.
+
+So the dark surfaces are explicit, and continue the fill ladder as one sequence:
+
+| token | dark | role |
+|---|---|---|
+| `canvas` | `#161719` | the page, the darkest thing on screen |
+| `surface` | `#202226` | a card, one step above the page |
+| `fill1`–`fill4` | `#2a2c30` · `#303338` · `#36393f` · `#3d4147` | tiles and hover states inside a card |
+
+The checks assert what that ladder has to be true of, in **both** modes: a card is
+distinguishable from its page, the fills step monotonically away from the card, and every text
+and severity colour keeps its distance from the surface it is printed on.
+
+The menu bar is the system's, not the app's. `statusItem.button.appearance` is pinned to `nil`
+so the template glyph always matches the menu bar it sits in — forcing the app dark under a
+light system would otherwise render it white on white.
 
 ## Liquid Glass
 
@@ -166,6 +190,6 @@ The popover's `NSVisualEffectView` was replaced by `.glassEffect`; the deploymen
    action is always and only **"Move to Trash"**, never "Clean", "Optimize", or "Free up".
 7. **Destructive confirmations stay blue, with Cancel focused**, and always state recoverability.
 8. **Cards do not nest.**
-9. **Light only** (pinned in `AppDelegate`), but keep both values on every token — never hard-code a bare hex at a call site.
+9. **Every token carries both values** — never hard-code a bare hex or a bare `.white` at a call site. The one sanctioned exception is the treemap, whose tile fills are a fixed palette by design, so the black label and white hairline drawn on them are correct in either mode.
 10. **Glass is chrome, never content.** If a surface carries a figure the user will act on, it is opaque. Never nest glass inside glass.
 10. **Never state a status the app cannot evidence.**

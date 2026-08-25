@@ -59,16 +59,27 @@ enum BrewCheck {
         // a cask keeps the bundle in /Applications and a record in the Caskroom; the record
         // has to be offered alongside, or brew goes on reporting the app as installed
         let casks = Brew.casksByAppPath()
-        if let (path, cask) = casks.first {
-            c.check("brew: a cask resolves to a real bundle",
-                    FileManager.default.fileExists(atPath: path) && path.hasSuffix(".app"))
-            c.check("brew: the cask record is inside the Caskroom",
+        c.check("brew: the Caskroom produced at least one app-bearing cask", !casks.isEmpty)
+        for (path, cask) in casks {
+            c.check("brew: \(cask.token) records a path under /Caskroom/",
                     cask.recordPath.contains("/Caskroom/"))
-            if let app = apps.first(where: { $0.path == path }) {
-                c.check("brew: a cask-installed app knows its cask", app.cask != nil)
-                c.check("brew: its Homebrew record is offered as a leftover",
-                        Uninstaller.leftovers(for: app).contains { $0.path == cask.recordPath })
-            }
+            c.check("brew: \(cask.token) resolves to an .app path", path.hasSuffix(".app"))
+        }
+
+        // Sorted, not `.first` — dictionary order is randomised per process, and picking an
+        // arbitrary cask made this pass or skip depending on the run. Some casks stage the
+        // bundle inside the Caskroom (xld) and some have a dangling record because the app
+        // was dragged to the Trash without brew being told (aldente, disk-drill), so the
+        // pairing is asserted over the casks that DO own an installed app.
+        let paired = casks
+            .filter { p, _ in apps.contains { $0.path == p } }
+            .sorted { $0.value.token < $1.value.token }
+        c.check("brew: at least one cask pairs with an installed app", !paired.isEmpty)
+        for (path, cask) in paired {
+            guard let app = apps.first(where: { $0.path == path }) else { continue }
+            c.check("brew: \(cask.token) is recognised as a cask by its app", app.cask != nil)
+            c.check("brew: \(cask.token)'s record is offered as a leftover",
+                    Uninstaller.leftovers(for: app).contains { $0.path == cask.recordPath })
         }
     }
 }

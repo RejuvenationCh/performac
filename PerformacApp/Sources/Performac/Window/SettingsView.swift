@@ -3,6 +3,7 @@ import SwiftUI
 import AppKit
 
 struct SettingsView: View {
+    @State private var appearance = Appearance.current
     @State private var launchAtLogin = false
     @State private var showInMenuBar = true
     @State private var menuBarOn: Set<String>
@@ -92,6 +93,14 @@ struct SettingsView: View {
                         Note("Without it, Performac can only measure 736 GB of your 889 GB — folders it cannot read are silently missing from totals.")
                     }
                     SettingsGroup(header: "General") {
+                        Row("Appearance") {
+                            Picker("", selection: Binding(get: { appearance },
+                                                          set: { appearance = $0; Appearance.apply($0) })) {
+                                ForEach(Appearance.allCases) { Text($0.label).tag($0) }
+                            }
+                            .labelsHidden().frame(width: 190)
+                        }
+                        Divider().overlay(PC.hairline)
                         Row("Launch at login") { Toggle("", isOn: $launchAtLogin).labelsHidden() }
                         Divider().overlay(PC.hairline)
                         Row("Show in menu bar") { Toggle("", isOn: $showInMenuBar).labelsHidden() }

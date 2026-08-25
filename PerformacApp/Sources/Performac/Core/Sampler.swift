@@ -76,12 +76,18 @@ func refreshFindings(_ db: DB, _ cfg: Config, _ now: Int64,
     findings += {
         // Compare the top level of every scanned root. scan_entries already holds the sizes,
         // so this is a couple of indexed reads rather than another walk.
-        let roots = db.prepare("SELECT DISTINCT parent FROM scan_entries WHERE parent NOT LIKE ?%")
-            .all([.text("")]).compactMap { $0["parent"]?.stringVal }
+        // This read was `WHERE parent NOT LIKE ?%` bound to "" — not valid SQL, so prepare
+        // failed on every tick, roots came back empty, and singleCopy never ran once. The
+        // card warning that a large folder exists in only one place has never fired.
+        //
+        // The predicate filtered nothing by design, and SELECT DISTINCT over scan_entries is
+        // 23k rows to find at most a handful. Ask about the candidates instead: one indexed
+        // lookup each.
         let home = NSHomeDirectory()
         let volumes = ((try? FileManager.default.contentsOfDirectory(atPath: "/Volumes")) ?? [])
             .map { "/Volumes/" + $0 }
-        let candidates = ([home] + volumes).filter { roots.contains($0) }
+        let known = db.prepare("SELECT 1 FROM scan_entries WHERE parent = ? LIMIT 1")
+        let candidates = ([home] + volumes).filter { known.get([.text($0)]) != nil }
         guard candidates.count >= 1 else { return [] as [EngineFinding] }
         let statuses = CopyCheck.compare(roots: candidates, minBytes: 5 * 1_073_741_824) { root in
             db.prepare("SELECT name, bytes, is_dir FROM scan_entries WHERE parent = ?")
