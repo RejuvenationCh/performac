@@ -4,6 +4,8 @@ import Foundation
 enum CleanCheck {
     @MainActor static func run(_ c: CheckSuite) async {
         forgetChecks(c)
+        rootLikeChecks(c)
+        allDrivesChecks(c)
         // default-deny: an unknown detector must not become cleanable by existing
         c.check("clean: unknown target is not cleanable",
                 !Allowlist.policy(for: CacheTarget(id: "brand-new-thing", label: "x", path: "/tmp/x")).cleanable)
@@ -160,5 +162,81 @@ extension CleanCheck {
         EngineStore.afterTrash(paths: ["/somewhere/else/Caches"], browsePath: "/tmp/pc-here",
                                cacheEntries: &noCaches, diskEntries: &lone, dupGroups: &noDups)
         c.eq("forget: a same-named path elsewhere leaves the row alone", lone.count, 1)
+    }
+}
+
+extension CleanCheck {
+    /// The all-drives view puts a "Move to Trash" next to a whole drive. It must refuse.
+    @MainActor static func rootLikeChecks(_ c: CheckSuite) {
+        c.check("trash: the filesystem root is refused", Trash.isRootLike("/"))
+        c.check("trash: the home folder is refused", Trash.isRootLike(NSHomeDirectory()))
+        c.check("trash: a mounted volume is refused", Trash.isRootLike("/Volumes/External SSD"))
+        c.check("trash: a trailing slash does not slip past",
+                Trash.isRootLike(NSHomeDirectory() + "/"))
+        // and the things that must still be trashable
+        c.check("trash: a folder inside a volume is allowed",
+                !Trash.isRootLike("/Volumes/External SSD/Videos"))
+        c.check("trash: a folder inside home is allowed",
+                !Trash.isRootLike(NSHomeDirectory() + "/Downloads"))
+        c.check("trash: /Volumes itself is not mistaken for a volume",
+                !Trash.isRootLike("/Volumes/External SSD/Videos/clip.mov"))
+
+        // the guard is in moveToTrash, not only in the menu — an allowlisted drive is refused
+        let r = Trash.moveToTrash([NSHomeDirectory()], allowed: [NSHomeDirectory()],
+                                  db: nil, now: 0)
+        c.check("trash: moveToTrash refuses a drive even when allowlisted",
+                r.first?.ok == false)
+        c.check("trash: and says why", r.first?.message?.contains("whole drive") == true)
+
+        // the all-drives child naming has to round-trip to a real path
+        let home = String(NSHomeDirectory().dropFirst())
+        c.eq("drives: a child name rebuilds its real path",
+             ("/" as NSString).appendingPathComponent(home), NSHomeDirectory())
+        c.eq("drives: home is labelled Home", EngineStore.driveLabel(forChild: home), "Home")
+        c.eq("drives: a volume keeps its own name",
+             EngineStore.driveLabel(forChild: "Volumes/External SSD"), "External SSD")
+    }
+}
+
+extension CleanCheck {
+    /// The combined scan, against a throwaway database — the same buildTree and childrenOf
+    /// the Disk tab uses, so the synthetic "/" rows are exercised rather than assumed.
+    @MainActor static func allDrivesChecks(_ c: CheckSuite) {
+        let tmp = NSTemporaryDirectory() + "performac-drives-\(UUID().uuidString).db"
+        let store = EngineStore(db: DB(path: tmp))
+        let home = NSHomeDirectory()
+        let vol = "/Volumes/External SSD"
+        let summaries = [
+            ScanSummary(root: home, files: 3, bytes: 300, elapsed: 1, topDirectories: [],
+                        entries: [ScanEntry(path: home + "/Movies", files: 2, bytes: 200,
+                                            isDirectory: true, mtime: 7)]),
+            ScanSummary(root: vol, files: 5, bytes: 500, elapsed: 1, topDirectories: [],
+                        entries: [ScanEntry(path: vol + "/Videos", files: 4, bytes: 400,
+                                            isDirectory: true, mtime: 9)]),
+        ]
+        store.buildTree(summaries, combined: true)
+
+        let drives = store.childrenOf("/")
+        c.eq("drives: both roots appear under the combined root", drives.count, 2)
+        c.eq("drives: biggest first", drives.first?.display, "External SSD")
+        c.eq("drives: the volume carries its own total", drives.first?.bytes, 500)
+        c.check("drives: home is there too", drives.contains { $0.display == "Home" })
+        // the stored name is the navigation key and must rebuild the real path
+        for d in drives {
+            let rebuilt = ("/" as NSString).appendingPathComponent(d.name)
+            c.check("drives: \(d.display) navigates to a real path",
+                    rebuilt == home || rebuilt == vol, rebuilt)
+        }
+        // and descending into a drive still finds what the scan put there
+        c.eq("drives: descending into a drive lists its contents",
+             store.childrenOf(vol).first?.name, "Videos")
+
+        // a single-root scan must NOT grow a synthetic root
+        store.buildTree([summaries[0]], combined: false)
+        c.check("drives: a normal scan adds no combined root", store.childrenOf("/").isEmpty)
+        c.eq("drives: a normal scan still lists its own tree",
+             store.childrenOf(home).first?.name, "Movies")
+        c.check("drives: a normal scan's rows carry no label",
+                store.childrenOf(home).allSatisfy { $0.label == nil })
     }
 }

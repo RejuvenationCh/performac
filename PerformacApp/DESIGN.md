@@ -153,6 +153,26 @@ The menu bar is the system's, not the app's. `statusItem.button.appearance` is p
 so the template glyph always matches the menu bar it sits in — forcing the app dark under a
 light system would otherwise render it white on white.
 
+## The all-drives root
+
+The Disk target picker offers **All drives** whenever more than one is mounted. It scans each
+root in turn — drives are separate devices, and eight concurrent stat threads already saturate
+a USB bus — and lands on `/`.
+
+`/` is a real path, deliberately: breadcrumbs, back/forward, the trash allowlist and
+`scan_entries` all keep working with no special case. The only thing that needs handling is
+what its children are called. Each drive is stored under `/` with its path minus the leading
+slash as the **name** (`Users/you`, `Volumes/External SSD`), so appending it to `/`
+rebuilds the real path; `SizeEntry.label` carries the readable version (`Home`, `External SSD`)
+and `display` is what rows render. **`name` stays the navigation key everywhere — never render
+it, never navigate by `display`.**
+
+This view is the first place a whole drive appears as a row with a Move to Trash beside it.
+`Trash.isRootLike` refuses `/`, the home folder, and anything directly under `/Volumes`, and
+it lives in `moveToTrash` rather than in the menu because that is the one function every
+deletion in the app goes through. The context menu also stops offering the action, so the
+refusal is a backstop rather than the user's first encounter with it.
+
 ## Liquid Glass
 
 Adopted for the **interface layer only**, per Apple's guidance that Liquid Glass belongs to

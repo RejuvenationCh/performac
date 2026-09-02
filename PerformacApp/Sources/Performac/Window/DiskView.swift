@@ -45,7 +45,7 @@ struct DiskView: View {
 
     private func rowInfo(_ e: SizeEntry) -> RowInfo {
         RowInfo(path: (browsePath as NSString).appendingPathComponent(e.name),
-                name: e.name, bytes: e.bytes, items: e.items,
+                name: e.display, bytes: e.bytes, items: e.items,
                 isFolder: e.symbol == "folder.fill")
     }
 
@@ -332,7 +332,7 @@ struct TreeMap: View {
                             // Name with its size beneath, whenever the tile can hold both.
                             if r.width > 54 && r.height > 20 {
                                 VStack(alignment: .leading, spacing: 0) {
-                                    Text(e.name).font(.system(size: 10, weight: .medium))
+                                    Text(e.display).font(.system(size: 10, weight: .medium))
                                         .foregroundStyle(.black.opacity(0.72))
                                         .lineLimit(1)
                                     if r.height > 32 {
@@ -348,7 +348,7 @@ struct TreeMap: View {
                         }
                         .frame(width: r.width, height: r.height)
                         .position(x: r.midX, y: r.midY)
-                        .help("\(e.name) — \(Fmt.bytes(e.bytes))")
+                        .help("\(e.display) — \(Fmt.bytes(e.bytes))")
                 }
             }
         }

@@ -752,26 +752,61 @@ final class EngineStore: ObservableObject {
         scanElapsed = 0
         scanPath = ""
         scanStart = Date()
-        let root = URL(fileURLWithPath: (scanRoot as NSString).expandingTildeInPath)
+        let combined = scanRoot == Self.allDrives
+        let roots = combined ? allDriveRoots : [(scanRoot as NSString).expandingTildeInPath]
         scanTask = Task { [weak self] in
             guard let self else { return }
-            for await event in DiskScanner().scan(root) {
+            var summaries: [ScanSummary] = []
+            // Drives are walked one after another rather than at once: each is its own device,
+            // and eight concurrent stat threads per drive already saturates a USB bus. The
+            // running totals carry across so progress does not restart at each drive.
+            var carriedFiles = 0
+            var carriedBytes: Int64 = 0
+            for root in roots {
                 if Task.isCancelled { return }
-                switch event {
-                case .progress(let s):
-                    self.scanFiles = s.filesScanned
-                    self.scanBytes = s.bytes
-                    self.scanElapsed = Date().timeIntervalSince(self.scanStart ?? Date())
-                    self.scanPath = s.currentPath
-                case .finished(let sum):
-                    self.buildTree(sum)
-                    self.browsePath = sum.root
-                    self.diskEntries = self.childrenOf(sum.root)
-                    self.scanning = false
-                    self.persistScan(sum.topDirectories.isEmpty ? nil : Date())
+                for await event in DiskScanner().scan(URL(fileURLWithPath: root)) {
+                    if Task.isCancelled { return }
+                    switch event {
+                    case .progress(let s):
+                        self.scanFiles = carriedFiles + s.filesScanned
+                        self.scanBytes = carriedBytes + s.bytes
+                        self.scanElapsed = Date().timeIntervalSince(self.scanStart ?? Date())
+                        self.scanPath = s.currentPath
+                    case .finished(let sum):
+                        summaries.append(sum)
+                        carriedFiles += sum.files
+                        carriedBytes += sum.bytes
+                    }
                 }
             }
+            if Task.isCancelled { return }
+            self.buildTree(summaries, combined: combined)
+            let landing = combined ? Self.allDrives : (summaries.first?.root ?? roots[0])
+            self.browsePath = landing
+            self.diskEntries = self.childrenOf(landing)
+            self.scanFiles = carriedFiles
+            self.scanBytes = carriedBytes
+            self.scanning = false
+            self.persistScan(summaries.allSatisfy { $0.topDirectories.isEmpty } ? nil : Date())
         }
+    }
+
+    /// Scanning every drive in one pass. "/" is a real path, so breadcrumbs, navigation, the
+    /// trash allowlist and the scan_entries table all keep working with no special case —
+    /// the only thing that needs handling is what its children are called.
+    static let allDrives = "/"
+
+    /// The drives an all-drives scan actually walks: every target except the sentinel itself.
+    var allDriveRoots: [String] {
+        scanTargets.filter { $0.path != Self.allDrives }
+            .map { ($0.path as NSString).expandingTildeInPath }
+    }
+
+    /// A friendly name for a child of the all-drives root, whose stored name is a sub-path.
+    static func driveLabel(forChild name: String) -> String {
+        let full = "/" + name
+        if full == NSHomeDirectory() { return "Home" }
+        return (full as NSString).lastPathComponent
     }
 
     /// Home plus every mounted volume. Externals appear here the moment they are plugged in.
@@ -784,6 +819,8 @@ final class EngineStore: ObservableObject {
             if (try? FileManager.default.destinationOfSymbolicLink(atPath: p)) == "/" { continue }
             out.append((v, p))
         }
+        // offered only when there is more than one thing to combine
+        if out.count > 1 { out.insert(("All drives", Self.allDrives), at: 0) }
         return out
     }
 
@@ -820,14 +857,24 @@ final class EngineStore: ObservableObject {
 
     /// Persist the whole tree, replacing the previous scan. One transaction: ~100k rows
     /// otherwise takes minutes of individual commits.
-    private func buildTree(_ sum: ScanSummary) {
+    func buildTree(_ summaries: [ScanSummary], combined: Bool) {
         db.prepare("BEGIN").run([])
         db.prepare("DELETE FROM scan_entries").run([])
         let ins = db.prepare("INSERT INTO scan_entries(parent,name,items,bytes,is_dir,mtime) VALUES(?,?,?,?,?,?)")
-        for e in sum.entries {
-            ins.run([.text(e.parent), .text(e.name),
-                     .int(Int64(e.isDirectory ? e.files : 0)), .int(e.bytes),
-                     .int(e.isDirectory ? 1 : 0), .int(e.mtime)])
+        for sum in summaries {
+            for e in sum.entries {
+                ins.run([.text(e.parent), .text(e.name),
+                         .int(Int64(e.isDirectory ? e.files : 0)), .int(e.bytes),
+                         .int(e.isDirectory ? 1 : 0), .int(e.mtime)])
+            }
+            guard combined else { continue }
+            // One row per drive directly under "/", named by its path minus the leading slash
+            // so that "/" + name is the real path again. childrenOf gives it a readable label.
+            let name = String(sum.root.dropFirst())
+            guard !name.isEmpty else { continue }
+            ins.run([.text(Self.allDrives), .text(name), .int(Int64(sum.files)),
+                     .int(sum.bytes), .int(1),
+                     .int(sum.entries.map(\.mtime).max() ?? 0)])
         }
         db.prepare("COMMIT").run([])
     }
@@ -843,6 +890,7 @@ final class EngineStore: ObservableObject {
                     name: name,
                     items: Int(r["items"]?.intVal ?? 0),
                     bytes: r["bytes"]?.intVal ?? 0,
+                    label: path == Self.allDrives ? Self.driveLabel(forChild: name) : nil,
                     symbol: isDir ? "folder.fill" : "doc.fill",
                     kind: Self.fileKind(forPath: (path as NSString).appendingPathComponent(name)),
                     mtime: r["mtime"]?.intVal ?? 0)
@@ -976,10 +1024,12 @@ final class EngineStore: ObservableObject {
     /// Breadcrumb components from the scan root down to where we are.
     var breadcrumb: [(name: String, path: String)] {
         let rootPath = (scanRoot as NSString).expandingTildeInPath
+        let rootName = rootPath == Self.allDrives
+            ? "All drives" : (rootPath as NSString).lastPathComponent
         guard browsePath.hasPrefix(rootPath) else {
-            return [((rootPath as NSString).lastPathComponent, rootPath)]
+            return [(rootName, rootPath)]
         }
-        var out: [(String, String)] = [((rootPath as NSString).lastPathComponent, rootPath)]
+        var out: [(String, String)] = [(rootName, rootPath)]
         let rest = String(browsePath.dropFirst(rootPath.count)).split(separator: "/")
         var acc = rootPath
         for part in rest {

@@ -36,8 +36,10 @@ struct RowContextMenu: ViewModifier {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(info.path, forType: .string)
             }
-            Divider()
-            Button("Move to Trash…") { trashTarget = info }
+            if !Trash.isRootLike(info.path) {
+                Divider()
+                Button("Move to Trash…") { trashTarget = info }
+            }
         }
     }
 }

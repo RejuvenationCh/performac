@@ -28,7 +28,13 @@ struct Finding: Identifiable, Sendable {
 
 struct SizeEntry: Identifiable, Sendable {
     let id = UUID()
+    /// The navigation key: always the real path component under the parent, never prettified.
     var name: String, items: Int, bytes: Int64
+    /// Shown instead of `name` when the two differ. Only the all-drives root uses this — its
+    /// children are named "Users/you" and "Volumes/External SSD" so that appending them
+    /// to "/" still produces a real path, while the row reads "Home" and "External SSD".
+    var label: String? = nil
+    var display: String { label ?? name }
     var symbol = "folder.fill"
     var kind: FileKind = .other
     /// Newest modification beneath this entry, epoch ms. 0 when unknown.

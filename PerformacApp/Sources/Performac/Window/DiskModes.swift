@@ -101,7 +101,7 @@ private struct OutlineRow: View {
 
             Image(systemName: entry.symbol).font(.system(size: 12))
                 .foregroundStyle(entry.kind.color).frame(width: 15)
-            Text(entry.name).font(.pcBody).foregroundStyle(PC.ink).lineLimit(1)
+            Text(entry.display).font(.pcBody).foregroundStyle(PC.ink).lineLimit(1)
             Spacer(minLength: PC.s2)
             if hover { IconButtonAction("magnifyingglass", help: "Reveal in Finder") { onReveal(path) } }
             Text(entry.mtime > 0
@@ -143,7 +143,7 @@ struct CompactList: View {
                 ForEach(entries) { e in
                     CompactRow(entry: e, onOpen: onOpen)
                         .rowActions(RowInfo(path: (basePath as NSString).appendingPathComponent(e.name),
-                                            name: e.name, bytes: e.bytes, items: e.items,
+                                            name: e.display, bytes: e.bytes, items: e.items,
                                             isFolder: e.symbol == "folder.fill"),
                                     onOpen: { onOpen(e.name) },
                                     infoTarget: $infoTarget, trashTarget: $trashTarget)
@@ -163,7 +163,7 @@ private struct CompactRow: View {
         HStack(spacing: PC.s2) {
             Image(systemName: entry.symbol).font(.system(size: 10))
                 .foregroundStyle(entry.kind.color).frame(width: 12)
-            Text(entry.name).font(.pcSmall).foregroundStyle(PC.ink).lineLimit(1)
+            Text(entry.display).font(.pcSmall).foregroundStyle(PC.ink).lineLimit(1)
             if isFolder {
                 Image(systemName: "chevron.right").font(.system(size: 7))
                     .foregroundStyle(hover ? PC.accent : PC.meta.opacity(0.45))
@@ -177,7 +177,7 @@ private struct CompactRow: View {
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { if isFolder { onOpen(entry.name) } }
         .onHover { h in withAnimation(.easeOut(duration: 0.10)) { hover = h } }
-        .help(isFolder ? "Double-click to open \(entry.name)" : entry.name)
+        .help(isFolder ? "Double-click to open \(entry.display)" : entry.display)
     }
 }
 
@@ -271,7 +271,7 @@ private struct Bubble: View {
                             .foregroundStyle(PC.ink2)
                             .padding(.bottom, 1)
                     }
-                    Text(entry.name)
+                    Text(entry.display)
                         .font(.system(size: min(radius * 0.21, 12), weight: .medium))
                         .foregroundStyle(PC.ink)
                         .lineLimit(1).minimumScaleFactor(0.5).truncationMode(.middle)
@@ -284,7 +284,7 @@ private struct Bubble: View {
             }
         }
         .frame(width: radius * 2, height: radius * 2)
-        .help("\(entry.name) — \(Fmt.bytes(entry.bytes))")
+        .help("\(entry.display) — \(Fmt.bytes(entry.bytes))")
         .onHover { hover = $0 }
     }
 }

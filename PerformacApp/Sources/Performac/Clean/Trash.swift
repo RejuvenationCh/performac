@@ -36,6 +36,11 @@ enum Trash {
                 out.append(.init(path: path, ok: false, message: "not on the cleaner's allowlist"))
                 continue
             }
+            guard !isRootLike(path) else {
+                out.append(.init(path: path, ok: false,
+                                 message: "that is a whole drive, not a file in it"))
+                continue
+            }
             guard fm.fileExists(atPath: path) else {
                 out.append(.init(path: path, ok: false, message: "no longer exists"))
                 continue
@@ -53,6 +58,19 @@ enum Trash {
             }
         }
         return out
+    }
+
+    /// A drive, the home folder, or the filesystem root — none of which is a thing to trash.
+    ///
+    /// The browser used to be rooted inside a drive, so every row was a child and this could
+    /// not be reached. The all-drives view lists the drives themselves as rows, which puts a
+    /// "Move to Trash" beside "External SSD". The guard lives here rather than in the menu
+    /// because this is the one function every deletion in the app goes through.
+    static func isRootLike(_ path: String) -> Bool {
+        let p = (path as NSString).standardizingPath
+        if p == "/" || p == NSHomeDirectory() { return true }
+        if (p as NSString).deletingLastPathComponent == "/Volumes" { return true }
+        return false
     }
 
     /// A record of everything the app has ever removed, so "what happened to that folder"
