@@ -127,7 +127,12 @@ public struct DiskScanner: Sendable {
             return String(cString: c)
         }
         let root = URL(fileURLWithPath: canon(root.path))
-        let skip = skipPaths.map(canon)
+        // A skip path that contains the chosen root would prune the entire scan on its first
+        // entry. /Volumes is on the list so a scan of Home does not wander onto an external
+        // drive — but picking that drive skipped every one of its children and finished with
+        // 0 files in 0.0 s, which read as "the drive cannot be scanned". Same for /System when
+        // the root is /System/Volumes/Data, which is where a scan of "/" is redirected.
+        let skip = skipPaths.map(canon).filter { root.path != $0 && !root.path.hasPrefix($0 + "/") }
         func isSkipped(_ url: URL) -> Bool {
             let p = url.path
             return skip.contains { p == $0 || p.hasPrefix($0 + "/") }

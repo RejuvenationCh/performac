@@ -76,6 +76,40 @@ enum ScannerSelfCheck {
         }
         check("skipPaths prunes subtree", prunedBytes == expectedBytes - 4096, "got \(prunedBytes)")
 
+        // The case that shipped broken: /Volumes is skipped so a scan of Home does not wander
+        // onto an external drive — but choosing that drive made the root its own skip path, so
+        // every child was pruned and the scan finished with 0 files in 0.0 s. A skip path that
+        // contains the chosen root must be ignored, or the drive looks unscannable.
+        var rootSkipped = DiskScanner()
+        rootSkipped.skipPaths = [root.path]
+        var rootSkippedBytes: Int64 = -1
+        for await event in rootSkipped.scan(root) {
+            if case .finished(let sum) = event { rootSkippedBytes = sum.bytes }
+        }
+        check("skipPaths equal to the root does not prune the whole scan",
+              rootSkippedBytes == expectedBytes, "got \(rootSkippedBytes)")
+
+        // an ancestor of the root is the same mistake one level up (/System vs
+        // /System/Volumes/Data, which is where a scan of "/" is redirected)
+        var ancestorSkipped = DiskScanner()
+        ancestorSkipped.skipPaths = [root.deletingLastPathComponent().path]
+        var ancestorBytes: Int64 = -1
+        for await event in ancestorSkipped.scan(root) {
+            if case .finished(let sum) = event { ancestorBytes = sum.bytes }
+        }
+        check("skipPaths above the root does not prune the whole scan",
+              ancestorBytes == expectedBytes, "got \(ancestorBytes)")
+
+        // and the pruning that IS wanted still works when the root sits under nothing skipped
+        var siblingSkipped = DiskScanner()
+        siblingSkipped.skipPaths = ["/System", "/Volumes"]
+        var siblingBytes: Int64 = -1
+        for await event in siblingSkipped.scan(root) {
+            if case .finished(let sum) = event { siblingBytes = sum.bytes }
+        }
+        check("unrelated skipPaths leave a scan alone",
+              siblingBytes == expectedBytes, "got \(siblingBytes)")
+
         return failures == 0 ? 0 : 1
     }
 }
