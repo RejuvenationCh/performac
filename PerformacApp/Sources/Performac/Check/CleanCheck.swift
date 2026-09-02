@@ -214,7 +214,7 @@ extension CleanCheck {
                         entries: [ScanEntry(path: vol + "/Videos", files: 4, bytes: 400,
                                             isDirectory: true, mtime: 9)]),
         ]
-        store.buildTree(summaries, combined: true)
+        store.buildTree(summaries)
 
         let drives = store.childrenOf("/")
         c.eq("drives: both roots appear under the combined root", drives.count, 2)
@@ -227,16 +227,39 @@ extension CleanCheck {
             c.check("drives: \(d.display) navigates to a real path",
                     rebuilt == home || rebuilt == vol, rebuilt)
         }
-        // and descending into a drive still finds what the scan put there
         c.eq("drives: descending into a drive lists its contents",
              store.childrenOf(vol).first?.name, "Videos")
 
-        // a single-root scan must NOT grow a synthetic root
-        store.buildTree([summaries[0]], combined: false)
-        c.check("drives: a normal scan adds no combined root", store.childrenOf("/").isEmpty)
-        c.eq("drives: a normal scan still lists its own tree",
-             store.childrenOf(home).first?.name, "Movies")
-        c.check("drives: a normal scan's rows carry no label",
-                store.childrenOf(home).allSatisfy { $0.label == nil })
+        // The point of keeping trees per root: rescanning one must leave the other alone.
+        // This used to be DELETE FROM scan_entries, so scanning the T7 lost Home entirely.
+        let homeAgain = ScanSummary(root: home, files: 9, bytes: 900, elapsed: 1,
+                                    topDirectories: [],
+                                    entries: [ScanEntry(path: home + "/Movies", files: 8,
+                                                        bytes: 800, isDirectory: true, mtime: 11)])
+        store.buildTree([homeAgain])
+        c.eq("drives: rescanning one root leaves the other's tree in place",
+             store.childrenOf(vol).first?.bytes, 400)
+        c.eq("drives: the rescanned root is updated", store.childrenOf(home).first?.bytes, 800)
+        c.eq("drives: and both are still listed together", store.childrenOf("/").count, 2)
+        c.eq("drives: its combined row updated too",
+             store.childrenOf("/").first { $0.display == "Home" }?.bytes, 900)
+
+        // An empty result is a bug or a permissions wall far more often than an empty drive.
+        // Letting it through is what turned the unscannable-T7 defect into lost data.
+        let empty = ScanSummary(root: vol, files: 0, bytes: 0, elapsed: 0,
+                                topDirectories: [], entries: [])
+        store.buildTree([empty])
+        c.eq("drives: an empty scan does not wipe an existing tree",
+             store.childrenOf(vol).first?.bytes, 400)
+        c.check("drives: and it is not reported as written",
+                store.buildTree([empty]).isEmpty)
+
+        // a root with nothing stored yet may of course be written empty
+        let fresh = ScanSummary(root: "/Volumes/Never Scanned", files: 0, bytes: 0,
+                                elapsed: 0, topDirectories: [], entries: [])
+        c.check("drives: an unscanned root is still recorded",
+                store.buildTree([fresh]) == ["/Volumes/Never Scanned"])
+        c.check("drives: but contributes no phantom row to the combined view",
+                !store.childrenOf("/").contains { $0.display == "Never Scanned" })
     }
 }

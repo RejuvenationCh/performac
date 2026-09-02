@@ -19,6 +19,7 @@ struct DiskView: View {
     var scanRoot: String = NSHomeDirectory()
     var targets: [(label: String, path: String)] = []
     var onPickRoot: (String) -> Void = { _ in }
+    var targetNotes: [String: String] = [:]
     var crumbs: [(name: String, path: String)] = []
     var onOpen: (String) -> Void = { _ in }
     var onCrumb: (String) -> Void = { _ in }
@@ -55,7 +56,7 @@ struct DiskView: View {
             // glassProminent button is an iOS-scale control: in a macOS toolbar it reads as
             // a glowing pill and towers over the segmented picker beside it.
             HStack(alignment: .center, spacing: PC.gutter) {
-                ScanTargetPicker(root: scanRoot, targets: targets, onPick: onPickRoot)
+                ScanTargetPicker(root: scanRoot, targets: targets, onPick: onPickRoot, notes: targetNotes)
                 if scanning {
                     Button("Cancel", action: onCancel)
                         .controlSize(.regular).buttonStyle(.bordered)
@@ -137,6 +138,23 @@ struct DiskView: View {
                         CompactList(entries: sorted, onOpen: onOpen, basePath: browsePath,
                                     infoTarget: $infoTarget, trashTarget: $trashTarget)
                     }
+                    // Switching target is free now, so it is possible to land on one that has
+                    // never been scanned. A blank list with no explanation reads as a failure.
+                    if entries.isEmpty && !scanning {
+                        VStack(spacing: PC.s2) {
+                            Image(systemName: lastScanAt == nil ? "externaldrive.badge.questionmark"
+                                                               : "folder")
+                                .font(.system(size: 26)).foregroundStyle(PC.meta)
+                            Text(lastScanAt == nil ? "Not scanned yet" : "Nothing here")
+                                .font(.pcTitle).foregroundStyle(PC.ink)
+                            Text(lastScanAt == nil
+                                 ? "Press Scan to measure this drive. Other drives keep their results."
+                                 : "This folder has no contents in the last scan.")
+                                .font(.pcSmall).foregroundStyle(PC.ink2)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity).padding(.vertical, 40)
+                    }
                     Spacer(minLength: 0)
                     HStack(spacing: PC.gutter) {
                         Text("\(entries.count) items").font(.pcSmall).foregroundStyle(PC.meta)
@@ -213,6 +231,8 @@ struct ScanTargetPicker: View {
     let root: String
     let targets: [(label: String, path: String)]
     let onPick: (String) -> Void
+    /// How old each target's stored tree is, or that it has none.
+    var notes: [String: String] = [:]
 
     private var currentLabel: String {
         if let t = targets.first(where: { $0.path == root }) { return t.label }
@@ -225,7 +245,9 @@ struct ScanTargetPicker: View {
                 Button {
                     onPick(t.path)
                 } label: {
-                    if t.path == root { Label(t.label, systemImage: "checkmark") } else { Text(t.label) }
+                    let note = notes[t.path].map { "  ·  \($0)" } ?? ""
+                    if t.path == root { Label(t.label + note, systemImage: "checkmark") }
+                    else { Text(t.label + note) }
                 }
             }
             Divider()

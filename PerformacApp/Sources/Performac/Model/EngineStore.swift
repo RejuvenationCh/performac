@@ -44,7 +44,49 @@ final class EngineStore: ObservableObject {
     /// What gets scanned. Never assumed: the user picks home, a mounted volume, or any folder.
     @Published var scanRoot: String = NSHomeDirectory()
     /// When the persisted results were produced. nil = never scanned on this machine.
-    @Published var lastScanAt: Int64? = nil
+    /// When each root was last scanned, keyed by its path. Scans accumulate now, so there is
+    /// no single "last scan" — Home and the T7 each have their own.
+    @Published var scanTimes: [String: Int64] = [:]
+
+    /// The age of what is currently on screen. For the combined root that is the age of its
+    /// STALEST drive: the view is only as current as the oldest thing in it, and rounding
+    /// that up to the newest would be a stale number wearing a fresh label.
+    var lastScanAt: Int64? {
+        if scanRoot == Self.allDrives {
+            let times = allDriveRoots.compactMap { scanTimes[$0] }
+            return times.count == allDriveRoots.count ? times.min() : times.min()
+        }
+        return scanTimes[(scanRoot as NSString).expandingTildeInPath]
+    }
+
+    /// Roots with a stored tree, so the picker can say which targets need a scan first.
+    var scannedRoots: Set<String> { Set(scanTimes.keys) }
+
+    /// What the picker says under each target. The whole point of keeping trees per root is
+    /// that switching is free, so the menu has to show which ones are already there.
+    var scanTargetNotes: [String: String] {
+        func ago(_ ts: Int64) -> String {
+            Ago.text(Date(timeIntervalSince1970: Double(ts) / 1000))
+        }
+        var out: [String: String] = [:]
+        for t in scanTargets {
+            if t.path == Self.allDrives {
+                let roots = allDriveRoots
+                let have = roots.compactMap { scanTimes[$0] }
+                if have.isEmpty { out[t.path] = "nothing scanned yet" }
+                else if have.count < roots.count {
+                    out[t.path] = "\(have.count) of \(roots.count) scanned"
+                } else {
+                    // the combined view is only as fresh as its stalest drive
+                    out[t.path] = ago(have.min()!)
+                }
+            } else {
+                let p = (t.path as NSString).expandingTildeInPath
+                out[t.path] = scanTimes[p].map(ago) ?? "not scanned"
+            }
+        }
+        return out
+    }
     /// Only meaningful once a scan exists; persisted so it survives relaunch.
     @Published var autoRefreshScan = false
 
@@ -780,14 +822,16 @@ final class EngineStore: ObservableObject {
                 }
             }
             if Task.isCancelled { return }
-            self.buildTree(summaries, combined: combined)
+            let written = self.buildTree(summaries)
             let landing = combined ? Self.allDrives : (summaries.first?.root ?? roots[0])
             self.browsePath = landing
             self.diskEntries = self.childrenOf(landing)
             self.scanFiles = carriedFiles
             self.scanBytes = carriedBytes
             self.scanning = false
-            self.persistScan(summaries.allSatisfy { $0.topDirectories.isEmpty } ? nil : Date())
+            // only the roots that actually produced a tree get a fresh timestamp; one that
+            // came back empty kept its old rows and keeps its old time with them
+            self.persistScan(written)
         }
     }
 
@@ -850,33 +894,69 @@ final class EngineStore: ObservableObject {
         setSetting(db, "rightPanelMode", JSONValue.from(["mode": m.rawValue]))
     }
 
+    /// Switching target shows what is already stored for it. Trees are kept per root, so
+    /// picking the T7 after scanning Home browses the T7's last scan immediately — the Scan
+    /// button is for refreshing it, not for seeing it.
     func setScanRoot(_ path: String) {
         scanRoot = path
         setSetting(db, "diskScanRoot", JSONValue.from(["path": path]))
+        let landing = (path as NSString).expandingTildeInPath
+        browsePath = landing
+        backStack.removeAll()
+        forwardStack.removeAll()
+        diskEntries = childrenOf(landing)
     }
 
-    /// Persist the whole tree, replacing the previous scan. One transaction: ~100k rows
-    /// otherwise takes minutes of individual commits.
-    func buildTree(_ summaries: [ScanSummary], combined: Bool) {
+    /// Persist each scanned root, leaving every other root's tree alone.
+    ///
+    /// This used to be `DELETE FROM scan_entries` — one tree at a time, so scanning the T7
+    /// threw away the scan of Home. Worse, when the T7 scan was returning nothing it deleted
+    /// a good tree and inserted an empty one, turning a display bug into lost data. Now only
+    /// the rows under the root being replaced are removed, and a root that came back empty is
+    /// refused rather than allowed to overwrite what is already there.
+    ///
+    /// Returns the roots it actually wrote, so the caller only timestamps those.
+    @discardableResult
+    func buildTree(_ summaries: [ScanSummary]) -> [String] {
         db.prepare("BEGIN").run([])
-        db.prepare("DELETE FROM scan_entries").run([])
+        // substr rather than LIKE: a volume name may contain % or _, which LIKE would treat
+        // as wildcards, and GLOB has the same problem with [ and *.
+        let wipe = db.prepare("DELETE FROM scan_entries WHERE parent = ? OR substr(parent, 1, ?) = ?")
+        let wipeRoot = db.prepare("DELETE FROM scan_entries WHERE parent = ? AND name = ?")
         let ins = db.prepare("INSERT INTO scan_entries(parent,name,items,bytes,is_dir,mtime) VALUES(?,?,?,?,?,?)")
+        let existing = db.prepare("SELECT count(*) c FROM scan_entries WHERE parent = ? OR substr(parent, 1, ?) = ?")
+        var written: [String] = []
+
         for sum in summaries {
+            let prefix = sum.root.hasSuffix("/") ? sum.root : sum.root + "/"
+            let args: [SQLValue] = [.text(sum.root), .int(Int64(prefix.utf8.count)), .text(prefix)]
+            // an empty result is far likelier to be a bug or a permissions wall than a truly
+            // empty drive, so it must never replace a tree that already has content
+            if sum.entries.isEmpty,
+               (existing.get(args)?["c"]?.intVal ?? 0) > 0 { continue }
+
+            wipe.run(args)
             for e in sum.entries {
                 ins.run([.text(e.parent), .text(e.name),
                          .int(Int64(e.isDirectory ? e.files : 0)), .int(e.bytes),
                          .int(e.isDirectory ? 1 : 0), .int(e.mtime)])
             }
-            guard combined else { continue }
-            // One row per drive directly under "/", named by its path minus the leading slash
-            // so that "/" + name is the real path again. childrenOf gives it a readable label.
+            // One row per drive directly under "/", written for every scan and not only a
+            // combined one — that is what lets "All drives" show Home and the T7 together
+            // after they were scanned separately, with no rescan.
             let name = String(sum.root.dropFirst())
-            guard !name.isEmpty else { continue }
-            ins.run([.text(Self.allDrives), .text(name), .int(Int64(sum.files)),
-                     .int(sum.bytes), .int(1),
-                     .int(sum.entries.map(\.mtime).max() ?? 0)])
+            if !name.isEmpty {
+                wipeRoot.run([.text(Self.allDrives), .text(name)])
+                if !sum.entries.isEmpty {
+                    ins.run([.text(Self.allDrives), .text(name), .int(Int64(sum.files)),
+                             .int(sum.bytes), .int(1),
+                             .int(sum.entries.map(\.mtime).max() ?? 0)])
+                }
+            }
+            written.append(sum.root)
         }
         db.prepare("COMMIT").run([])
+        return written
     }
 
     /// Reads from the table, so a scan from last week browses exactly like a fresh one.
@@ -1064,11 +1144,13 @@ final class EngineStore: ObservableObject {
 
     /// Persist the entry list so reopening the view shows the last result instead of a
     /// blank screen — labelled as of its scan time, never presented as current.
-    private func persistScan(_ when: Date?) {
-        let ts = Int64((when ?? Date()).timeIntervalSince1970 * 1000)
-        lastScanAt = ts
-        // Only the metadata: the tree itself is already in scan_entries.
-        setSetting(db, "lastDiskScan", JSONValue.from(["ts": Double(ts), "root": scanRoot]))
+    /// One timestamp per root. The tree itself is already in scan_entries; this is only the
+    /// metadata that lets the view say how old what it is showing actually is.
+    private func persistScan(_ roots: [String]) {
+        let ts = Int64(Date().timeIntervalSince1970 * 1000)
+        for r in roots { scanTimes[r] = ts }
+        setSetting(db, "diskScanTimes",
+                   .object(scanTimes.mapValues { .number(Double($0)) }))
     }
 
     func loadPersistedScan() {
@@ -1079,8 +1161,15 @@ final class EngineStore: ObservableObject {
         else if getSetting(db, "diskViewMode") != nil { diskViewMode = .outline }   // retired mode
         if let r = getSetting(db, "rightPanelMode")?.objectVal?["mode"]?.stringVal,
            let rm = RightPanelMode(rawValue: r) { rightPanelMode = rm }
+        if let times = getSetting(db, "diskScanTimes")?.objectVal {
+            scanTimes = times.compactMapValues { $0.doubleVal.map(Int64.init) }
+        } else if let o = getSetting(db, "lastDiskScan")?.objectVal,
+                  let ts = o["ts"]?.doubleVal.map({ Int64($0) }),
+                  let root = o["root"]?.stringVal {
+            // carry the single old timestamp over to the per-root form
+            scanTimes = [(root as NSString).expandingTildeInPath: ts]
+        }
         guard let o = getSetting(db, "lastDiskScan")?.objectVal else { return }
-        lastScanAt = o["ts"]?.doubleVal.map { Int64($0) }
         // The tree lives in scan_entries, so a stale scan is fully browsable on relaunch.
         let root = (o["root"]?.stringVal ?? scanRoot as String)
         browsePath = (root as NSString).expandingTildeInPath

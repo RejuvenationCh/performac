@@ -173,6 +173,28 @@ it lives in `moveToTrash` rather than in the menu because that is the one functi
 deletion in the app goes through. The context menu also stops offering the action, so the
 refusal is a backstop rather than the user's first encounter with it.
 
+## Scan results are kept per root
+
+`scan_entries` holds every scanned root at once, not one at a time. `buildTree` removes only
+the rows under the root it is replacing, so scanning the T7 leaves Home's tree alone and
+switching target in the picker browses the stored result with no rescan — the Scan button
+refreshes what is shown, it is not how you get to see it. Each root carries its own timestamp
+in `diskScanTimes`, and the picker prints the age beside every target so it is obvious which
+ones are already there.
+
+Two rules this must keep:
+
+1. **An empty scan never replaces a tree that has rows.** A drive that comes back with nothing
+   is a bug or a permissions wall far more often than an empty drive — that is exactly how the
+   unscannable-T7 defect turned into a deleted Home scan. `buildTree` returns the roots it
+   actually wrote so a refused one keeps its old rows *and* its old timestamp.
+2. **The combined root reports its stalest member.** `lastScanAt` for `/` is the `min` of the
+   drive timestamps, never the newest — a stale number wearing a fresh label is worse than no
+   number.
+
+Prefix matching uses `substr(parent, 1, n) = ?`, not `LIKE` or `GLOB`: a volume name may
+contain `%`, `_`, `[` or `*`, and both of those would treat them as wildcards.
+
 ## Liquid Glass
 
 Adopted for the **interface layer only**, per Apple's guidance that Liquid Glass belongs to

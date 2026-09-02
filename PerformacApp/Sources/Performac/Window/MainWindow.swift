@@ -67,6 +67,7 @@ struct MainWindow: View {
                     scanRoot: store.scanRoot,
                     targets: store.scanTargets,
                     onPickRoot: { store.setScanRoot($0) },
+                    targetNotes: store.scanTargetNotes,
                     crumbs: store.breadcrumb,
                     onOpen: { store.browse(into: $0) },
                     onCrumb: { store.browse(to: $0) },
