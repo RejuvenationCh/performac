@@ -212,6 +212,24 @@ name and a Scan button, and nothing is measured until it is pressed. The offer w
 itself when that drive is unplugged, so the button can never point at something absent — and
 if the drive being browsed disappears, the target falls back to Home.
 
+## Scanning a spinning drive
+
+`DiskScanner.concurrency` is eight, which is right for flash and wrong for rust: on a
+mechanical disk eight workers make the head seek between eight regions instead of reading in
+something like order, so more threads make the scan **slower**. `concurrency(forVolume:)`
+asks `diskutil info -plist` — metadata only, it reads no files — and gives a volume 8 when it
+reports `SolidState`, 2 when it does not. Verified on this machine: the T7 (SSD) gets 8, the
+Transcend (USB mechanical) gets 2, and anything off `/Volumes` is the boot disk and gets 8.
+
+**Stop is not abort.** The caller owns the `CancelFlag`, so stopping asks the walk to unwind
+and hand back what it measured rather than tearing the stream down. A `ScanSummary` carries
+`partial`, and two rules follow from it:
+
+1. A partial result **never replaces a finished tree** — half a tree that looks whole is worse
+   than an old tree that is honestly labelled. It is only stored when that root had nothing.
+2. A root whose tree came from a stopped scan is recorded in `partialRoots`, and the picker
+   prints "partial" beside its age rather than an age that implies the whole drive.
+
 ## Liquid Glass
 
 Adopted for the **interface layer only**, per Apple's guidance that Liquid Glass belongs to

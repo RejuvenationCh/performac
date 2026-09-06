@@ -48,6 +48,10 @@ final class EngineStore: ObservableObject {
     /// no single "last scan" — Home and the T7 each have their own.
     @Published var scanTimes: [String: Int64] = [:]
 
+    /// Roots whose stored tree came from a scan that was stopped early. Kept separately so the
+    /// picker can say "partial" instead of printing an age that implies the whole drive.
+    @Published var partialRoots: Set<String> = []
+
     /// The age of what is currently on screen. For the combined root that is the age of its
     /// STALEST drive: the view is only as current as the oldest thing in it, and rounding
     /// that up to the newest would be a stale number wearing a fresh label.
@@ -81,7 +85,8 @@ final class EngineStore: ObservableObject {
                 }
             } else {
                 let p = (t.path as NSString).expandingTildeInPath
-                out[t.path] = scanTimes[p].map(ago) ?? "not scanned"
+                let suffix = partialRoots.contains(p) ? ", partial" : ""
+                out[t.path] = scanTimes[p].map { ago($0) + suffix } ?? "not scanned"
             }
         }
         return out
@@ -861,9 +866,15 @@ final class EngineStore: ObservableObject {
 
     // MARK: disk scan (DiskView) — streams progressively, Cancel cancels
 
+    /// Held so Stop can let the walk unwind instead of tearing the stream down — that is what
+    /// makes a stopped scan hand back what it already measured.
+    private var scanCancel: CancelFlag?
+
     func startDiskScan() {
         guard !scanning else { return }
         scanTask?.cancel()
+        let cancel = CancelFlag()
+        scanCancel = cancel
         scanning = true
         scanFiles = 0
         scanBytes = 0
@@ -882,7 +893,11 @@ final class EngineStore: ObservableObject {
             var carriedBytes: Int64 = 0
             for root in roots {
                 if Task.isCancelled { return }
-                for await event in DiskScanner().scan(URL(fileURLWithPath: root)) {
+                if cancel.cancelled { break }
+                // eight stat threads help flash and hurt rust; ask the device which it is
+                var scanner = DiskScanner()
+                scanner.concurrency = DiskScanner.concurrency(forVolume: root)
+                for await event in scanner.scan(URL(fileURLWithPath: root), cancel: cancel) {
                     if Task.isCancelled { return }
                     switch event {
                     case .progress(let s):
@@ -898,7 +913,12 @@ final class EngineStore: ObservableObject {
                 }
             }
             if Task.isCancelled { return }
+            self.scanCancel = nil
             let written = self.buildTree(summaries)
+            for sum in summaries where written.contains(sum.root) {
+                if sum.partial { self.partialRoots.insert(sum.root) }
+                else { self.partialRoots.remove(sum.root) }
+            }
             let landing = combined ? Self.allDrives : (summaries.first?.root ?? roots[0])
             self.browsePath = landing
             self.diskEntries = self.childrenOf(landing)
@@ -1000,10 +1020,13 @@ final class EngineStore: ObservableObject {
         for sum in summaries {
             let prefix = sum.root.hasSuffix("/") ? sum.root : sum.root + "/"
             let args: [SQLValue] = [.text(sum.root), .int(Int64(prefix.utf8.count)), .text(prefix)]
+            let stored = existing.get(args)?["c"]?.intVal ?? 0
             // an empty result is far likelier to be a bug or a permissions wall than a truly
             // empty drive, so it must never replace a tree that already has content
-            if sum.entries.isEmpty,
-               (existing.get(args)?["c"]?.intVal ?? 0) > 0 { continue }
+            if sum.entries.isEmpty, stored > 0 { continue }
+            // nor may a stopped scan overwrite a finished one — half a tree that looks whole
+            // is worse than an old tree that is honestly labelled
+            if sum.partial, stored > 0 { continue }
 
             wipe.run(args)
             for e in sum.entries {
@@ -1189,9 +1212,10 @@ final class EngineStore: ObservableObject {
         return out
     }
 
+    /// Stop, not abort. The walk is asked to unwind so it can hand back what it measured;
+    /// on a spinning 2 TB drive, throwing that away means throwing away half an hour.
     func cancelDiskScan() {
-        scanTask?.cancel()
-        scanning = false
+        scanCancel?.cancel()
     }
 
     /// The Disk view is on screen. A scan only starts here when the user has opted in —
@@ -1221,6 +1245,8 @@ final class EngineStore: ObservableObject {
         for r in roots { scanTimes[r] = ts }
         setSetting(db, "diskScanTimes",
                    .object(scanTimes.mapValues { .number(Double($0)) }))
+        setSetting(db, "diskScanPartial", .object(Dictionary(uniqueKeysWithValues:
+                   partialRoots.map { ($0, JSONValue.bool(true)) })))
     }
 
     func loadPersistedScan() {
@@ -1231,6 +1257,9 @@ final class EngineStore: ObservableObject {
         else if getSetting(db, "diskViewMode") != nil { diskViewMode = .outline }   // retired mode
         if let r = getSetting(db, "rightPanelMode")?.objectVal?["mode"]?.stringVal,
            let rm = RightPanelMode(rawValue: r) { rightPanelMode = rm }
+        if let partial = getSetting(db, "diskScanPartial")?.objectVal {
+            partialRoots = Set(partial.filter { $0.value.boolVal == true }.keys)
+        }
         if let times = getSetting(db, "diskScanTimes")?.objectVal {
             scanTimes = times.compactMapValues { $0.doubleVal.map(Int64.init) }
         } else if let o = getSetting(db, "lastDiskScan")?.objectVal,

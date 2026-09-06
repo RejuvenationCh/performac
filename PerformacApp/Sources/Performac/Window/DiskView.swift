@@ -350,7 +350,8 @@ struct ScanProgress: View {
                 Spacer()
                 Text("\(Int(elapsed) / 60):\(String(format: "%02d", Int(elapsed) % 60))")
                     .font(.pcNum).foregroundStyle(PC.meta)
-                Button("Cancel", action: onCancel).buttonStyle(.link).font(.pcLabel)
+                Button("Stop", action: onCancel).buttonStyle(.link).font(.pcLabel)
+                    .help("Stops the walk and keeps what it has measured so far")
             }
             ProgressView().progressViewStyle(.linear).tint(PC.accentFill)
             Text(currentPath)

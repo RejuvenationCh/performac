@@ -110,6 +110,36 @@ enum ScannerSelfCheck {
         check("unrelated skipPaths leave a scan alone",
               siblingBytes == expectedBytes, "got \(siblingBytes)")
 
+        // Stopping a scan must hand back what it measured. On a spinning 2 TB drive the
+        // difference between "partial" and "nothing" is half an hour of work.
+        let stopFlag = CancelFlag()
+        stopFlag.cancel()                       // already stopped: the hardest case
+        var stoppedSummary: ScanSummary?
+        for await event in DiskScanner().scan(root, cancel: stopFlag) {
+            if case .finished(let sum) = event { stoppedSummary = sum }
+        }
+        check("cancel: a stopped scan still reports a summary", stoppedSummary != nil)
+        check("cancel: and marks it partial", stoppedSummary?.partial == true)
+        check("cancel: a completed scan is not marked partial",
+              !(top.isEmpty) && files > 0)
+
+        var ran: ScanSummary?
+        for await event in DiskScanner().scan(root, cancel: CancelFlag()) {
+            if case .finished(let sum) = event { ran = sum }
+        }
+        check("cancel: an unstopped scan is complete", ran?.partial == false)
+        check("cancel: and measures the same as before", ran?.bytes == expectedBytes,
+              "got \(ran?.bytes ?? -1)")
+
+        // thread count follows the device: flash likes eight, rust does not
+        check("concurrency: the boot disk gets the full eight",
+              DiskScanner.concurrency(forVolume: NSHomeDirectory()) == 8)
+        let vols = ((try? fm.contentsOfDirectory(atPath: "/Volumes")) ?? []).map { "/Volumes/" + $0 }
+        for v in vols {
+            let n = DiskScanner.concurrency(forVolume: v)
+            check("concurrency: \(v) gets a sane thread count", n == 2 || n == 8, "got \(n)")
+        }
+
         return failures == 0 ? 0 : 1
     }
 }

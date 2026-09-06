@@ -21,11 +21,12 @@ import os
 
 /// Cancellation for the synchronous enumerator: Task.isCancelled has no meaning
 /// outside a task, so the producer polls this flag instead.
-final class CancelFlag: @unchecked Sendable {
+public final class CancelFlag: @unchecked Sendable {
+    public init() {}
     private let lock = OSAllocatedUnfairLock()
     private var _cancelled = false
-    var cancelled: Bool { lock.withLock { _cancelled } }
-    func cancel() { lock.withLock { _cancelled = true } }
+    public var cancelled: Bool { lock.withLock { _cancelled } }
+    public func cancel() { lock.withLock { _cancelled = true } }
 }
 
 public struct ScanSnapshot: Sendable {
@@ -80,9 +81,12 @@ public struct ScanSummary: Sendable {
     /// Every directory in the tree plus every file over `largeFileMin`, so the browser can
     /// descend without rescanning. The roll-up is already computed; keeping it costs nothing.
     public let entries: [ScanEntry]
+    /// True when the walk was stopped early. What is here is real, it is just not all of it.
+    public let partial: Bool
     public init(root: String, files: Int, bytes: Int64, elapsed: TimeInterval,
-                topDirectories: [DirTotal], entries: [ScanEntry] = []) {
+                topDirectories: [DirTotal], entries: [ScanEntry] = [], partial: Bool = false) {
         self.entries = entries
+        self.partial = partial
         self.root = root
         self.files = files
         self.bytes = bytes
@@ -97,15 +101,41 @@ public enum ScanEvent: Sendable {
 }
 
 public struct DiskScanner: Sendable {
+    /// Eight workers is right for flash and wrong for rust. On a spinning disk they make the
+    /// head seek between eight regions instead of reading in something like order, so the
+    /// scan gets slower the more of them there are. See `DiskScanner.concurrency(forVolume:)`.
     public var concurrency: Int = 8
+
+    /// `diskutil info -plist` reports SolidState for flash and omits it for a spinning disk.
+    /// Metadata only — this reads no files and does not touch the volume's contents.
+    public static func concurrency(forVolume path: String) -> Int {
+        guard path.hasPrefix("/Volumes/") else { return 8 }   // the boot disk is flash
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/sbin/diskutil")
+        p.arguments = ["info", "-plist", path]
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return 8 }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        let text = String(data: data, encoding: .utf8) ?? ""
+        // absent means "not reported as solid state", which for a USB disk means rust
+        let solid = text.contains("<key>SolidState</key>")
+            && text.range(of: "<key>SolidState</key>\\s*<true/>", options: .regularExpression) != nil
+        return solid ? 8 : 2
+    }
     /// Path prefixes to prune entirely (skipDescendants when the enumerator reaches them).
     public var skipPaths: [String] = ["/System", "/Volumes"]
     public var progressInterval: TimeInterval = 0.2
 
     public init() {}
 
-    public func scan(_ root: URL) -> AsyncStream<ScanEvent> {
-        let cancelFlag = CancelFlag()
+    /// `cancel` is the caller's, so stopping a scan lets the walk unwind and hand back what
+    /// it already measured. Tearing the stream down instead throws that away, which on a
+    /// spinning 2 TB drive means throwing away half an hour.
+    public func scan(_ root: URL, cancel: CancelFlag = CancelFlag()) -> AsyncStream<ScanEvent> {
+        let cancelFlag = cancel
         return AsyncStream { continuation in
             // DirectoryEnumerator.makeIterator is noasync: enumerate synchronously off-main.
             DispatchQueue.global(qos: .userInitiated).async {
@@ -190,7 +220,8 @@ public struct DiskScanner: Sendable {
             errorHandler: { _, _ in true }     // EPERM subtrees: degrade, keep going
         ) else {
             continuation.yield(.finished(ScanSummary(
-                root: root.path, files: 0, bytes: 0, elapsed: 0, topDirectories: [])))
+                root: root.path, files: 0, bytes: 0, elapsed: 0, topDirectories: [],
+                partial: true)))
             continuation.finish()
             return
         }
@@ -199,8 +230,9 @@ public struct DiskScanner: Sendable {
         var newest: [String: Int64] = [:]
         var batch: [URL] = []
         batch.reserveCapacity(512)
+        var stopped = false
         for case let url as URL in enumerator {
-            if cancelFlag.cancelled { continuation.finish(); return }
+            if cancelFlag.cancelled { stopped = true; break }
             lastPath = url.path
             if isSkipped(url) {
                 enumerator.skipDescendants()
@@ -251,7 +283,8 @@ public struct DiskScanner: Sendable {
             bytes: bytes,
             elapsed: Date().timeIntervalSince(start),
             topDirectories: top,
-            entries: entries)))
+            entries: entries,
+            partial: stopped)))
         continuation.finish()
     }
 
