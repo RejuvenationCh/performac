@@ -53,8 +53,7 @@ final class EngineStore: ObservableObject {
     /// that up to the newest would be a stale number wearing a fresh label.
     var lastScanAt: Int64? {
         if scanRoot == Self.allDrives {
-            let times = allDriveRoots.compactMap { scanTimes[$0] }
-            return times.count == allDriveRoots.count ? times.min() : times.min()
+            return allDriveRoots.compactMap { scanTimes[$0] }.min()
         }
         return scanTimes[(scanRoot as NSString).expandingTildeInPath]
     }
@@ -97,6 +96,83 @@ final class EngineStore: ObservableObject {
         self.readDB = (db == nil && path != nil) ? DB(path: path!, readOnly: true) : self.db
         loadPersistedScan()   // reopening shows the last result, labelled as a snapshot
         loadCoachIntro()
+        mountedVolumes = Self.volumePaths()
+        watchVolumes()
+    }
+
+    deinit { volumeObservers.forEach(NSWorkspace.shared.notificationCenter.removeObserver) }
+
+    // MARK: drives arriving and leaving
+
+    /// The externals currently in /Volumes. Published, because scanTargets used to read the
+    /// directory on every render — which meant a drive plugged in while the Disk tab was open
+    /// never showed up, since nothing told SwiftUI anything had changed.
+    @Published private(set) var mountedVolumes: [String] = []
+
+    /// A drive that appeared since the view was last looking, so it can be offered directly
+    /// rather than found in a menu. Cleared once it is scanned, dismissed, or unplugged.
+    @Published var newlyMounted: String? = nil
+
+    /// nonisolated so deinit can unregister: the tokens are written once during init on the
+    /// main actor and only ever read again on the way out.
+    nonisolated(unsafe) private var volumeObservers: [NSObjectProtocol] = []
+
+    /// Externals only. Everything in /Volumes except the boot volume, which is a symlink to /
+    /// and is already reachable as Home.
+    static func volumePaths() -> [String] {
+        ((try? FileManager.default.contentsOfDirectory(atPath: "/Volumes")) ?? [])
+            .sorted()
+            .map { "/Volumes/" + $0 }
+            .filter { (try? FileManager.default.destinationOfSymbolicLink(atPath: $0)) != "/" }
+    }
+
+    /// NSWorkspace posts these on the main thread, so no polling and no extra process.
+    ///
+    /// macOS mounts internal APFS volumes constantly and fires the same notification for them,
+    /// but those land under /System/Volumes and so never change this list — comparing the
+    /// computed list rather than trusting the notification filters that noise for free.
+    private func watchVolumes() {
+        let nc = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didMountNotification,
+                     NSWorkspace.didUnmountNotification,
+                     NSWorkspace.didRenameVolumeNotification] {
+            volumeObservers.append(nc.addObserver(forName: name, object: nil, queue: .main) {
+                [weak self] _ in
+                MainActor.assumeIsolated { self?.refreshVolumes() }
+            })
+        }
+    }
+
+    func refreshVolumes() { apply(volumes: Self.volumePaths()) }
+
+    private func apply(volumes now: [String]) {
+        guard now != mountedVolumes else { return }
+        let appeared = now.filter { !mountedVolumes.contains($0) }
+        mountedVolumes = now
+        // the newest arrival is the one worth offering; an unplug clears a stale offer
+        if let first = appeared.first { newlyMounted = first }
+        if let n = newlyMounted, !now.contains(n) { newlyMounted = nil }
+        // a drive that left should not keep a browser pointed into it
+        if scanRoot != Self.allDrives, !FileManager.default.fileExists(atPath: scanRoot) {
+            setScanRoot(NSHomeDirectory())
+        }
+    }
+
+    func dismissNewDrive() { newlyMounted = nil }
+
+    /// Seams for the checks: the arrival logic is worth testing without a real drive to plug in.
+    var mountedVolumesForChecks: [String] {
+        get { mountedVolumes }
+        set { mountedVolumes = newValue }
+    }
+    func applyVolumesForChecks(_ paths: [String]) { apply(volumes: paths) }
+
+    /// Switch to the drive that just appeared and scan it.
+    func scanNewDrive() {
+        guard let path = newlyMounted else { return }
+        newlyMounted = nil
+        setScanRoot(path)
+        startDiskScan()
     }
 
     // MARK: worst finding for the menu bar (red > amber > info; empty → quiet)
@@ -856,13 +932,7 @@ final class EngineStore: ObservableObject {
     /// Home plus every mounted volume. Externals appear here the moment they are plugged in.
     var scanTargets: [(label: String, path: String)] {
         var out: [(String, String)] = [("Home", NSHomeDirectory())]
-        let vols = (try? FileManager.default.contentsOfDirectory(atPath: "/Volumes")) ?? []
-        for v in vols.sorted() {
-            let p = "/Volumes/" + v
-            // the boot volume is already reachable as Home; listing it twice is noise
-            if (try? FileManager.default.destinationOfSymbolicLink(atPath: p)) == "/" { continue }
-            out.append((v, p))
-        }
+        for p in mountedVolumes { out.append(((p as NSString).lastPathComponent, p)) }
         // offered only when there is more than one thing to combine
         if out.count > 1 { out.insert(("All drives", Self.allDrives), at: 0) }
         return out

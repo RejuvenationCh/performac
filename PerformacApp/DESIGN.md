@@ -195,6 +195,23 @@ Two rules this must keep:
 Prefix matching uses `substr(parent, 1, n) = ?`, not `LIKE` or `GLOB`: a volume name may
 contain `%`, `_`, `[` or `*`, and both of those would treat them as wildcards.
 
+## Drives arriving while the app is open
+
+`mountedVolumes` is `@Published` and refreshed from `NSWorkspace`'s mount, unmount and rename
+notifications. It used to be a computed property reading `/Volumes` on every render, which is
+why a drive plugged in mid-session never appeared: nothing told SwiftUI the directory had
+changed.
+
+macOS mounts internal APFS volumes constantly and fires the same notification for them.
+Rather than filter the notification, `apply(volumes:)` compares the recomputed list and
+returns early when nothing changed — internal volumes live under `/System/Volumes` and so
+never move it. Same lesson as v1's drive rule, reached the cheap way.
+
+A new drive is an **offer, not an action**: a bar appears above the listing with the drive's
+name and a Scan button, and nothing is measured until it is pressed. The offer withdraws
+itself when that drive is unplugged, so the button can never point at something absent — and
+if the drive being browsed disappears, the target falls back to Home.
+
 ## Liquid Glass
 
 Adopted for the **interface layer only**, per Apple's guidance that Liquid Glass belongs to

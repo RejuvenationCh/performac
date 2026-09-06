@@ -20,6 +20,10 @@ struct DiskView: View {
     var targets: [(label: String, path: String)] = []
     var onPickRoot: (String) -> Void = { _ in }
     var targetNotes: [String: String] = [:]
+    /// A drive plugged in while this view was open.
+    var newDrive: String? = nil
+    var onScanNewDrive: () -> Void = {}
+    var onDismissNewDrive: () -> Void = {}
     var crumbs: [(name: String, path: String)] = []
     var onOpen: (String) -> Void = { _ in }
     var onCrumb: (String) -> Void = { _ in }
@@ -96,6 +100,26 @@ struct DiskView: View {
                 }
                 .padding(.leading, PC.stack)
                 .background(PC.canvas)
+            }
+            // A drive that arrives while this view is open should not have to be hunted for
+            // in the menu. It is an offer, not an action: nothing is scanned until asked.
+            if let drive = newDrive, !scanning {
+                HStack(spacing: PC.gutter) {
+                    Image(systemName: "externaldrive.badge.plus").foregroundStyle(PC.accent)
+                    Text("\((drive as NSString).lastPathComponent) connected")
+                        .font(.pcTitle).foregroundStyle(PC.ink)
+                    Text("not scanned yet").font(.pcSmall).foregroundStyle(PC.meta)
+                    Spacer()
+                    Button("Scan it", action: onScanNewDrive).controlSize(.small)
+                    Button {
+                        onDismissNewDrive()
+                    } label: {
+                        Image(systemName: "xmark").font(.system(size: 9))
+                    }
+                    .buttonStyle(.plain).foregroundStyle(PC.meta).help("Dismiss")
+                }
+                .padding(.horizontal, PC.stack).padding(.vertical, PC.s2)
+                .background(PC.fill1).pcHairline(.bottom)
             }
             if scanning {
                 ScanProgress(files: scanFiles, bytes: scanBytes, elapsed: scanElapsed,

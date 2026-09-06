@@ -47,6 +47,7 @@ let ALL_CHECK_SUITES: [(String, @MainActor (CheckSuite) async -> Void)] = [
     ("BrewCheck", { c in await BrewCheck.run(c) }),
     ("AppearanceCheck", { c in await AppearanceCheck.run(c) }),
     ("StorageBarCheck", { c in await StorageBarCheck.run(c) }),
+    ("VolumeCheck", { c in await VolumeCheck.run(c) }),
     ("SamplerCheck", { c in await SamplerCheck.run(c) }),
     ("NotifyCheck", { c in await NotifyCheck.run(c) }),
 ]
