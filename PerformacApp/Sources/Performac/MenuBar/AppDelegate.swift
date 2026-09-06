@@ -218,6 +218,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// enough to ignore: each sample is three kernel calls, no subprocess.
     private func startMetricsTimer() {
         _ = LiveMetrics.shared.cpu()          // prime the tick delta so the first read is real
+        // Timer.scheduledTimer does not fire until its first interval has passed, so every
+        // readout in the app sat at zero for the first two seconds. Sample once now.
+        MetricsStore.shared.current = LiveMetrics.shared.sample()
         let t = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }

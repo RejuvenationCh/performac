@@ -7,6 +7,37 @@
 import AppKit
 import SwiftUI
 
+enum StorageBarCheck {
+    /// The arithmetic behind StorageBar, checked directly. It killed the app: metrics start at
+    /// zero and the first sample lands two seconds after launch, so opening Disk in that window
+    /// computed 1 - 0/0 = NaN and Int(NaN) traps rather than returning anything.
+    static func frac(free: Int64, total: Int64) -> Double? {
+        guard total > 0 else { return nil }
+        return min(max(1 - Double(free) / Double(total), 0), 1)
+    }
+
+    @MainActor static func run(_ c: CheckSuite) async {
+        c.check("storage: a zero total yields no fraction, not NaN", frac(free: 0, total: 0) == nil)
+        c.check("storage: a zero total with free bytes is still refused",
+                frac(free: 100, total: 0) == nil)
+        c.check("storage: a negative total is refused", frac(free: 0, total: -1) == nil)
+        c.eq("storage: half full reads as half", frac(free: 50, total: 100), 0.5)
+        c.eq("storage: an empty drive reads as zero", frac(free: 100, total: 100), 0)
+        c.eq("storage: a full drive reads as one", frac(free: 0, total: 100), 1)
+        // an external drive can report more free than total mid-mount; clamping keeps the bar
+        // inside its track and the percentage inside 0...100
+        c.eq("storage: more free than total clamps to zero", frac(free: 200, total: 100), 0)
+        c.eq("storage: negative free clamps to full", frac(free: -5, total: 100), 1)
+
+        // the trap was the Int conversion, so assert every fraction survives it
+        for (f, t) in [(Int64(0), Int64(0)), (100, 0), (50, 100), (200, 100), (-5, 100)] {
+            let pct = frac(free: f, total: t).map { Int($0 * 100) }
+            c.check("storage: \(f)/\(t) converts to a percentage without trapping",
+                    pct == nil || (0...100).contains(pct!))
+        }
+    }
+}
+
 enum AppearanceCheck {
     /// Relative luminance, so "is this a step lighter" is a number rather than a judgement.
     private static func lum(_ c: Color, _ named: NSAppearance.Name) -> CGFloat {

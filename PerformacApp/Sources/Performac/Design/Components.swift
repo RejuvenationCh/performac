@@ -119,22 +119,43 @@ struct Pill: View {
 
 struct StorageBar: View {
     let freeBytes: Int64, totalBytes: Int64
-    private var usedFrac: Double { 1 - Double(freeBytes) / Double(totalBytes) }
-    private var tint: Color { usedFrac > 0.92 ? PC.red : usedFrac > 0.85 ? PC.amber : PC.accentFill }
+
+    /// nil until there is a real capacity to divide by.
+    ///
+    /// This crashed the app. Metrics start at zero and the first sample lands two seconds
+    /// after launch, so opening Disk inside that window divided by a zero total: 1 - 0/0 is
+    /// NaN, and Int(NaN) is a trap, not a zero. Swift's Double-to-Int conversion has no
+    /// saturating behaviour to fall back on — it terminates the process. A width of NaN would
+    /// have taken the layout down on its own too.
+    private var usedFrac: Double? {
+        guard totalBytes > 0 else { return nil }
+        return min(max(1 - Double(freeBytes) / Double(totalBytes), 0), 1)
+    }
+    private var tint: Color {
+        guard let f = usedFrac else { return PC.meta }
+        return f > 0.92 ? PC.red : f > 0.85 ? PC.amber : PC.accentFill
+    }
+
     var body: some View {
         // Single line so it centres with the controls beside it: the old two-line stack made
         // the toolbar taller than its own contents and pushed everything off-centre.
         HStack(spacing: PC.s2) {
-            Text(Fmt.bytes(freeBytes)).font(.pcNum).fontWeight(.semibold).foregroundStyle(tint)
-            Text("free of \(Fmt.bytes(totalBytes))").font(.pcSmall).foregroundStyle(PC.ink2)
-            ZStack(alignment: .leading) {
-                Capsule().fill(PC.fill3)
-                Capsule().fill(tint).frame(width: 96 * usedFrac)
+            if let frac = usedFrac {
+                Text(Fmt.bytes(freeBytes)).font(.pcNum).fontWeight(.semibold).foregroundStyle(tint)
+                Text("free of \(Fmt.bytes(totalBytes))").font(.pcSmall).foregroundStyle(PC.ink2)
+                ZStack(alignment: .leading) {
+                    Capsule().fill(PC.fill3)
+                    Capsule().fill(tint).frame(width: 96 * frac)
+                }
+                .frame(width: 96, height: 5)
+                Text("\(Int(frac * 100))%").font(.pcNum).foregroundStyle(tint)
+            } else {
+                // no capacity yet: say so rather than draw a bar out of nothing
+                Text("measuring…").font(.pcSmall).foregroundStyle(PC.meta)
             }
-            .frame(width: 96, height: 5)
-            Text("\(Int(usedFrac * 100))%").font(.pcNum).foregroundStyle(tint)
         }
-        .help("\(Fmt.bytes(freeBytes)) free of \(Fmt.bytes(totalBytes)) — \(Int(usedFrac * 100))% full")
+        .help(usedFrac == nil ? "Disk capacity not measured yet"
+              : "\(Fmt.bytes(freeBytes)) free of \(Fmt.bytes(totalBytes)) — \(Int(usedFrac! * 100))% full")
     }
 }
 
