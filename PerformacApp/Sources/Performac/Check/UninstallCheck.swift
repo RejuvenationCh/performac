@@ -1,9 +1,11 @@
 // UninstallCheck.swift — the matching rules, written to falsify. The dangerous failure here
 // is a substring match eating a shared folder, so that is what these prove cannot happen.
+import AppKit
 import Foundation
 
 enum UninstallCheck {
     @MainActor static func run(_ c: CheckSuite) async {
+        await quitChecks(c)
         let fm = FileManager.default
         let lib = NSHomeDirectory() + "/Library"
 
@@ -50,5 +52,71 @@ enum UninstallCheck {
         // bundle-id matches are marked certain, name matches are not
         let byName = Uninstaller.leftovers(for: child).first { $0.path == mine }
         c.check("uninstall: name match flagged as weaker", byName?.byBundleID == false)
+    }
+}
+
+extension UninstallCheck {
+    /// Quitting an app so it can be uninstalled. The guards matter more than the feature:
+    /// force-quitting the wrong thing costs unsaved work, and for a video editor that is
+    /// hours of it.
+    @MainActor static func quitChecks(_ c: CheckSuite) async {
+        func app(_ name: String, _ id: String, running: Bool = true,
+                 system: Bool = false, formula: Bool = false) -> InstalledApp {
+            InstalledApp(name: name, bundleID: id, path: "/Applications/\(name).app",
+                         bytes: 0, isRunning: running, isSystem: system,
+                         origin: formula ? .formula : .bundle)
+        }
+        // the blocker the user can clear
+        c.check("quit: a running third-party app is offered a quit",
+                Uninstaller.blockedOnlyByRunning(app("Sloth", "com.sveinbjorn.Sloth")))
+        c.check("quit: an app that is not running needs no quit",
+                !Uninstaller.blockedOnlyByRunning(app("Sloth", "com.sveinbjorn.Sloth", running: false)))
+        // and the refusals that no amount of quitting lifts
+        c.check("quit: an Apple app is never offered a quit",
+                !Uninstaller.blockedOnlyByRunning(app("Safari", "com.apple.Safari", system: true)))
+        c.check("quit: Performac will not be quit to uninstall itself",
+                !Uninstaller.blockedOnlyByRunning(app("Performac", "com.chris.performac.v2")))
+        c.check("quit: a formula has no process to quit",
+                !Uninstaller.blockedOnlyByRunning(app("ffmpeg", "brew:ffmpeg", formula: true)))
+
+        // bundle id, not display name: a name can collide, an id cannot
+        // com.apple.finder is lowercase and com.apple.Safari is not; both must be refused
+        c.check("quit: a lowercase Apple id is recognised", Uninstaller.isApple("com.apple.finder"))
+        c.check("quit: a mixed-case Apple id is recognised", Uninstaller.isApple("com.apple.Safari"))
+        c.check("quit: a lookalike id is not treated as Apple",
+                !Uninstaller.isApple("com.appleseed.MyApp"))
+        // a Safari web app is the user's own, despite the Apple prefix
+        c.check("quit: a Safari web app is not treated as part of macOS",
+                !Uninstaller.isApple("com.apple.Safari.WebApp.B9F61036-2F21-492A-9A70-E98367E0D057"))
+        c.check("quit: Safari itself still is",
+                Uninstaller.isApple("com.apple.Safari"))
+        switch ProcessControl.target(bundleID: "com.apple.finder", fallbackName: "Finder") {
+        case .failure(let why): c.check("quit: Finder is refused as system-critical",
+                                        why == .systemCritical)
+        case .success: c.check("quit: Finder is refused as system-critical", false)
+        }
+        switch ProcessControl.target(bundleID: "com.example.not.running", fallbackName: "Nope") {
+        case .failure(let why): c.check("quit: an app that is not running reports gone",
+                                        why == .gone)
+        case .success: c.check("quit: an app that is not running reports gone", false)
+        }
+        // this app is running right now, and must refuse to be targeted
+        let selfID = Bundle.main.bundleIdentifier ?? "com.chris.performac.v2"
+        if NSWorkspace.shared.runningApplications.contains(where: { $0.bundleIdentifier == selfID }) {
+            if case .success = ProcessControl.target(bundleID: selfID, fallbackName: "Performac") {
+                c.check("quit: Performac refuses to target itself", false)
+            } else {
+                c.check("quit: Performac refuses to target itself", true)
+            }
+        }
+
+        // waitForExit must report honestly on a pid that is definitely gone, and on one that
+        // is definitely not — it gates whether files start being removed
+        let dead = ProcessControl.Target(pid: 999_999, name: "gone", isApp: false, hasWindows: false)
+        c.check("quit: a dead process is seen to have exited",
+                await ProcessControl.waitForExit(dead, timeout: 0.5))
+        let mine = ProcessControl.Target(pid: getpid(), name: "self", isApp: false, hasWindows: false)
+        c.check("quit: a live process is not reported as exited",
+                !(await ProcessControl.waitForExit(mine, timeout: 0.5)))
     }
 }

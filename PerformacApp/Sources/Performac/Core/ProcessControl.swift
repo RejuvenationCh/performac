@@ -30,6 +30,33 @@ enum ProcessControl {
         case gone = "That process is no longer running."
     }
 
+    /// Look up a running app by bundle id — the only identifier that cannot match the wrong
+    /// thing. A display name can collide (two "Helper"s, a renamed bundle); a bundle id cannot.
+    static func target(bundleID: String, fallbackName: String) -> Result<Target, Refusal> {
+        guard let app = NSWorkspace.shared.runningApplications
+            .first(where: { $0.bundleIdentifier == bundleID }) else { return .failure(.gone) }
+        let name = app.localizedName ?? fallbackName
+        if protected.contains(name) { return .failure(.systemCritical) }
+        // case-insensitive: Finder is com.apple.finder, Safari is com.apple.Safari. Apple is
+        // inconsistent about it, and nothing third-party may claim the prefix in any casing.
+        if bundleID.lowercased().hasPrefix("com.apple.") { return .failure(.systemCritical) }
+        if app.processIdentifier < 100 { return .failure(.systemCritical) }
+        guard ownedByCurrentUser(app.processIdentifier) else { return .failure(.notYours) }
+        return .success(Target(pid: app.processIdentifier, name: name, isApp: true,
+                               hasWindows: app.activationPolicy == .regular))
+    }
+
+    /// Wait for a process to actually go away. Terminating is a request, not an event: the
+    /// uninstaller must not start removing files while the app is still writing them.
+    static func waitForExit(_ t: Target, timeout: TimeInterval) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if !isRunning(t.pid) { return true }
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        return !isRunning(t.pid)
+    }
+
     /// Look up a live process by name. Returns nil when there is nothing safe to offer.
     static func target(named name: String) -> Result<Target, Refusal> {
         if protected.contains(name) { return .failure(.systemCritical) }

@@ -86,7 +86,7 @@ enum Uninstaller {
                 guard let b = Bundle(path: path), let id = b.bundleIdentifier else { continue }
                 out.append(InstalledApp(
                     name: (name as NSString).deletingPathExtension, bundleID: id, path: path,
-                    bytes: 0, isRunning: running.contains(id), isSystem: id.hasPrefix("com.apple."),
+                    bytes: 0, isRunning: running.contains(id), isSystem: Self.isApple(id),
                     version: (b.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "",
                     cask: casks[path]))
             }
@@ -127,7 +127,7 @@ enum Uninstaller {
                     name: display, bundleID: id, path: path,
                     bytes: directorySize(path),
                     isRunning: running.contains(id),
-                    isSystem: id.hasPrefix("com.apple.")))
+                    isSystem: Self.isApple(id)))
             }
         }
         out += Brew.formulae().map { var r = row($0); r.bytes = directorySize($0.path); return r }
@@ -175,6 +175,25 @@ enum Uninstaller {
             }
         }
         return out.sorted { $0.bytes > $1.bytes }
+    }
+
+    /// Apple is inconsistent about the casing of its own bundle ids — Finder is
+    /// com.apple.finder, Safari is com.apple.Safari — and a case-sensitive prefix test would
+    /// have offered to uninstall Finder.
+    static func isApple(_ bundleID: String) -> Bool {
+        let low = bundleID.lowercased()
+        // A Safari web app is the user's own shortcut wearing an Apple bundle id. Treating it
+        // as part of macOS refused to remove three apps on this machine that Chris made
+        // himself — and he has already had to delete one of them by hand.
+        if low.hasPrefix("com.apple.safari.webapp.") { return false }
+        return low.hasPrefix("com.apple.")
+    }
+
+    /// True when the only thing standing between this app and removal is that it is running —
+    /// a blocker the user can clear, as opposed to a refusal that will never lift.
+    static func blockedOnlyByRunning(_ app: InstalledApp) -> Bool {
+        guard !app.isFormula, !app.isSystem, app.isRunning else { return false }
+        return app.bundleID != "com.chris.performac.v2"
     }
 
     /// Refusals, checked before anything is offered.

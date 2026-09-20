@@ -555,6 +555,80 @@ final class EngineStore: ObservableObject {
     @Published var appsLoading = false
     @Published var leftoversLoading = false
 
+    /// Where the quit-before-uninstall dance has got to.
+    ///
+    /// Two stages on purpose. Asking politely lets an app with unsaved work put up its own
+    /// save prompt — which for Premiere or Resolve is the difference between a clean exit and
+    /// losing an afternoon. Force is a separate, second decision, never an automatic fallback.
+    enum QuitPhase: Equatable, Sendable {
+        case none
+        case asking          // quit request sent, waiting for it to go
+        case needsForce      // it ignored the request; force is now the user's call
+        case forcing
+        case failed(String)
+    }
+    @Published var quitPhase: QuitPhase = .none
+
+    /// The app can be removed once it stops running; nothing else about it has changed.
+    var selectedAppIsRunningOnly: Bool {
+        guard let a = selectedApp else { return false }
+        return Uninstaller.blockedOnlyByRunning(a)
+    }
+
+    /// Stage one: ask the app to quit, the same request Cmd-Q sends.
+    func quitSelectedApp() { runQuit(force: false) }
+
+    /// Stage two: only reachable after stage one was ignored, and only by asking again.
+    func forceQuitSelectedApp() { runQuit(force: true) }
+
+    private func runQuit(force: Bool) {
+        guard let app = selectedApp, Uninstaller.blockedOnlyByRunning(app) else { return }
+        guard quitPhase != .asking, quitPhase != .forcing else { return }
+        switch ProcessControl.target(bundleID: app.bundleID, fallbackName: app.name) {
+        case .failure(let why):
+            // already gone is a success for our purposes: the blocker is cleared
+            if why == .gone { quitPhase = .none; refreshRunningState(); return }
+            quitPhase = .failed(why.rawValue)
+        case .success(let target):
+            quitPhase = force ? .forcing : .asking
+            let ok = force ? ProcessControl.force(target) : ProcessControl.quit(target)
+            guard ok else {
+                quitPhase = .failed("\(app.name) refused to quit.")
+                return
+            }
+            Task { [weak self] in
+                // a polite quit may sit behind a save dialog, so it gets longer
+                let gone = await ProcessControl.waitForExit(target, timeout: force ? 4 : 10)
+                await MainActor.run {
+                    guard let self else { return }
+                    if gone {
+                        self.quitPhase = .none
+                        self.refreshRunningState()
+                    } else {
+                        self.quitPhase = force
+                            ? .failed("\(app.name) is still running. macOS would not end it.")
+                            : .needsForce
+                    }
+                }
+            }
+        }
+    }
+
+    /// Re-read who is running and recompute the refusal, so the Trash button unlocks the
+    /// moment the app is actually gone rather than on the next full reload.
+    private func refreshRunningState() {
+        let live = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+        for i in apps.indices where !apps[i].isFormula {
+            apps[i].isRunning = live.contains(apps[i].bundleID)
+        }
+        if var sel = selectedApp {
+            sel.isRunning = live.contains(sel.bundleID)
+            selectedApp = sel
+            appRefusal = Uninstaller.refusal(for: sel)
+            if appRefusal == nil, leftovers.isEmpty { selectAppAsync(sel) }
+        }
+    }
+
     /// Names first, sizes after. Sizing every bundle walks gigabytes (Adobe, Xcode), which
     /// froze the view for seconds when it ran inline on the main actor.
     func loadApps() {
@@ -572,6 +646,7 @@ final class EngineStore: ObservableObject {
 
     /// Leftovers also walk directories, so they are measured off the main actor too.
     func selectAppAsync(_ app: InstalledApp) {
+        if selectedApp?.id != app.id { quitPhase = .none }
         selectedApp = app
         appRefusal = Uninstaller.refusal(for: app)
         leftovers = []

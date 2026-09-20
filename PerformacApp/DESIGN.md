@@ -230,6 +230,31 @@ and hand back what it measured rather than tearing the stream down. A `ScanSumma
 2. A root whose tree came from a stopped scan is recorded in `partialRoots`, and the picker
    prints "partial" beside its age rather than an age that implies the whole drive.
 
+## Quitting an app to uninstall it
+
+Running was a dead end: the detail pane said "quit it first" and left you to go do that
+somewhere else. It is now the one blocker the pane can lift, and it lifts it in **two stages,
+which are two separate decisions**:
+
+1. **Quit** sends the same request Cmd-Q sends, so an app with unsaved work puts up its own
+   save prompt. Ten seconds to comply, because that prompt is allowed to sit there.
+2. **Force Quit** appears *only* after stage one was ignored, never as an automatic fallback,
+   and says what it costs before it is pressed. Chris edits video; forcing Premiere or Resolve
+   is measured in lost hours, not lost seconds.
+
+Everything routes through `ProcessControl`, which is the only place this app terminates
+anything, and removal waits on `waitForExit` — terminating is a request, not an event, and the
+uninstaller must not start deleting files while the app is still writing them.
+
+`ProcessControl.target(bundleID:)` matches on **bundle id, never display name**: two apps can
+share a name, and the wrong match here is a force-quit of something the user did not choose.
+
+`Uninstaller.isApple` is **case-insensitive**. Apple is inconsistent — Finder is
+`com.apple.finder`, Safari is `com.apple.Safari` — and a case-sensitive prefix test offered to
+uninstall Finder. Its one exception is `com.apple.safari.webapp.*`: a Safari web app carries an
+Apple bundle id but is the user's own shortcut, and refusing to remove those was refusing to
+remove three apps Chris built himself.
+
 ## Liquid Glass
 
 Adopted for the **interface layer only**, per Apple's guidance that Liquid Glass belongs to

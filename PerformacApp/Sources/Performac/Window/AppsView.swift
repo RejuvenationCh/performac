@@ -13,6 +13,10 @@ struct AppsView: View {
     var onSelect: (InstalledApp) -> Void = { _ in }
     var onToggle: (Int, Bool) -> Void = { _, _ in }
     var onUninstall: () -> Void = {}
+    var runningOnly: Bool = false
+    var quitPhase: EngineStore.QuitPhase = .none
+    var onQuit: () -> Void = {}
+    var onForceQuit: () -> Void = {}
     @State private var confirming = false
     @State private var scope: Scope = .all
     @State private var showDeps = false
@@ -101,6 +105,51 @@ struct AppsView: View {
         .onAppear(perform: onAppear)
     }
 
+    /// Two stages, two separate decisions. Force is never the automatic next step: it appears
+    /// only after a polite quit was ignored, and it says what it costs before it is pressed.
+    @ViewBuilder private func quitControls(_ app: InstalledApp) -> some View {
+        VStack(alignment: .leading, spacing: PC.s2) {
+            switch quitPhase {
+            case .none:
+                HStack(spacing: PC.s2) {
+                    Button("Quit \(app.name)", action: onQuit).controlSize(.small)
+                    Text("Asks the app to quit, so it can save first.")
+                        .font(.pcSmall).foregroundStyle(PC.meta)
+                    Spacer()
+                }
+            case .asking, .forcing:
+                HStack(spacing: PC.s2) {
+                    ProgressView().controlSize(.small).scaleEffect(0.6)
+                    Text(quitPhase == .forcing ? "Forcing \(app.name) to quit…"
+                                               : "Waiting for \(app.name) to quit…")
+                        .font(.pcSmall).foregroundStyle(PC.ink2)
+                    Spacer()
+                }
+            case .needsForce:
+                VStack(alignment: .leading, spacing: PC.s1) {
+                    HStack(spacing: PC.s2) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(PC.amber)
+                        Text("\(app.name) did not quit").font(.pcTitle).foregroundStyle(PC.ink)
+                        Spacer()
+                        Button("Force Quit", action: onForceQuit).controlSize(.small)
+                    }
+                    Text("It may be busy, or waiting on a save prompt of its own — check it before forcing. Forcing ends it immediately and anything unsaved is gone.")
+                        .font(.pcSmall).foregroundStyle(PC.ink2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(PC.gutter).frame(maxWidth: .infinity, alignment: .leading)
+                .background(PC.amberSoft)
+            case .failed(let why):
+                HStack(alignment: .top, spacing: PC.s2) {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(PC.red)
+                    Text(why).font(.pcSmall).foregroundStyle(PC.ink2)
+                    Spacer()
+                    Button("Try again", action: onQuit).controlSize(.small)
+                }
+            }
+        }
+    }
+
     @ViewBuilder private func detail(_ app: InstalledApp) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: PC.gutter) {
@@ -132,6 +181,9 @@ struct AppsView: View {
                         Text(refusal).font(.pcBody).foregroundStyle(PC.ink2)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    // Running is the one refusal the user can lift, so it comes with the
+                    // means to lift it rather than just an instruction to go do it elsewhere.
+                    if runningOnly { quitControls(app) }
                     if !app.uninstallCommand.isEmpty, app.dependents.isEmpty {
                         HStack(spacing: PC.s2) {
                             Text(app.uninstallCommand)

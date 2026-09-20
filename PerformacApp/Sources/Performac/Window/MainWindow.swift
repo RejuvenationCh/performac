@@ -99,7 +99,11 @@ struct MainWindow: View {
                     onAppear: { store.loadApps() },
                     onSelect: { store.selectAppAsync($0) },
                     onToggle: { i, v in if store.leftovers.indices.contains(i) { store.leftovers[i].selected = v } },
-                    onUninstall: { store.uninstallSelected() })
+                    onUninstall: { store.uninstallSelected() },
+                    runningOnly: store.selectedAppIsRunningOnly,
+                    quitPhase: store.quitPhase,
+                    onQuit: { store.quitSelectedApp() },
+                    onForceQuit: { store.forceQuitSelectedApp() })
                 case .updates: UpdatesView(
                     items: store.outdated,
                     loading: store.checkingUpdates,
