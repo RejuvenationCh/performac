@@ -17,7 +17,7 @@ final class EngineStore: ObservableObject {
     @Published var digest: [Finding] = []
     /// Which screen the window shows. Here rather than in the view so a card's link-out can
     /// navigate to Clean, and so closing the window does not reset the choice.
-    @Published var route: Route = .dashboard
+    @Published var route: Route = .overview
     @Published var cacheEntries: [CacheEntry] = []
     @Published var dupGroups: [DupGroup] = []
     @Published var dupScanAt: Int64? = nil

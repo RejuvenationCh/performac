@@ -12,25 +12,15 @@ struct MainWindow: View {
             Rail(route: Binding(get: { store.route }, set: { store.route = $0 }))
             Group {
                 switch store.route {
-                case .dashboard: DashboardView(
+                case .overview: OverviewView(
                     findings: store.digest,
                     facts: store.quietFacts,
-                    trendPoints: store.trend.points,
-                    trendNote: store.trend.note,
                     updatedAt: store.findingsAt,
                     busy: store.refreshing,
                     onRefresh: { (NSApp.delegate as? AppDelegate)?.refreshNow() },
-                    quitAction: { store.requestQuit($0) },
-                    onIgnore: { store.ignoreProcess($0) },
-                    onLink: { store.openLink($0) })
-                case .digest: DigestView(
-                    findings: store.digest,
                     quitAction: { store.requestQuit($0) },
                     onIgnore: { store.ignoreProcess($0) },
                     onLink: { store.openLink($0) },
-                    updatedAt: store.findingsAt,
-                    busy: store.refreshing,
-                    onRefresh: { (NSApp.delegate as? AppDelegate)?.refreshNow() },
                     coachIntro: store.coachIntro,
                     coachAt: store.coachAt,
                     coachBusy: store.coachBusy,
@@ -124,16 +114,21 @@ private struct Rail: View {
     @Binding var route: Route
     var body: some View {
         VStack(spacing: PC.s1) {
-            Text("P").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+            // An SF Symbol mark, not a lettermark in a coloured square — that read as the
+            // most generic possible app badge and was not a control.
+            Image(systemName: "gauge.with.needle")
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(PC.accent)
                 .frame(width: 28, height: 28)
-                .background(PC.accentFill, in: RoundedRectangle(cornerRadius: PC.rLg))
                 // The window uses .fullSizeContentView, so content starts at y=0 under the
                 // titlebar — this clears the traffic lights instead of sitting under them.
                 .padding(.top, 28).padding(.bottom, PC.s2)
-            ForEach(Route.allCases) { r in
+            ForEach(Route.primary) { r in
                 RailButton(route: r, selected: route == r) { route = r }
             }
             Spacer()
+            RailButton(route: .settings, selected: route == .settings) { route = .settings }
+                .padding(.bottom, PC.gutter)
         }
         .frame(width: PC.rail)
         .frame(maxHeight: .infinity)
@@ -149,7 +144,7 @@ private struct RailButton: View {
         Button(action: action) {
             VStack(spacing: 2) {
                 Image(systemName: route.symbol).font(.system(size: 16, weight: .regular))
-                Text(route.title).font(.system(size: 9, weight: .medium))
+                Text(route.title).font(.pcLabel)
             }
             .foregroundStyle(selected ? PC.accent : PC.meta)
             .frame(width: 52, height: 44)

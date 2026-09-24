@@ -63,12 +63,11 @@ struct Finding: Identifiable, Sendable {
 /// Which screen the window is showing. Lives here rather than in the view so a card's
 /// link-out can navigate, and so the choice survives the window being closed and reopened.
 enum Route: String, CaseIterable, Identifiable, Sendable {
-    case dashboard, digest, disk, clean, duplicates, settings
+    case overview, disk, clean, duplicates, settings
     var id: String { rawValue }
     var symbol: String {
         switch self {
-        case .dashboard: "gauge.with.dots.needle.33percent"
-        case .digest: "text.alignleft"
+        case .overview: "gauge.with.dots.needle.33percent"
         case .disk: "internaldrive"
         case .clean: "trash"
         case .duplicates: "doc.on.doc"
@@ -76,6 +75,10 @@ enum Route: String, CaseIterable, Identifiable, Sendable {
         }
     }
     var title: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
+
+    /// The four screens the rail renders as its main list. Settings is pinned separately,
+    /// below the spacer, the way Mail and Xcode place their settings affordance.
+    static let primary: [Route] = [.overview, .disk, .clean, .duplicates]
 }
 
 struct SizeEntry: Identifiable, Sendable {
