@@ -130,9 +130,12 @@ surface · 4px radius · 1px hairline border · small shadow · 12px pad (16 lef
 ```
 
 The link-out carries `FindingLink`, an enum holding its destination (`reveal(path)`,
-`.activityMonitor`, `.clean`), not just a label — it was a dead accent-coloured button until
-this pass, because the view read only the link's kind and had nothing to act on. See §Rules,
-"a control must do something."
+`.activityMonitor`, `.clean`, `.loginSettings`, `.disableAgent(path)`), not just a label — it
+was a dead accent-coloured button until this pass, because the view read only the link's kind
+and had nothing to act on. See §Rules, "a control must do something." Every case but
+`.disableAgent` navigates; that one performs an action, so `CoachCardView` intercepts it for
+confirmation instead of routing it through `EngineStore.openLink` — the same shape as the
+Quit button beside it.
 
 Others as built: `SizeRow` (name · item count · size · proportional bar, hover-revealed
 actions) · `CacheRow` (checkbox · name · size · last-written age · safety pill · why-line) ·
@@ -179,8 +182,9 @@ of Force Quit. If a menu bar ever comes back, it belongs to Vorssaint, not here.
 Adopted for exactly two places, both places content genuinely floats above something:
 
 - **the 76pt rail** — a sidebar at the window edge is Apple's own glass pattern on macOS 26.
-- **every sheet** (`TrashSheet`, `RowTrashSheet`, `RowInfoSheet`, `QuitSheet`), via
-  `pcGlassPanel` — a sheet floats over the window behind it by definition.
+- **every sheet** (`TrashSheet`, `RowTrashSheet`, `RowInfoSheet`, `QuitSheet`,
+  `DisableAgentSheet`), via `pcGlassPanel` — a sheet floats over the window behind it by
+  definition.
 
 Everywhere else is opaque: title rows, toolbars, table rows, cards, badges, the treemap.
 Title rows and toolbars looked like candidates too, and were glass for a while, but both
@@ -310,8 +314,14 @@ duplicates, creative-app caches, and what changed over time.
 4. **All figures are tabular**, and every size in the UI is bytes through `Fmt.bytes` — see
    §Units. Nothing converts a unit twice.
 5. **Icons are SF Symbols. No emoji**, in UI or in copy.
-6. **One action per card, and it never performs the fix** — except the Clean view, whose one
-   action is always and only **"Move to Trash"**, never "Clean", "Optimize", or "Free up".
+6. **A card carries at most one remedy; every remedy is confirmed before it acts, and every
+   remedy is reversible.** Quitting a process prompts for unsaved work first (`QuitSheet`);
+   disabling a LaunchAgent unloads it and sends its plist to the Trash (`DisableAgentSheet`),
+   never `unlink`/`removeItem`/`rm`. Two findings deliberately carry no remedy instead: the
+   Trash-holding card only links out, because emptying the Trash is the one irreversible act
+   in the app and must stay the user's own deliberate gesture; a drive-flap card has no
+   button at all, because a loose cable is not something software can fix. The Clean view's
+   one action is always and only **"Move to Trash"**, never "Clean", "Optimize", or "Free up".
 7. **Destructive confirmations stay accent-coloured, with Cancel focused**, and always state
    recoverability.
 8. **Cards do not nest.**

@@ -188,7 +188,13 @@ enum Rules {
     struct LoginAgent: Sendable {
         var label: String
         var program: String?      // basename of ProgramArguments[0] / Program, nil if unreadable
-        init(label: String, program: String? = nil) { self.label = label; self.program = program }
+        /// The plist's actual file path, not a guess at `~/Library/LaunchAgents/<label>.plist`
+        /// — a plist's filename is not guaranteed to match its own Label key. nil for agents
+        /// read from an older, pathless setting; a card about one then offers no action.
+        var plistPath: String?
+        init(label: String, program: String? = nil, plistPath: String? = nil) {
+            self.label = label; self.program = program; self.plistPath = plistPath
+        }
     }
 
     /// The Trash holds space until it is emptied — and this app puts things there. Without
@@ -240,23 +246,37 @@ enum Rules {
                 return n == q || n.hasPrefix(q) || q.hasPrefix(n)
             }
         }
-        func make(_ label: String, _ where_: String) -> EngineFinding {
+        func make(_ label: String, _ detail: String, linkKind: String?, linkTarget: String?) -> EngineFinding {
             EngineFinding(
                 id: "login-\(slug(label))", kind: "login", severity: "info",
                 headline: "\(label) launches at login but hasn't run in \(plural(Int(historyDays), "day")) of samples",
                 why: "It is not running now and its program has not appeared in any sample — it may be doing nothing.",
-                detail: "Short-lived helpers can slip between 30-second ticks — review it in \(where_).",
-                linkKind: nil, linkTarget: nil)
+                detail: detail,
+                linkKind: linkKind, linkTarget: linkTarget)
         }
 
+        // Login Items has no public removal API — Accessibility would be needed to script
+        // System Events — so the only honest remedy is a deep link to the settings pane.
         for item in items where !seen(item) {
-            out.append(make(item, "System Settings → General → Login Items"))
+            out.append(make(item,
+                "Short-lived helpers can slip between 30-second ticks.",
+                linkKind: "login_settings", linkTarget: nil))
         }
         for agent in agents {
             if runningLabels.contains(agent.label) { continue }   // launchd says it is running
             if let prog = agent.program, seen(prog) { continue }  // its program has been sampled
             if agent.program == nil, seen(agent.label) { continue }
-            out.append(make(agent.label, "~/Library/LaunchAgents"))
+            // A LaunchAgent's plist is the user's own file, so unloading it and trashing the
+            // plist is a real, reversible fix — offered only when its real path is known.
+            if let path = agent.plistPath, !path.isEmpty {
+                out.append(make(agent.label,
+                    "Short-lived helpers can slip between 30-second ticks. Disabling it unloads it and moves its plist to the Trash — recoverable from there, and it stops relaunching at login.",
+                    linkKind: "disable_agent", linkTarget: path))
+            } else {
+                out.append(make(agent.label,
+                    "Short-lived helpers can slip between 30-second ticks — review it in ~/Library/LaunchAgents.",
+                    linkKind: nil, linkTarget: nil))
+            }
         }
         return out
     }

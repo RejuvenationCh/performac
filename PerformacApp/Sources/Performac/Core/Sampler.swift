@@ -106,7 +106,8 @@ func refreshFindings(_ db: DB, _ cfg: Config, _ now: Int64,
         let raw = getSetting(db, "loginAgents")?.objectVal?["agents"]?.arrayVal ?? []
         let agents: [Rules.LoginAgent] = raw.compactMap { v in
             if let o = v.objectVal, let label = o["label"]?.stringVal {
-                return Rules.LoginAgent(label: label, program: o["program"]?.stringVal)
+                return Rules.LoginAgent(label: label, program: o["program"]?.stringVal,
+                                        plistPath: o["plistPath"]?.stringVal)
             }
             if let label = v.stringVal, !label.isEmpty { return Rules.LoginAgent(label: label) }
             return nil
@@ -599,7 +600,7 @@ func loginTick(_ db: DB, _ deps: any SamplerDeps) async {
         } else if let args = d["ProgramArguments"] as? [String], let first = args.first {
             program = (first as NSString).lastPathComponent
         }
-        agents.append(["label": label, "program": program])
+        agents.append(["label": label, "program": program, "plistPath": dir + "/" + name])
     }
     setSetting(db, "loginAgents", JSONValue.from(["agents": agents]))
 

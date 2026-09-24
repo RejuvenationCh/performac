@@ -13,6 +13,7 @@ struct OverviewView: View {
     var quitAction: (String) -> Void = { _ in }
     var onIgnore: ((String) -> Void)? = nil
     var onLink: (FindingLink) -> Void = { _ in }
+    var onDisableAgent: (String) -> Void = { _ in }
     var coachIntro: String? = nil
     var coachAt: Date? = nil
     var coachBusy: Bool = false
@@ -124,7 +125,8 @@ struct OverviewView: View {
                         SectionHeader(text: "Worth knowing (\(worst.count))")
                         ForEach(worst) {
                             CoachCardView(finding: $0, onQuit: quitAction,
-                                          onIgnore: onIgnore, onLink: onLink)
+                                          onIgnore: onIgnore, onLink: onLink,
+                                          onDisableAgent: onDisableAgent)
                         }
                     }
                 }

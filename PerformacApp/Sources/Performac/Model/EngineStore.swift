@@ -186,7 +186,8 @@ final class EngineStore: ObservableObject {
         startDiskScan()
     }
 
-    /// Perform a card's one link-out. Never fixes anything: it reveals, or it navigates.
+    /// Perform a card's one link-out. Reveals or navigates only — `.disableAgent` acts, so
+    /// CoachCardView intercepts it for confirmation before this is ever called with one.
     func openLink(_ link: FindingLink) {
         switch link {
         case .reveal(let path):
@@ -195,6 +196,10 @@ final class EngineStore: ObservableObject {
             NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Activity Monitor.app"))
         case .clean:
             route = .clean
+        case .loginSettings:
+            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension")!)
+        case .disableAgent:
+            break   // never acts from here — see disableAgent(_:)
         }
     }
 
@@ -595,6 +600,53 @@ final class EngineStore: ObservableObject {
                         .run([.text(parent), .text(name)])
                 }
                 trashTick(db)
+                self.refreshFromDatabase()
+            }
+        }
+    }
+
+    /// Disable a LaunchAgent: unload it (tolerating failure — this finding only fires for
+    /// agents that are NOT currently running, so "already unloaded" is the normal case),
+    /// then Trash its plist through the app's one deletion path. Recoverable from there,
+    /// same as every other removal Performac performs.
+    func disableAgent(_ path: String) {
+        guard !trashing else { return }
+        let name = (path as NSString).lastPathComponent
+        trashing = true
+        trashProgress = "Disabling \(name)…"
+        let db = self.db
+        Task.detached(priority: .userInitiated) { [weak self] in
+            // The plist's own Label key, not its filename — the two are not guaranteed to
+            // match, and launchctl only understands the label.
+            let label = (NSDictionary(contentsOfFile: path)?["Label"] as? String)
+                ?? (name as NSString).deletingPathExtension
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+            p.arguments = ["bootout", "gui/\(getuid())/\(label)"]
+            p.standardOutput = FileHandle.nullDevice
+            p.standardError = FileHandle.nullDevice
+            try? p.run()
+            p.waitUntilExit()
+
+            let now = Int64(Date().timeIntervalSince1970 * 1000)
+            let r = Trash.moveToTrash([path], allowed: [path], db: db, now: now)
+            let good = r.first?.ok == true
+            let msg = r.first?.message ?? "unknown error"
+            if good {
+                // Drop it from the cached agent list too, so the card is gone on this
+                // recompute rather than lingering until the next hourly LaunchAgents scan.
+                let raw = getSetting(db, "loginAgents")?.objectVal?["agents"]?.arrayVal ?? []
+                let kept = raw.filter { $0.objectVal?["plistPath"]?.stringVal != path }
+                setSetting(db, "loginAgents", .object(["agents": .array(kept)]))
+            }
+            await refreshFindings(db, loadConfig(db), now, nil)
+            await MainActor.run {
+                guard let self else { return }
+                self.trashing = false
+                self.trashProgress = ""
+                self.lastTrashSummary = good
+                    ? "Disabled \(label) and moved its plist to the Trash."
+                    : "Could not move it: \(msg)"
                 self.refreshFromDatabase()
             }
         }

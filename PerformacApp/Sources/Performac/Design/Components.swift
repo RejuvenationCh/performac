@@ -10,7 +10,9 @@ struct CoachCardView: View {
     var onQuit: (String) -> Void = { _ in }
     var onIgnore: ((String) -> Void)? = nil
     var onLink: (FindingLink) -> Void = { _ in }
+    var onDisableAgent: (String) -> Void = { _ in }
     @State private var confirming = false
+    @State private var confirmingDisable = false
 
     /// The link says where it goes; the tooltip says what it will actually show you.
     private func linkHelp(_ link: FindingLink) -> String {
@@ -19,6 +21,8 @@ struct CoachCardView: View {
             return "Select \((path as NSString).lastPathComponent) in Finder"
         case .activityMonitor: return "Open Activity Monitor"
         case .clean:           return "Go to the Clean screen"
+        case .loginSettings:   return "Open System Settings → General → Login Items"
+        case .disableAgent(let path): return "Unload and Trash \((path as NSString).lastPathComponent)"
         }
     }
 
@@ -36,9 +40,15 @@ struct CoachCardView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: PC.gutter) {
                         if let link = finding.link {
-                            Button(link.label) { onLink(link) }.buttonStyle(.plain)
-                                .font(.pcLabel).foregroundStyle(PC.accent)
-                                .help(linkHelp(link))
+                            // `.disableAgent` acts rather than navigates, so it is confirmed
+                            // first — same shape as the quit button below, never bare onLink.
+                            Button(link.label) {
+                                if case .disableAgent = link { confirmingDisable = true }
+                                else { onLink(link) }
+                            }
+                            .buttonStyle(.plain)
+                            .font(.pcLabel).foregroundStyle(PC.accent)
+                            .help(linkHelp(link))
                         }
                         // Offered only when the process is live and passes every refusal.
                         if let target = finding.quitTarget {
@@ -67,6 +77,13 @@ struct CoachCardView: View {
                           onQuit: { confirming = false; onQuit(target) })
             }
         }
+        .sheet(isPresented: $confirmingDisable) {
+            if case .disableAgent(let path) = finding.link {
+                DisableAgentSheet(plistPath: path,
+                                  onCancel: { confirmingDisable = false },
+                                  onDisable: { confirmingDisable = false; onDisableAgent(path) })
+            }
+        }
     }
 }
 
@@ -91,6 +108,41 @@ struct QuitSheet: View {
                 Spacer()
                 Button("Cancel", action: onCancel).keyboardShortcut(.cancelAction)
                 Button("Quit \(name)", action: onQuit).buttonStyle(.borderedProminent)
+            }
+            .padding(.horizontal, 24).padding(.bottom, 20)
+        }
+        .frame(width: 460)
+        .pcGlassPanel(PC.rXl)
+    }
+}
+
+/// The confirmation for disabling a LaunchAgent. Per DESIGN.md's destructive-confirmation
+/// rule: the primary button stays accent-coloured (not red) because the action is
+/// recoverable, Cancel is the default focus, the full path is shown, and recoverability is
+/// stated plainly rather than implied.
+struct DisableAgentSheet: View {
+    let plistPath: String
+    var onCancel: () -> Void
+    var onDisable: () -> Void
+    private var name: String { (plistPath as NSString).lastPathComponent }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Disable \(name)?").font(.pcHeadline).foregroundStyle(PC.ink)
+                .padding(.horizontal, 24).padding(.top, 20).padding(.bottom, PC.s2)
+            Text(plistPath).font(.pcSmall).foregroundStyle(PC.ink2)
+                .textSelection(.enabled)
+                .padding(.horizontal, 24).padding(.bottom, PC.s2)
+            HStack(alignment: .top, spacing: PC.gutter) {
+                Image(systemName: "trash.fill")
+                    .font(.system(size: 14)).foregroundStyle(PC.accent)
+                Text("Performac unloads it from launchd, then moves this file to the Trash — it is not deleted. You can put it back from Finder, or restore it there, until you empty the Trash.")
+                    .font(.pcSmall).foregroundStyle(PC.ink2).lineSpacing(2)
+            }
+            .padding(.horizontal, 24).padding(.bottom, PC.stack)
+            HStack(spacing: PC.s2 + 2) {
+                Spacer()
+                Button("Cancel", action: onCancel).keyboardShortcut(.cancelAction)
+                Button("Disable", action: onDisable).buttonStyle(.borderedProminent)
             }
             .padding(.horizontal, 24).padding(.bottom, 20)
         }

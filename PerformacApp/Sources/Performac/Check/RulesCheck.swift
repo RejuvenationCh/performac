@@ -533,6 +533,34 @@ enum RulesCheck {
             c.check("login: unmatched item flagged", fs.count == 1 && fs[0].headline.hasPrefix("Ice"))
             c.check("login: all matched → empty", Rules.loginItemsAudit(
                 ["AltTab"], [], ["AltTab"], [], plenty, Config.defaults, NOW).isEmpty)
+
+            // A Login Item has no removable API — the remedy is a deep link to the pane.
+            c.eq("login: item gets login_settings link", fs.first?.linkKind, "login_settings")
+            c.check("login: item link has no target", fs.first?.linkTarget == nil)
+
+            // A LaunchAgent with a known plist path gets a real, reversible remedy.
+            let withPath = Rules.loginItemsAudit(
+                [], [Rules.LoginAgent(label: "com.dead.agent", program: "ghostd",
+                                      plistPath: "/Users/testuser/Library/LaunchAgents/com.dead.agent.plist")],
+                ["node"], [], plenty, Config.defaults, NOW)
+            c.eq("login: agent with path gets disable_agent link", withPath.first?.linkKind, "disable_agent")
+            c.eq("login: agent link target is the plist path", withPath.first?.linkTarget,
+                 "/Users/testuser/Library/LaunchAgents/com.dead.agent.plist")
+
+            // An agent read from an older, pathless setting offers no button rather than one
+            // that cannot work.
+            c.check("login: agent without a path has no link", idle.first?.linkKind == nil)
+        }
+
+        // ---- FindingLink: login_settings / disable_agent ----
+        do {
+            c.check("link: login_settings constructs", FindingLink(kind: "login_settings", target: nil) == .loginSettings)
+            c.check("link: disable_agent constructs with a path",
+                    FindingLink(kind: "disable_agent", target: "/a/b.plist") == .disableAgent("/a/b.plist"))
+            c.check("link: disable_agent with nil target is nil",
+                    FindingLink(kind: "disable_agent", target: nil) == nil)
+            c.check("link: disable_agent with empty target is nil",
+                    FindingLink(kind: "disable_agent", target: "") == nil)
         }
 
         // ---- browserBloat ----

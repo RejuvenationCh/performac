@@ -27,12 +27,21 @@ enum FindingLink: Sendable, Equatable {
     /// `open_purge` in the database. Purge is the app Performac's own cleaner replaces, so this
     /// goes to the Clean screen rather than launching something the user is removing.
     case clean
+    /// `login_settings` in the database. There is no public API to remove another app's Login
+    /// Items entry, so the only honest remedy is a deep link to the settings pane itself.
+    case loginSettings
+    /// `disable_agent` in the database, carrying the plist's path. Unlike every other case
+    /// this one performs an action rather than merely navigating, so it must NOT be acted on
+    /// from `openLink` — CoachCardView confirms it first, the way it already does for a quit.
+    case disableAgent(String)
 
     var label: String {
         switch self {
         case .reveal: "Show in Finder"
         case .activityMonitor: "Open Activity Monitor"
         case .clean: "Open Clean"
+        case .loginSettings: "Open Login Items"
+        case .disableAgent: "Disable…"   // the ellipsis signals a confirmation follows
         }
     }
 
@@ -43,6 +52,10 @@ enum FindingLink: Sendable, Equatable {
             self = .reveal(target)
         case "open_activity_monitor": self = .activityMonitor
         case "open_purge": self = .clean
+        case "login_settings": self = .loginSettings
+        case "disable_agent":
+            guard let target, !target.isEmpty else { return nil }
+            self = .disableAgent(target)
         default: return nil
         }
     }
@@ -53,7 +66,7 @@ struct Finding: Identifiable, Sendable {
     var severity: Severity
     var headline: String
     var why: String
-    var link: FindingLink? = nil  // at most one, and it never performs the fix
+    var link: FindingLink? = nil  // at most one; `.disableAgent` is confirmed before it acts
     /// Process this card is about, when it is safe to offer quitting it. Set by the store,
     /// never by the engine — the rules stay advisory and parity with v1 is unaffected.
     var quitTarget: String? = nil

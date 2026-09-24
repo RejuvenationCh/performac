@@ -21,6 +21,7 @@ struct MainWindow: View {
                     quitAction: { store.requestQuit($0) },
                     onIgnore: { store.ignoreProcess($0) },
                     onLink: { store.openLink($0) },
+                    onDisableAgent: { store.disableAgent($0) },
                     coachIntro: store.coachIntro,
                     coachAt: store.coachAt,
                     coachBusy: store.coachBusy,
