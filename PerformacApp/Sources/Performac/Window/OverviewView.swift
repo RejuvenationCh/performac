@@ -22,6 +22,7 @@ struct OverviewView: View {
     var trendPoints: [Double] = []
     var trendWindow: String = ""
     var trendNote: String = ""
+    var trendVolume: String = ""
 
     /// Most severe first. A stable sort on a rank rather than a filter per severity, so adding
     /// a severity can never silently drop its cards off this screen.
@@ -102,7 +103,11 @@ struct OverviewView: View {
                     .padding(PC.gutter).frame(maxWidth: .infinity, alignment: .leading).pcCard()
 
                     VStack(alignment: .leading, spacing: PC.s2) {
-                        SectionHeader(text: trendWindow.isEmpty ? "Free space" : "Free space, last \(trendWindow)")
+                        // Names the volume: this chart is boot-only, and a card above it can
+                        // be about an external drive heading for full.
+                        SectionHeader(text: trendWindow.isEmpty
+                                      ? "\(trendVolume) — free space"
+                                      : "\(trendVolume) — free space, last \(trendWindow)")
                         if trendPoints.count >= 2 {
                             Sparkline(values: trendPoints).frame(height: 54)
                         } else {

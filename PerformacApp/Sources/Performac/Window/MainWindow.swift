@@ -29,7 +29,8 @@ struct MainWindow: View {
                     onCoach: { store.refreshCoachIntro() },
                     trendPoints: store.trend.points,
                     trendWindow: store.trend.window,
-                    trendNote: store.trend.note)
+                    trendNote: store.trend.note,
+                    trendVolume: store.trend.volume)
                 case .disk: DiskView(
                     entries: store.diskEntries,
                     scanning: store.scanning,

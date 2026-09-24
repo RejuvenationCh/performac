@@ -458,6 +458,15 @@ final class EngineStore: ObservableObject {
         var window: String = ""
         var note: String = ""
         var hasEnoughHistory = false
+        /// The chart is boot-volume only, but cards above it can be about an external drive.
+        /// Unlabelled, "holding steady" sat directly under "External SSD is losing 210 GB a
+        /// week" and the two read as contradicting each other.
+        var volume: String = Trend.bootVolume
+
+        /// The name `disk_samples` records the boot disk under. On Trend rather than the
+        /// store because the store is @MainActor and Trend is Sendable — a main-actor static
+        /// cannot be a default for a nonisolated value.
+        static let bootVolume = "Macintosh HD"
     }
     @Published var trend = Trend()
     /// When the visible findings were last recomputed, so a card is never mistaken for live.
@@ -468,7 +477,7 @@ final class EngineStore: ObservableObject {
     /// storageTrend requires, it says how little history there is instead of guessing.
     func refreshTrend() {
         let rows = readDB.prepare("SELECT ts, free_gb FROM disk_samples WHERE volume = ? ORDER BY ts")
-            .all([.text("Macintosh HD")])
+            .all([.text(Trend.bootVolume)])
         let pts = rows.compactMap { r -> (Int64, Double)? in
             guard let ts = r["ts"]?.intVal, let g = r["free_gb"] else { return nil }
             return (ts, g.doubleVal)   // stored as REAL: stringVal is "" for those, which made every point 0
