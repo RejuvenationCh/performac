@@ -1,5 +1,5 @@
-// AppDelegate.swift — the shell: a status item that states the worst finding, a popover for
-// the glance, and a window for the work. Regular activation policy: Dock icon + menu bar item.
+// AppDelegate.swift — the shell: a window for the work, and nothing else. Regular
+// activation policy: Dock icon, no menu bar item.
 //
 // Phase 1 wiring: owns the EngineStore, boots the Sampler with real deps, schedules the
 // tick/hourly loops off the main actor, and stops everything on quit so the child
@@ -9,8 +9,6 @@ import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
-    private var statusItem: NSStatusItem!
-    private let popover = NSPopover()
     private var window: NSWindow?
 
     let store = EngineStore.shared
@@ -30,26 +28,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         installMainMenu()
         startNavigationMonitor()
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        configureStatusButton()
-        // nil = inherit from the menu bar's own appearance, whatever the app is set to
-        Appearance.onApply = { [weak self] in self?.statusItem.button?.appearance = nil }
-        Appearance.onApply?()
 
-        popover.behavior = .transient
-        popover.contentSize = NSSize(width: 380, height: 520)
-        popover.contentViewController = NSHostingController(
-            rootView: PopoverView(
-                onOpenWindow: { [weak self] in self?.openWindow() },
-                onScan: { [weak self] in
-                    self?.openWindow()
-                    EngineStore.shared.startDiskScan()
-                })
-        )
-
-        // Dev builds open the window on launch: on a notched MacBook with a full menu bar
-        // the status item can be pushed under the notch and become unreachable, and there
-        // would then be no way to see the UI at all. Gate this behind a setting at Phase 4.
+        // A windowed app opens its window on launch.
         openWindow()
     }
 
@@ -223,29 +203,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func navigateBack() { store.goBack() }
     @objc private func navigateForward() { store.goForward() }
 
-    /// Severity glyph always; the worst finding's first words too, when Settings asks.
-    func updateStatusTitle() {
-        guard let b = statusItem?.button else { return }
-        let worst = store.worst
-        b.image = NSImage(systemSymbolName: worst?.severity.symbol ?? "gauge.with.dots.needle.33percent",
-                          accessibilityDescription: "Performac")
-        b.image?.isTemplate = true
-        b.title = store.showFindingInMenuBar ? worst.map { shortHeadline($0.headline) } ?? "" : ""
-        b.toolTip = worst?.headline ?? "Performac — nothing worth doing"
-    }
-
-    /// Closing the window retreats to the menu bar rather than quitting: the sampler must
-    /// keep running, and a background agent has no business holding a Dock tile. Reopening
-    /// from the menu bar or the pinned icon promotes it back to a regular app.
-    ///
-    /// A pinned Dock icon stays visible either way — what disappears is the running
-    /// indicator and the Cmd-Tab entry, which is correct for something with no window.
-    func windowWillClose(_ notification: Notification) {
-        guard (notification.object as? NSWindow) === window else { return }
-        DispatchQueue.main.async { NSApp.setActivationPolicy(.accessory) }
-    }
-
-    /// Never quit just because the window closed. The engine is the app.
+    /// Never quit just because the window closed. The engine is the app — the sampler must
+    /// keep running so history keeps accruing, and the Dock icon is the way back in.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     /// Remembered so Restore Size can put it back where it was.
@@ -279,56 +238,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         preFillFrame = nil
     }
 
-    /// Menu bar space is scarce: keep the first few words, never the whole sentence.
-    private func shortHeadline(_ h: String) -> String {
-        let words = h.split(separator: " ").prefix(4).joined(separator: " ")
-        return words.count > 26 ? String(words.prefix(26)) + "…" : words
-    }
-
-    /// The title states the most severe finding, or stays a bare glyph when all is quiet.
-    private func configureStatusButton() {
-        guard let b = statusItem.button else { return }
-        b.image = NSImage(systemSymbolName: "gauge.with.dots.needle.33percent",
-                          accessibilityDescription: "Performac")
-        b.image?.isTemplate = true
-        b.imagePosition = .imageLeading
-        b.font = .systemFont(ofSize: 12, weight: .medium)
-        b.title = ""
-        b.toolTip = "Performac — nothing worth doing"
-        b.target = self
-        b.action = #selector(togglePopover)
-        // live observation: severity icon + worst-finding title, quiet → bare glyph
-        Task { [weak self, store] in
-            for await _ in store.$live.values {
-                guard let self else { return }
-                await MainActor.run { self.updateStatusTitle() }
-            }
-        }
-        // `worst` falls back to digest when live is empty, so a digest-only change
-        // must refresh the status item too.
-        Task { [weak self, store] in
-            for await _ in store.$digest.values {
-                guard let self else { return }
-                await MainActor.run { self.updateStatusTitle() }
-            }
-        }
-    }
-
-    @objc private func togglePopover() {
-        guard let b = statusItem.button else { return }
-        if popover.isShown { popover.performClose(nil) }
-        else {
-            popover.show(relativeTo: b.bounds, of: b, preferredEdge: .minY)
-            popover.contentViewController?.view.window?.makeKey()
-        }
-    }
-
     func openWindow() {
-        popover.performClose(nil)
-        if NSApp.activationPolicy() != .regular {
-            NSApp.setActivationPolicy(.regular)
-            installMainMenu()          // the menu bar is dropped when going accessory
-        }
         if let w = window { w.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return }
         let w = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),

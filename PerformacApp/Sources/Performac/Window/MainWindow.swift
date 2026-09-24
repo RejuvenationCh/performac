@@ -92,14 +92,9 @@ struct MainWindow: View {
                 case .settings: SettingsView(
                     config: store.config,
                     fdaGranted: store.fdaGranted,
-                    showFindingInMenuBar: store.showFindingInMenuBar,
                     databaseSummary: store.databaseSummary,
                     ignored: store.ignoredProcesses,
                     onUnignore: { store.unignoreProcess($0) },
-                    onShowFindingInMenuBar: {
-                        store.setShowFindingInMenuBar($0)
-                        (NSApp.delegate as? AppDelegate)?.updateStatusTitle()
-                    },
                     onSave: { key, value in _ = store.saveSetting(key, value) })
                 }
             }

@@ -145,10 +145,6 @@ enum Fmt {
         return String(format: "%.0f KB", locale: en, Double(b) / 1_000)
     }
 
-    /// Bytes from a GiB figure. `statfs` reports in blocks, so every capacity in the app
-    /// arrives as GiB while `bytes` prints decimal — mixing the two had the Dashboard and the
-    /// Disk toolbar disagreeing by 7.4% about the same free space.
-    static func gib(_ gib: Double) -> String { bytes(Int64(gib * 1_073_741_824)) }
     /// Shared, not per call: allocating a NumberFormatter each time measured ~29x slower
     /// (51.5 ms vs 1.8 ms per 5000 calls), and this runs once per row per redraw.
     private static let counter: NumberFormatter = {

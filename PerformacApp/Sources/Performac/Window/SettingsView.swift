@@ -12,11 +12,9 @@ import ServiceManagement
 struct SettingsView: View {
     let config: Config
     var fdaGranted: Bool = false
-    var showFindingInMenuBar: Bool = false
     let databaseSummary: String
     var ignored: [String] = []
     var onUnignore: (String) -> Void = { _ in }
-    var onShowFindingInMenuBar: (Bool) -> Void = { _ in }
     var onSave: (String, JSONValue) -> Void = { _, _ in }
 
     @State private var appearance = Appearance.current
@@ -35,19 +33,15 @@ struct SettingsView: View {
     @State private var historyDays: Int
 
     init(config: Config = .defaults, fdaGranted: Bool = false,
-         showFindingInMenuBar: Bool = false,
          databaseSummary: String = "not measured",
          ignored: [String] = [],
          onUnignore: @escaping (String) -> Void = { _ in },
-         onShowFindingInMenuBar: @escaping (Bool) -> Void = { _ in },
          onSave: @escaping (String, JSONValue) -> Void = { _, _ in }) {
         self.config = config
         self.fdaGranted = fdaGranted
-        self.showFindingInMenuBar = showFindingInMenuBar
         self.databaseSummary = databaseSummary
         self.ignored = ignored
         self.onUnignore = onUnignore
-        self.onShowFindingInMenuBar = onShowFindingInMenuBar
         self.onSave = onSave
         _staleDays = State(initialValue: config.cacheRules.staleDays)
         _weeksLeft = State(initialValue: config.storage.warnWeeksLeft)
@@ -100,17 +94,6 @@ struct SettingsView: View {
                         if let launchError {
                             Note(launchError)
                         }
-                        Divider().overlay(PC.hairline)
-                        // There is deliberately no "Show in menu bar" switch. The status item
-                        // is the app's only persistent way back in once the window is closed,
-                        // and a notched display can already hide it (see AppDelegate) — a
-                        // toggle that can orphan the running app is not a preference.
-                        Row("Show the worst finding in the menu bar") {
-                            Toggle("", isOn: Binding(get: { showFindingInMenuBar },
-                                                     set: onShowFindingInMenuBar))
-                                .labelsHidden()
-                        }
-                        Note("Off, the menu bar shows only the icon, which takes the finding's severity colour.")
                     }
 
                     SettingsGroup(header: "Thresholds") {

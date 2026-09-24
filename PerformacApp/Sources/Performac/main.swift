@@ -1,5 +1,5 @@
-// main.swift — CLI scan mode (the Phase 2 go/no-go measurement) and the menu bar app.
-// No arguments: NSApplication bootstrap — Dock icon plus a menu bar item.
+// main.swift — CLI scan mode (the Phase 2 go/no-go measurement) and the windowed app.
+// No arguments: NSApplication bootstrap — a regular app with a Dock icon.
 // `Performac scan <path>`: headless scan with timings (Phase 2 prototype measurement).
 import AppKit
 import Foundation
@@ -101,6 +101,7 @@ let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
 // A regular app, not .accessory: it is pinned to the Dock, so it needs a Dock icon with a
-// running indicator and a Cmd-Tab entry. The menu bar item stays — an app can have both.
+// running indicator and a Cmd-Tab entry. Stays regular even after the window closes — the
+// Dock icon is the way back in.
 app.setActivationPolicy(.regular)
 app.run()

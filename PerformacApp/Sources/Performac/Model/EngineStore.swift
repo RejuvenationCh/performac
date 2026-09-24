@@ -13,7 +13,6 @@ import AppKit
 final class EngineStore: ObservableObject {
     static let shared = EngineStore()
 
-    @Published var live: [Finding] = []
     @Published var digest: [Finding] = []
     /// Which screen the window shows. Here rather than in the view so a card's link-out can
     /// navigate to Clean, and so closing the window does not reset the choice.
@@ -184,19 +183,6 @@ final class EngineStore: ObservableObject {
         startDiskScan()
     }
 
-    // MARK: worst finding for the menu bar (red > amber > info; empty → quiet)
-
-    /// Searches `live` first, then falls back to `digest` — the same fallback the popover
-    /// already had. Without it the menu bar showed the neutral gauge and a tooltip reading
-    /// "nothing worth doing" while the popover it opened listed amber cards.
-    var worst: Finding? { Self.mostSevere(live) ?? Self.mostSevere(digest) }
-
-    private static func mostSevere(_ findings: [Finding]) -> Finding? {
-        findings.first { $0.severity == .red }
-            ?? findings.first { $0.severity == .amber }
-            ?? findings.first { $0.severity == .info }
-    }
-
     /// Perform a card's one link-out. Never fixes anything: it reveals, or it navigates.
     func openLink(_ link: FindingLink) {
         switch link {
@@ -214,7 +200,6 @@ final class EngineStore: ObservableObject {
     func refreshFromDatabase() {
         let rows = readDB.prepare("SELECT id, kind, severity, headline, why, detail, link_kind, link_target, updated FROM findings ORDER BY updated DESC").all()
         var findings: [Finding] = []
-        var kinds: [String] = []
         for row in rows {
             let severity = row["severity"]?.stringVal ?? "info"
             // The target comes along now. Reading only the kind is what left every card with
@@ -236,11 +221,7 @@ final class EngineStore: ObservableObject {
                 why: row["why"]?.stringVal ?? "",
                 link: link,
                 quitTarget: quitTarget))
-            kinds.append(kind)
         }
-        // v1's split: live = time-sensitive kinds, digest = everything
-        let liveKinds: Set<String> = ["drive", "thermal", "backup"]
-        live = zip(findings, kinds).filter { liveKinds.contains($0.1) }.map { $0.0 }
         digest = findings
         refreshCacheEntries()
         refreshDupGroups()
@@ -823,20 +804,6 @@ final class EngineStore: ObservableObject {
         // offered only when there is more than one thing to combine
         if out.count > 1 { out.insert(("All drives", Self.allDrives), at: 0) }
         return out
-    }
-
-    /// Whether the status item prints the worst finding beside its glyph.
-    ///
-    /// This was a one-case `MenuBarItem` enum with `CaseIterable`, a `label` that ignored the
-    /// case and an empty `defaults` — the shape of a list that never got a second entry, since
-    /// the CPU and memory readouts went to Vorssaint. It is one switch, so it is one Bool.
-    var showFindingInMenuBar: Bool {
-        getSetting(db, "menuBarItems")?.objectVal?["finding"]?.boolVal ?? false
-    }
-
-    func setShowFindingInMenuBar(_ on: Bool) {
-        setSetting(db, "menuBarItems", JSONValue.from(["finding": on]))
-        objectWillChange.send()
     }
 
     func setDiskViewMode(_ m: DiskViewMode) {

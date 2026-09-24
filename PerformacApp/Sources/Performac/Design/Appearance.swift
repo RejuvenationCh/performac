@@ -35,14 +35,7 @@ enum Appearance: String, CaseIterable, Identifiable, Sendable {
     @MainActor static func apply(_ a: Appearance) {
         UserDefaults.standard.set(a.rawValue, forKey: key)
         NSApp.appearance = a.nsAppearance
-        // The menu bar is the system's, not the app's. Forcing the app dark while the system
-        // is light would flip the template glyph to white on a white menu bar, so the status
-        // button is explicitly left inheriting from the menu bar it sits in.
-        onApply?()
     }
-
-    /// Set by AppDelegate to re-pin the status item after an appearance change.
-    @MainActor static var onApply: (() -> Void)?
 
     @MainActor static func applyStored() { apply(current) }
 }
