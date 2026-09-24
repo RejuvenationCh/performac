@@ -45,9 +45,18 @@ rather than shipping a hardcoded blue. Severity uses the system semantic colours
 `.systemOrange` (warning), `.systemRed` (critical), `.systemGreen` (the "nothing wrong" seal).
 
 Colour carries exactly two jobs: **severity** on cards and badges, and **file-type identity**
-in the treemap and its legend (video · image · cache/app data · document · other/system —
-`FileKind.color`, a fixed categorical palette, deliberately excluded from this pass). Nothing
-else is coloured. No gradients, no coloured shadows, no gradient text.
+in the treemap and its legend (video · image · audio · cache/app data · document ·
+other/system — `FileKind.color`, a fixed categorical palette, deliberately excluded from this
+pass). Nothing else is coloured. No gradients, no coloured shadows, no gradient text.
+
+`FileKind` itself (`Core/FileKind.swift`) is measured, not guessed: a file is classified by
+its lowercased extension, or by `.cache` when its path runs through `Library/Caches` or a
+`Cache`/`Caches` directory — never by folder name. The original heuristic read the enclosing
+folder's name for keywords like "movie" or "photo", which matched none of this user's
+project-shorthand folders (`UC`, `Render`, `ALP Juna`, ...) and put everything in "Other /
+System" regardless of what it actually held. A directory's colour is whichever kind holds the
+most bytes beneath it, tallied once during the scan; a tie, or a directory with nothing
+classifiable, is `.other` rather than an arbitrary pick.
 
 ## Type
 

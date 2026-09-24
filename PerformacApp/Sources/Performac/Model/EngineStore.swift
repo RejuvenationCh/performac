@@ -881,7 +881,7 @@ final class EngineStore: ObservableObject {
         // as wildcards, and GLOB has the same problem with [ and *.
         let wipe = db.prepare("DELETE FROM scan_entries WHERE parent = ? OR substr(parent, 1, ?) = ?")
         let wipeRoot = db.prepare("DELETE FROM scan_entries WHERE parent = ? AND name = ?")
-        let ins = db.prepare("INSERT INTO scan_entries(parent,name,items,bytes,is_dir,mtime) VALUES(?,?,?,?,?,?)")
+        let ins = db.prepare("INSERT INTO scan_entries(parent,name,items,bytes,is_dir,mtime,kind) VALUES(?,?,?,?,?,?,?)")
         let existing = db.prepare("SELECT count(*) c FROM scan_entries WHERE parent = ? OR substr(parent, 1, ?) = ?")
         var written: [String] = []
 
@@ -900,7 +900,7 @@ final class EngineStore: ObservableObject {
             for e in sum.entries {
                 ins.run([.text(e.parent), .text(e.name),
                          .int(Int64(e.isDirectory ? e.files : 0)), .int(e.bytes),
-                         .int(e.isDirectory ? 1 : 0), .int(e.mtime)])
+                         .int(e.isDirectory ? 1 : 0), .int(e.mtime), .text(e.kind.rawValue)])
             }
             // One row per drive directly under "/", written for every scan and not only a
             // combined one — that is what lets "All drives" show Home and the T7 together
@@ -909,9 +909,12 @@ final class EngineStore: ObservableObject {
             if !name.isEmpty {
                 wipeRoot.run([.text(Self.allDrives), .text(name)])
                 if !sum.entries.isEmpty {
+                    // The root itself is one of sum.entries (its dominant kind already rolled
+                    // up the whole tree) — reuse it rather than re-deriving from scratch.
+                    let rootKind = sum.entries.first { $0.path == sum.root }?.kind ?? .other
                     ins.run([.text(Self.allDrives), .text(name), .int(Int64(sum.files)),
                              .int(sum.bytes), .int(1),
-                             .int(sum.entries.map(\.mtime).max() ?? 0)])
+                             .int(sum.entries.map(\.mtime).max() ?? 0), .text(rootKind.rawValue)])
                 }
             }
             written.append(sum.root)
@@ -922,18 +925,26 @@ final class EngineStore: ObservableObject {
 
     /// Reads from the table, so a scan from last week browses exactly like a fresh one.
     func childrenOf(_ path: String) -> [SizeEntry] {
-        readDB.prepare("SELECT name, items, bytes, is_dir, mtime FROM scan_entries WHERE parent = ? ORDER BY bytes DESC")
+        readDB.prepare("SELECT name, items, bytes, is_dir, mtime, kind FROM scan_entries WHERE parent = ? ORDER BY bytes DESC")
             .all([.text(path)])
             .map { r in
                 let isDir = (r["is_dir"]?.intVal ?? 1) == 1
                 let name = r["name"]?.stringVal ?? ""
+                let stored = r["kind"]?.stringVal ?? ""
+                // Rows written before the `kind` migration carry ''. A file's kind is cheap
+                // and exact to recompute from its extension, no rescan needed. A directory's
+                // kind genuinely cannot be known without the subtree byte tally the old scan
+                // never recorded, so it falls back to .other rather than inventing one.
+                let kind: FileKind = stored.isEmpty
+                    ? (isDir ? .other : FileKind.forFile(path: (path as NSString).appendingPathComponent(name)))
+                    : (FileKind(rawValue: stored) ?? .other)
                 return SizeEntry(
                     name: name,
                     items: Int(r["items"]?.intVal ?? 0),
                     bytes: r["bytes"]?.intVal ?? 0,
                     label: path == Self.allDrives ? Self.driveLabel(forChild: name) : nil,
                     symbol: isDir ? "folder.fill" : "doc.fill",
-                    kind: Self.fileKind(forPath: (path as NSString).appendingPathComponent(name)),
+                    kind: kind,
                     mtime: r["mtime"]?.intVal ?? 0)
             }
     }
@@ -1098,16 +1109,6 @@ final class EngineStore: ObservableObject {
         let root = (o["root"]?.stringVal ?? scanRoot as String)
         browsePath = (root as NSString).expandingTildeInPath
         diskEntries = childrenOf(browsePath)
-    }
-
-    /// Heuristic file-kind buckets for the treemap legend — folder-name based.
-    static func fileKind(forPath path: String) -> FileKind {
-        let name = (path as NSString).lastPathComponent.lowercased()
-        if name.contains("movie") || name.contains("video") || name.contains("footage") { return .video }
-        if name.contains("picture") || name.contains("photo") { return .image }
-        if name.contains("cache") || name == "library" { return .cache }
-        if name.contains("document") || name.contains("desktop") || name.contains("download") { return .document }
-        return .other
     }
 
     // MARK: Full Disk Access — real state, not a hardcoded pill

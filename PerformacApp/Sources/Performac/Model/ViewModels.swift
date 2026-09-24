@@ -95,19 +95,6 @@ struct SizeEntry: Identifiable, Sendable {
     var mtime: Int64 = 0
 }
 
-enum FileKind: String, CaseIterable, Sendable {
-    case video = "Video", image = "Image", cache = "Cache/App Data", document = "Document", other = "Other / System"
-    var color: Color {
-        switch self {
-        case .video: Color(red: 0.72, green: 0.71, blue: 0.94)
-        case .image: Color(red: 0.55, green: 0.80, blue: 0.66)
-        case .cache: Color(red: 0.96, green: 0.83, blue: 0.58)
-        case .document: Color(red: 0.62, green: 0.78, blue: 0.94)
-        case .other: Color(red: 0.80, green: 0.82, blue: 0.86)
-        }
-    }
-}
-
 struct CacheEntry: Identifiable, Sendable {
     let id = UUID()
     var name: String, bytes: Int64, age: String

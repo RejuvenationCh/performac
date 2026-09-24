@@ -64,9 +64,12 @@ public struct ScanEntry: Sendable {
     /// Newest modification time beneath this entry (or its own, for a file). Epoch ms,
     /// 0 when unknown — the column sorts unknowns last rather than pretending they are 1970.
     public let mtime: Int64
-    public init(path: String, files: Int, bytes: Int64, isDirectory: Bool, mtime: Int64 = 0) {
+    /// A file's own kind, or a directory's dominant kind by bytes (see `KindTally.dominant`).
+    public let kind: FileKind
+    public init(path: String, files: Int, bytes: Int64, isDirectory: Bool, mtime: Int64 = 0,
+                kind: FileKind = .other) {
         self.path = path; self.files = files; self.bytes = bytes
-        self.isDirectory = isDirectory; self.mtime = mtime
+        self.isDirectory = isDirectory; self.mtime = mtime; self.kind = kind
     }
     public var parent: String { (path as NSString).deletingLastPathComponent }
     public var name: String { (path as NSString).lastPathComponent }
@@ -169,6 +172,9 @@ public struct DiskScanner: Sendable {
         }
         let start = Date()
         var totals: [String: (files: Int, bytes: Int64)] = [:]   // per-directory, by full path
+        // Per-directory byte tally by kind, keyed the same as `totals` and rolled up the same
+        // way — one FileKind classification per item, no second walk.
+        var kindTotals: [String: KindTally] = [:]
         var filesScanned = 0
         var bytes: Int64 = 0
         var lastPath = root.path
@@ -191,7 +197,7 @@ public struct DiskScanner: Sendable {
                 slices.append(Array(batch[i ..< min(i + sliceLen, batch.count)]))
                 i += sliceLen
             }
-            var increments: [(String, String, Int64, Int64)] = []
+            var increments: [(String, String, Int64, Int64, FileKind)] = []
             let lock = NSLock()
             DispatchQueue.concurrentPerform(iterations: slices.count) { idx in
                 let r = statSlice(slices[idx])
@@ -199,15 +205,16 @@ public struct DiskScanner: Sendable {
                 increments.append(contentsOf: r)
                 lock.unlock()
             }
-            for (dir, filePath, b, mt) in increments {
+            for (dir, filePath, b, mt, kind) in increments {
                 let cur = totals[dir] ?? (0, 0)
                 totals[dir] = (cur.files + 1, cur.bytes + b)
                 filesScanned += 1
                 bytes += b
                 newest[dir] = max(newest[dir] ?? 0, mt)      // folder date = newest thing in it
+                kindTotals[dir, default: KindTally()].add(kind, b)
                 if b >= largeFileMin {
                     largeFiles.append(ScanEntry(path: filePath, files: 0, bytes: b,
-                                                isDirectory: false, mtime: mt))
+                                                isDirectory: false, mtime: mt, kind: kind))
                 }
             }
             emitProgress(force: false)
@@ -271,9 +278,19 @@ public struct DiskScanner: Sendable {
             guard parent != p, let t = rolledMtime[p] else { continue }
             rolledMtime[parent] = max(rolledMtime[parent] ?? 0, t)
         }
+        // Same deepest-first rollup as bytes/mtime above, so a directory's kind reflects
+        // everything beneath it, not just what it directly contains.
+        var rolledKind = kindTotals
+        for p in paths {
+            let parent = URL(fileURLWithPath: p).deletingLastPathComponent().path
+            guard parent != p, let t = rolledKind[p], var pt = rolledKind[parent] else { continue }
+            pt.merge(t)
+            rolledKind[parent] = pt
+        }
         var entries: [ScanEntry] = rolled.map {
             ScanEntry(path: $0.key, files: $0.value.files, bytes: $0.value.bytes,
-                      isDirectory: true, mtime: rolledMtime[$0.key] ?? 0)
+                      isDirectory: true, mtime: rolledMtime[$0.key] ?? 0,
+                      kind: rolledKind[$0.key]?.dominant ?? .other)
         }
         entries.append(contentsOf: largeFiles)
 
@@ -289,9 +306,9 @@ public struct DiskScanner: Sendable {
     }
 
     /// Stat one slice of a batch; returns per-parent-dir increments.
-    /// (parent directory, file path, allocated size)
-    private func statSlice(_ slice: [URL]) -> [(String, String, Int64, Int64)] {
-        var out: [(String, String, Int64, Int64)] = []
+    /// (parent directory, file path, allocated size, mtime, kind)
+    private func statSlice(_ slice: [URL]) -> [(String, String, Int64, Int64, FileKind)] {
+        var out: [(String, String, Int64, Int64, FileKind)] = []
         out.reserveCapacity(slice.count)
         for url in slice {
             guard let vals = try? url.resourceValues(forKeys: [
@@ -300,7 +317,8 @@ public struct DiskScanner: Sendable {
             if vals.isSymbolicLink == true { continue }   // never count or follow links
             let size = Int64(vals.totalFileAllocatedSize ?? 0)
             let mt = Int64((vals.contentModificationDate?.timeIntervalSince1970 ?? 0) * 1000)
-            out.append((url.deletingLastPathComponent().path, url.path, size, mt))
+            let kind = FileKind.forFile(path: url.path)
+            out.append((url.deletingLastPathComponent().path, url.path, size, mt, kind))
         }
         return out
     }

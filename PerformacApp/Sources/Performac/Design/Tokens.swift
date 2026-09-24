@@ -113,6 +113,24 @@ extension View {
 //   * never stack glass on glass — nested layers read as muddy grey, not depth
 //   * group adjacent glass in a GlassEffectContainer so the shapes blend rather than
 //     each rendering its own separate refraction
+// MARK: - FileKind colour
+//
+// The taxonomy itself lives in Core/FileKind.swift (engine code, no SwiftUI dependency);
+// this is presentation only. Five muted pastels plus audio, all light enough that the
+// treemap's black tile labels (DESIGN.md) stay legible on every one of them.
+extension FileKind {
+    var color: Color {
+        switch self {
+        case .video: Color(red: 0.72, green: 0.71, blue: 0.94)
+        case .image: Color(red: 0.55, green: 0.80, blue: 0.66)
+        case .audio: Color(red: 0.94, green: 0.70, blue: 0.75)
+        case .cache: Color(red: 0.96, green: 0.83, blue: 0.58)
+        case .document: Color(red: 0.62, green: 0.78, blue: 0.94)
+        case .other: Color(red: 0.80, green: 0.82, blue: 0.86)
+        }
+    }
+}
+
 extension View {
     /// Chrome that floats over content: rails, headers, footers, bars.
     func pcGlassChrome() -> some View {

@@ -114,6 +114,7 @@ final class DB: @unchecked Sendable {
     private func migrate() {
         let additions: [(table: String, column: String, decl: String)] = [
             ("scan_entries", "mtime", "INTEGER NOT NULL DEFAULT 0"),
+            ("scan_entries", "kind", "TEXT NOT NULL DEFAULT ''"),
         ]
         for a in additions {
             var exists = false
