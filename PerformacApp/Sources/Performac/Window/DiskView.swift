@@ -37,8 +37,8 @@ struct DiskView: View {
     var browsePath: String = ""
     var onReveal: (String) -> Void = { _ in }
     var onTrashPath: (String) -> Void = { _ in }
-    var freeGb: Double = 0
-    var totalGb: Double = 0
+    var freeBytes: Int64 = 0
+    var totalBytes: Int64 = 0
     @State private var infoTarget: RowInfo? = nil
     @State private var trashTarget: RowInfo? = nil
     @State private var sort = SortState()
@@ -82,7 +82,7 @@ struct DiskView: View {
                 }
                 .pickerStyle(.segmented).labelsHidden()
                 .controlSize(.regular).frame(width: 132)
-                StorageBar(freeBytes: Int64(freeGb * 1_073_741_824), totalBytes: Int64(totalGb * 1_073_741_824))
+                StorageBar(freeBytes: freeBytes, totalBytes: totalBytes)
             }
             .padding(.horizontal, PC.stack).padding(.vertical, PC.s2 + 2)
             .pcGlassChrome().pcHairline(.bottom)
@@ -130,17 +130,22 @@ struct DiskView: View {
 
             HSplitView {
                 VStack(spacing: 0) {
-                    if mode == .outline || mode == .list {
+                    // Compact gets the two headers its rows have columns for. Without any
+                    // header the sort silently persisted there with no way to change it.
                     HStack(spacing: PC.gutter) {
                         SortHeader(title: "NAME", key: .name, state: $sort)
-                        SortHeader(title: "MODIFIED", key: .date, state: $sort, width: 84, alignment: .trailing)
-                        SortHeader(title: "ITEMS", key: .items, state: $sort, width: 64, alignment: .trailing)
-                        SortHeader(title: "SIZE", key: .size, state: $sort, width: 72, alignment: .trailing)
-                        Text("PROPORTION").font(.pcLabel).foregroundStyle(PC.meta).frame(width: 90, alignment: .leading)
+                        if mode != .compact {
+                            SortHeader(title: "MODIFIED", key: .date, state: $sort, width: 84, alignment: .trailing)
+                            SortHeader(title: "ITEMS", key: .items, state: $sort, width: 64, alignment: .trailing)
+                        }
+                        SortHeader(title: "SIZE", key: .size, state: $sort,
+                                   width: mode == .compact ? 90 : 72, alignment: .trailing)
+                        if mode != .compact {
+                            Text("PROPORTION").font(.pcLabel).foregroundStyle(PC.meta).frame(width: 90, alignment: .leading)
+                        }
                     }
                     .padding(.horizontal, PC.gutter).padding(.vertical, PC.s2)
                     .background(PC.canvas).pcHairline(.bottom)
-                    }
 
                     switch mode {
                     case .outline:
@@ -151,7 +156,10 @@ struct DiskView: View {
                         ScrollView {
                             LazyVStack(spacing: 0) {
                                 ForEach(sorted) { e in
-                                    SizeRow(entry: e, maxBytes: maxBytes, onOpen: { onOpen(e.name) })
+                                    SizeRow(entry: e, maxBytes: maxBytes,
+                                            onOpen: { onOpen(e.name) },
+                                            onReveal: { onReveal(rowInfo(e).path) },
+                                            onTrash: { trashTarget = rowInfo(e) })
                                         .rowActions(rowInfo(e), onOpen: { onOpen(e.name) },
                                                     infoTarget: $infoTarget, trashTarget: $trashTarget)
                                     Divider().overlay(PC.hairline)
@@ -215,7 +223,8 @@ struct DiskView: View {
                     } else {
                         BubbleView(entries: sorted, onOpen: onOpen).padding(PC.s2)
                     }
-                    TreeMapLegend().padding(.horizontal, PC.gutter).padding(.bottom, PC.gutter)
+                    TreeMapLegend(entries: sorted)
+                        .padding(.horizontal, PC.gutter).padding(.bottom, PC.gutter)
                 }
                 .frame(minWidth: 200, maxWidth: .infinity)
                 .background(PC.canvas)
@@ -233,18 +242,30 @@ struct DiskView: View {
 
 /// Persisted results are shown so reopening the view is not a blank screen — but they are
 /// a snapshot, and the app must never let a stale number pass as a current one.
+///
+/// It only *warns* once the snapshot is actually old. It used to paint amber — the warning
+/// colour — the instant any scan existed, so two seconds after a clean scan you got a caution
+/// strip reading "Last scan: 2s ago", which teaches you to ignore the colour.
 struct StaleBanner: View {
     let at: Int64
+    private static let staleAfter: TimeInterval = 86_400
+
+    private var date: Date { Date(timeIntervalSince1970: Double(at) / 1000) }
+    private var stale: Bool { Date().timeIntervalSince(date) > Self.staleAfter }
+
     var body: some View {
         HStack(spacing: PC.s2) {
             Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 12)).foregroundStyle(PC.amber)
-            TickingAgo(date: Date(timeIntervalSince1970: Double(at) / 1000), prefix: "Last scan: ")
+                .font(.system(size: 12)).foregroundStyle(stale ? PC.amber : PC.meta)
+            TickingAgo(date: date, prefix: "Last scan: ")
                 .font(.pcSmall).foregroundStyle(PC.ink2).monospacedDigit()
+            if stale {
+                Text("— rescan for current numbers").font(.pcSmall).foregroundStyle(PC.amber)
+            }
             Spacer()
         }
         .padding(.horizontal, PC.stack).padding(.vertical, PC.s2)
-        .background(PC.amberSoft)
+        .background(stale ? PC.amberSoft : PC.canvas)
         .pcHairline(.bottom)
     }
 }
@@ -317,21 +338,6 @@ struct CrumbBar: View {
             Spacer()
         }
         .padding(.trailing, PC.stack).padding(.vertical, PC.s2)
-    }
-}
-
-struct Breadcrumb: View {
-    let parts: [String]
-    var body: some View {
-        HStack(spacing: PC.s1) {
-            Image(systemName: "internaldrive").font(.system(size: 12)).foregroundStyle(PC.meta)
-            ForEach(Array(parts.enumerated()), id: \.offset) { i, p in
-                if i > 0 { Image(systemName: "chevron.right").font(.system(size: 8)).foregroundStyle(PC.meta) }
-                Text(p).font(.pcBody)
-                    .foregroundStyle(i == parts.count - 1 ? PC.ink : PC.ink2)
-                    .fontWeight(i == parts.count - 1 ? .semibold : .regular)
-            }
-        }
     }
 }
 
@@ -449,17 +455,26 @@ func squarify(_ values: [Double], _ bounds: CGRect) -> [CGRect] {
     return out
 }
 
+/// Only the kinds actually drawn. Listing all five regardless meant the legend described
+/// colours that were not on screen, which is noise dressed up as a key.
 struct TreeMapLegend: View {
+    let entries: [SizeEntry]
+    private var kinds: [FileKind] {
+        let present = Set(entries.map(\.kind))
+        return FileKind.allCases.filter(present.contains)
+    }
     var body: some View {
-        VStack(alignment: .leading, spacing: PC.s1) {
-            SectionHeader(text: "File types")
-            ForEach(FileKind.allCases, id: \.self) { k in
-                HStack(spacing: 6) {
-                    RoundedRectangle(cornerRadius: 2).fill(k.color).frame(width: 9, height: 9)
-                    Text(k.rawValue).font(.pcSmall).foregroundStyle(PC.ink2)
+        if !kinds.isEmpty {
+            VStack(alignment: .leading, spacing: PC.s1) {
+                SectionHeader(text: "File types")
+                ForEach(kinds, id: \.self) { k in
+                    HStack(spacing: 6) {
+                        RoundedRectangle(cornerRadius: 2).fill(k.color).frame(width: 9, height: 9)
+                        Text(k.rawValue).font(.pcSmall).foregroundStyle(PC.ink2)
+                    }
                 }
             }
+            .padding(PC.s2 + 2).frame(maxWidth: .infinity, alignment: .leading).pcCard()
         }
-        .padding(PC.s2 + 2).frame(maxWidth: .infinity, alignment: .leading).pcCard()
     }
 }

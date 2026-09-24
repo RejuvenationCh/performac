@@ -1,73 +1,73 @@
 // CleanView.swift — replaces Purge. Allowlisted caches only, Trash-only, every row explains why.
+//
+// The list is NOT copied into @State. It used to be: `_caches = State(initialValue: caches)`
+// seeds once and then ignores the parameter forever, so every later value of
+// `store.cacheEntries` was invisible here. That is what made trashing look broken — the store
+// dropped the rows immediately (EngineStore.afterTrash) and this view kept rendering its
+// original snapshot until you navigated away and back. Only the selection is view-local.
 import SwiftUI
 import AppKit
 
 struct CleanView: View {
-    @State private var caches: [CacheEntry]
-    @State private var confirming = false
-    /// Anchor for shift-click range selection.
-    @State private var lastToggled: Int? = nil
-    @State private var sort = SortState()
-
-    private let onTrash: ([CacheEntry]) -> Void
+    var caches: [CacheEntry] = Sample.caches
     var busy: Bool = false
     var progress: String = ""
     var summary: String? = nil
     var breakdowns: [String: CacheBreakdown] = [:]
     var inspectingPaths: Set<String> = []
     var onInspect: (CacheEntry) -> Void = { _ in }
+    var onTrash: ([CacheEntry]) -> Void = { _ in }
 
-    init(caches: [CacheEntry] = Sample.caches, busy: Bool = false, progress: String = "",
-         summary: String? = nil,
-         breakdowns: [String: CacheBreakdown] = [:],
-         inspectingPaths: Set<String> = [],
-         onInspect: @escaping (CacheEntry) -> Void = { _ in },
-         onTrash: @escaping ([CacheEntry]) -> Void = { _ in }) {
-        self.busy = busy; self.progress = progress; self.summary = summary
-        self.breakdowns = breakdowns; self.inspectingPaths = inspectingPaths; self.onInspect = onInspect
-        _caches = State(initialValue: caches)
-        self.onTrash = onTrash
-    }
-    /// Indices into `caches`, in the order the sort asks for.
-    private var displayOrder: [Int] {
-        let wanted = caches.sorted(by: sort).map(\.id)
-        var index: [UUID: Int] = [:]
-        for (i, c) in caches.enumerated() { index[c.id] = i }
-        return wanted.compactMap { index[$0] }
-    }
+    /// Selected paths. A path survives the list being replaced, which an index would not.
+    @State private var selection: Set<String> = []
+    /// Anchor for shift-click range selection.
+    @State private var lastToggled: String? = nil
+    @State private var sort = SortState()
+    @State private var confirming = false
 
-    private var selected: [CacheEntry] { caches.filter { $0.selected && $0.cleanable } }
+    private var displayed: [CacheEntry] { caches.sorted(by: sort) }
+    private var cleanable: [CacheEntry] { caches.filter(\.cleanable) }
+    private var selected: [CacheEntry] {
+        // Derived, so a row the store has removed cannot linger in the total.
+        caches.filter { $0.cleanable && selection.contains($0.path) }
+    }
+    private var selectedBytes: Int64 { selected.reduce(0) { $0 + $1.bytes } }
+    private var allSelected: Bool {
+        !cleanable.isEmpty && cleanable.allSatisfy { selection.contains($0.path) }
+    }
 
     /// Click anywhere on a row to toggle it. Shift-click selects the whole run from the last
     /// row you touched, the way a file list does — clicking twelve checkboxes to clear a
     /// cache list is busywork.
-    private func toggle(_ i: Int, shift: Bool) {
-        guard caches.indices.contains(i), caches[i].cleanable else { return }
-        if shift, let anchor = lastToggled, anchor != i {
-            // walk the DISPLAYED order: a range should be what the user sees between two
-            // rows, not whatever happens to sit between them in the unsorted array.
-            let order = displayOrder
-            guard let a = order.firstIndex(of: anchor), let b = order.firstIndex(of: i) else { return }
-            let target = caches[anchor].selected
-            for k in min(a, b)...max(a, b) where caches[order[k]].cleanable {
-                caches[order[k]].selected = target
+    private func toggle(_ path: String, shift: Bool) {
+        guard let entry = caches.first(where: { $0.path == path }), entry.cleanable else { return }
+        // Walk the DISPLAYED order: a range should be what the user sees between two rows.
+        let order = displayed.filter(\.cleanable).map(\.path)
+        if shift, let anchor = lastToggled, anchor != path,
+           let a = order.firstIndex(of: anchor), let b = order.firstIndex(of: path) {
+            let turningOn = selection.contains(anchor)
+            for p in order[min(a, b)...max(a, b)] {
+                if turningOn { selection.insert(p) } else { selection.remove(p) }
             }
         } else {
-            caches[i].selected.toggle()
-            lastToggled = i
+            if selection.contains(path) { selection.remove(path) } else { selection.insert(path) }
+            lastToggled = path
         }
     }
-    private var selectedBytes: Int64 { selected.reduce(0) { $0 + $1.bytes } }
+
+    private func setAll(_ on: Bool) {
+        if on { selection.formUnion(cleanable.map(\.path)) }
+        else { selection.subtract(cleanable.map(\.path)) }
+    }
 
     var body: some View {
         Page(title: "Clean",
              subtitle: "Caches apps rebuild on their own. Nothing here is deleted — it goes to the Trash.") {
             VStack(spacing: 0) {
                 HStack(spacing: PC.gutter) {
-                    Toggle("", isOn: Binding(
-                        get: { let c = caches.filter(\.cleanable); return !c.isEmpty && c.allSatisfy(\.selected) },
-                        set: { v in for i in caches.indices where caches[i].cleanable { caches[i].selected = v } }))
+                    Toggle("", isOn: Binding(get: { allSelected }, set: setAll))
                         .labelsHidden().toggleStyle(.checkbox)
+                        .help(allSelected ? "Deselect all" : "Select every cleanable cache")
                     SortHeader(title: "NAME", key: .name, state: $sort)
                     SortHeader(title: "SIZE", key: .size, state: $sort, width: 70, alignment: .trailing)
                     SortHeader(title: "LAST WRITTEN", key: .date, state: $sort, width: 100, alignment: .trailing)
@@ -78,14 +78,13 @@ struct CleanView: View {
 
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        // Sorted for display, but each row keeps a binding into the real
-                        // array — sorting a list must never scramble which row a click hits.
-                        ForEach(displayOrder, id: \.self) { i in
-                            CacheRow(entry: $caches[i],
-                                     onRowTap: { shift in toggle(i, shift: shift) },
-                                     breakdown: breakdowns[caches[i].path],
-                                     inspecting: inspectingPaths.contains(caches[i].path),
-                                     onInspect: { onInspect(caches[i]) })
+                        ForEach(displayed) { entry in
+                            CacheRow(entry: entry,
+                                     isSelected: selection.contains(entry.path),
+                                     onRowTap: { shift in toggle(entry.path, shift: shift) },
+                                     breakdown: breakdowns[entry.path],
+                                     inspecting: inspectingPaths.contains(entry.path),
+                                     onInspect: { onInspect(entry) })
                             Divider().overlay(PC.hairline)
                         }
                     }
@@ -122,7 +121,9 @@ struct CleanView: View {
                            onCancel: { confirming = false },
                            onConfirm: {
                                confirming = false
+                               let going = Set(selected.map(\.path))
                                onTrash(selected)
+                               selection.subtract(going)
                            })
             }
         }
@@ -130,7 +131,8 @@ struct CleanView: View {
 }
 
 struct CacheRow: View {
-    @Binding var entry: CacheEntry
+    let entry: CacheEntry
+    let isSelected: Bool
     var onRowTap: (Bool) -> Void = { _ in }
     var breakdown: CacheBreakdown? = nil
     var inspecting: Bool = false
@@ -141,7 +143,7 @@ struct CacheRow: View {
         HStack(alignment: .top, spacing: PC.gutter) {
             if entry.cleanable {
                 // the checkbox reflects state; the row is the hit target
-                Toggle("", isOn: $entry.selected).labelsHidden().toggleStyle(.checkbox)
+                Toggle("", isOn: .constant(isSelected)).labelsHidden().toggleStyle(.checkbox)
                     .padding(.top, 1).allowsHitTesting(false)
             } else {
                 // Protected: measured and shown, but the app will not trash it.
@@ -158,10 +160,19 @@ struct CacheRow: View {
                 .frame(width: 70, alignment: .trailing)
             Text(entry.age).font(.pcNum).foregroundStyle(PC.meta)
                 .frame(width: 100, alignment: .trailing)
-            Pill(text: entry.safe ? "Safe to clean" : "Check first",
-                 tint: entry.safe ? PC.green : PC.amber,
-                 soft: entry.safe ? PC.greenSoft : PC.amberSoft)
-                .frame(width: 96, alignment: .leading)
+            // A locked row says "Protected", never "Safe to clean". `safe` and `cleanable` are
+            // independent, so the old unconditional pill could promise a green safe-to-clean
+            // beside a lock icon whose tooltip said the opposite.
+            Group {
+                if entry.cleanable {
+                    Pill(text: entry.safe ? "Safe to clean" : "Check first",
+                         tint: entry.safe ? PC.green : PC.amber,
+                         soft: entry.safe ? PC.greenSoft : PC.amberSoft)
+                } else {
+                    Pill(text: "Protected", tint: PC.meta, soft: PC.chip)
+                }
+            }
+            .frame(width: 96, alignment: .leading)
             Button {
                 expanded.toggle()
                 if expanded { onInspect() }
@@ -174,7 +185,7 @@ struct CacheRow: View {
             .buttonStyle(.plain).help("Where this size comes from")
         }
         .padding(.horizontal, PC.gutter).padding(.vertical, PC.s2 + 1)
-        .background(entry.selected ? PC.fill2 : (hover ? PC.fill1.opacity(0.6) : .clear))
+        .background(isSelected ? PC.fill2 : (hover ? PC.fill1.opacity(0.6) : .clear))
         .contentShape(Rectangle())
         .onTapGesture {
             guard entry.cleanable else { return }
@@ -242,19 +253,26 @@ struct TrashSheet: View {
                 .font(.pcHeadline).foregroundStyle(PC.ink)
                 .padding(.horizontal, 24).padding(.top, 20).padding(.bottom, PC.gutter)
 
-            VStack(spacing: 0) {
-                ForEach(items) { i in
-                    HStack(alignment: .top, spacing: PC.gutter) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(i.name).font(.pcBody).foregroundStyle(PC.ink)
-                            Text(i.path).font(.pcSmall).foregroundStyle(PC.meta).lineLimit(1)
+            // Scrolls, and capped. An unbounded list grew the sheet past the screen once you
+            // selected enough caches, taking Cancel and the confirm button with it.
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(items) { i in
+                        HStack(alignment: .top, spacing: PC.gutter) {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(i.name).font(.pcBody).foregroundStyle(PC.ink)
+                                Text(i.path).font(.pcSmall).foregroundStyle(PC.meta).lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                            Spacer()
+                            Text(Fmt.bytes(i.bytes)).font(.pcNum).foregroundStyle(PC.ink)
                         }
-                        Spacer()
-                        Text(Fmt.bytes(i.bytes)).font(.pcNum).foregroundStyle(PC.ink)
+                        .padding(.horizontal, 24).padding(.vertical, PC.s2)
                     }
-                    .padding(.horizontal, 24).padding(.vertical, PC.s2)
                 }
             }
+            .frame(maxHeight: 260)
+
             HStack {
                 Spacer()
                 Text("\(Fmt.bytes(total)) total").font(.pcTitle).foregroundStyle(PC.ink)

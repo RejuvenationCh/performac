@@ -3,14 +3,48 @@
 // data-source change, not a view rewrite.
 import SwiftUI
 
+/// The engine only ever writes these three. `good` existed for years and was never produced,
+/// so a card could never carry it and the severity ordering silently dropped it.
 enum Severity: String, Sendable {
-    case info, good, amber, red
-    var tint: Color { switch self { case .info: PC.accent; case .good: PC.green; case .amber: PC.amber; case .red: PC.red } }
-    var soft: Color { switch self { case .info: PC.fill1; case .good: PC.greenSoft; case .amber: PC.amberSoft; case .red: PC.redSoft } }
+    case info, amber, red
+    var tint: Color { switch self { case .info: PC.accent; case .amber: PC.amber; case .red: PC.red } }
     var symbol: String {
         switch self {
-        case .info: "info.circle.fill"; case .good: "checkmark.seal.fill"
+        case .info: "info.circle.fill"
         case .amber: "exclamationmark.triangle.fill"; case .red: "exclamationmark.octagon.fill"
+        }
+    }
+}
+
+/// A card's one link-out, carrying its destination rather than just a label.
+///
+/// The engine has always written `link_kind` *and* `link_target` (Rules.swift fills in real
+/// folder paths), but the view only ever read the kind and rendered a dead button. Holding the
+/// target in the case makes a link that cannot act unrepresentable: `reveal` with no path
+/// fails to construct instead of drawing an accent-coloured no-op.
+enum FindingLink: Sendable, Equatable {
+    case reveal(String)
+    case activityMonitor
+    /// `open_purge` in the database. Purge is the app Performac's own cleaner replaces, so this
+    /// goes to the Clean screen rather than launching something the user is removing.
+    case clean
+
+    var label: String {
+        switch self {
+        case .reveal: "Show in Finder"
+        case .activityMonitor: "Open Activity Monitor"
+        case .clean: "Open Clean"
+        }
+    }
+
+    init?(kind: String, target: String?) {
+        switch kind {
+        case "reveal":
+            guard let target, !target.isEmpty else { return nil }
+            self = .reveal(target)
+        case "open_activity_monitor": self = .activityMonitor
+        case "open_purge": self = .clean
+        default: return nil
         }
     }
 }
@@ -20,10 +54,28 @@ struct Finding: Identifiable, Sendable {
     var severity: Severity
     var headline: String
     var why: String
-    var link: String? = nil       // link-out label; at most one, never performs the fix
+    var link: FindingLink? = nil  // at most one, and it never performs the fix
     /// Process this card is about, when it is safe to offer quitting it. Set by the store,
     /// never by the engine — the rules stay advisory and parity with v1 is unaffected.
     var quitTarget: String? = nil
+}
+
+/// Which screen the window is showing. Lives here rather than in the view so a card's
+/// link-out can navigate, and so the choice survives the window being closed and reopened.
+enum Route: String, CaseIterable, Identifiable, Sendable {
+    case dashboard, digest, disk, clean, duplicates, settings
+    var id: String { rawValue }
+    var symbol: String {
+        switch self {
+        case .dashboard: "gauge.with.dots.needle.33percent"
+        case .digest: "text.alignleft"
+        case .disk: "internaldrive"
+        case .clean: "trash"
+        case .duplicates: "doc.on.doc"
+        case .settings: "gearshape"
+        }
+    }
+    var title: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
 }
 
 struct SizeEntry: Identifiable, Sendable {
@@ -80,12 +132,20 @@ enum Fmt {
     // "29.8 GB", never "29,8 GB". ByteCountFormatter has no locale knob, so format directly.
     private static let en = Locale(identifier: "en_US")
     static func bytes(_ b: Int64) -> String {
+        // TB matters here: without it a 2 TB drive read "2000.0 GB".
+        let tb = Double(b) / 1_000_000_000_000
+        if tb >= 1 { return String(format: "%.2f TB", locale: en, tb) }
         let gb = Double(b) / 1_000_000_000
         if gb >= 1 { return String(format: "%.1f GB", locale: en, gb) }
         let mb = Double(b) / 1_000_000
         if mb >= 1 { return String(format: "%.0f MB", locale: en, mb) }
         return String(format: "%.0f KB", locale: en, Double(b) / 1_000)
     }
+
+    /// Bytes from a GiB figure. `statfs` reports in blocks, so every capacity in the app
+    /// arrives as GiB while `bytes` prints decimal — mixing the two had the Dashboard and the
+    /// Disk toolbar disagreeing by 7.4% about the same free space.
+    static func gib(_ gib: Double) -> String { bytes(Int64(gib * 1_073_741_824)) }
     /// Shared, not per call: allocating a NumberFormatter each time measured ~29x slower
     /// (51.5 ms vs 1.8 ms per 5000 calls), and this runs once per row per redraw.
     private static let counter: NumberFormatter = {
@@ -102,7 +162,7 @@ enum Fmt {
     static let findings: [Finding] = [
         .init(severity: .amber, headline: "RobloxPlayer has averaged 99% CPU for 46 minutes",
               why: "That's sustained load, not a spike — quit it from Activity Monitor if you're not using it.",
-              link: "Open Activity Monitor"),
+              link: .activityMonitor),
         .init(severity: .red, headline: "External SSD disconnected and reconnected 2 times today",
               why: "A loose cable shows up as surprise unmount cycles — check it before your next shoot."),
         .init(severity: .info, headline: "Resolve's media cache is 27.7 GB",
@@ -166,16 +226,6 @@ enum RightPanelMode: String, CaseIterable, Sendable {
     case treemap, bubbles
     var label: String { self == .treemap ? "Treemap" : "Bubbles" }
     var symbol: String { self == .treemap ? "square.grid.2x2" : "circle.circle" }
-}
-
-
-/// What the menu bar can display as text. CPU, memory, network and battery readouts went
-/// to Vorssaint, which already shows them; the worst finding is the one only Performac has.
-enum MenuBarItem: String, CaseIterable, Sendable, Identifiable {
-    case finding
-    var id: String { rawValue }
-    var label: String { "Show the worst finding" }
-    static let defaults: [MenuBarItem] = []
 }
 
 

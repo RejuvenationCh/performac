@@ -30,7 +30,8 @@ struct PopoverView: View {
                     } else {
                         ForEach(cards) { f in
                             CoachCardView(finding: f, onQuit: { store.requestQuit($0) },
-                                          onIgnore: { store.ignoreProcess($0) })
+                                          onIgnore: { store.ignoreProcess($0) },
+                                          onLink: openLink)
                         }
                     }
                 }
@@ -48,6 +49,15 @@ struct PopoverView: View {
         }
         .frame(width: 380, height: 520)
         .pcGlassPanel(PC.rXl)
-        .environment(\.colorScheme, .light)
+        // No forced colorScheme here. It used to pin `.light`, which did NOT affect the PC.*
+        // tokens — those resolve off NSAppearance (Tokens.swift) — but did flip SwiftUI's own
+        // materials, glass, progress indicators and button chrome. Under a dark system that
+        // left the popover half light and half dark.
+    }
+
+    /// A card's link, from the menu bar. Navigating needs the window; revealing does not.
+    private func openLink(_ link: FindingLink) {
+        if case .clean = link { onOpenWindow() }
+        store.openLink(link)
     }
 }

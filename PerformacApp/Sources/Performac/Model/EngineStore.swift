@@ -7,6 +7,7 @@
 // this store has nothing yet — a first run with no history renders the quiet state.
 import SwiftUI
 import Foundation
+import AppKit
 
 @MainActor
 final class EngineStore: ObservableObject {
@@ -14,6 +15,9 @@ final class EngineStore: ObservableObject {
 
     @Published var live: [Finding] = []
     @Published var digest: [Finding] = []
+    /// Which screen the window shows. Here rather than in the view so a card's link-out can
+    /// navigate to Clean, and so closing the window does not reset the choice.
+    @Published var route: Route = .dashboard
     @Published var cacheEntries: [CacheEntry] = []
     @Published var dupGroups: [DupGroup] = []
     @Published var dupScanAt: Int64? = nil
@@ -182,10 +186,27 @@ final class EngineStore: ObservableObject {
 
     // MARK: worst finding for the menu bar (red > amber > info; empty → quiet)
 
-    var worst: Finding? {
-        live.first { $0.severity == .red }
-            ?? live.first { $0.severity == .amber }
-            ?? live.first { $0.severity == .info }
+    /// Searches `live` first, then falls back to `digest` — the same fallback the popover
+    /// already had. Without it the menu bar showed the neutral gauge and a tooltip reading
+    /// "nothing worth doing" while the popover it opened listed amber cards.
+    var worst: Finding? { Self.mostSevere(live) ?? Self.mostSevere(digest) }
+
+    private static func mostSevere(_ findings: [Finding]) -> Finding? {
+        findings.first { $0.severity == .red }
+            ?? findings.first { $0.severity == .amber }
+            ?? findings.first { $0.severity == .info }
+    }
+
+    /// Perform a card's one link-out. Never fixes anything: it reveals, or it navigates.
+    func openLink(_ link: FindingLink) {
+        switch link {
+        case .reveal(let path):
+            NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
+        case .activityMonitor:
+            NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Activity Monitor.app"))
+        case .clean:
+            route = .clean
+        }
     }
 
     // MARK: refresh from SQLite (cheap — findings table only)
@@ -196,14 +217,10 @@ final class EngineStore: ObservableObject {
         var kinds: [String] = []
         for row in rows {
             let severity = row["severity"]?.stringVal ?? "info"
-            let linkKind = row["link_kind"]?.stringVal ?? ""
-            let link: String?
-            switch linkKind {
-            case "reveal": link = "Show in Finder"
-            case "open_purge": link = "Open Purge"
-            case "open_activity_monitor": link = "Open Activity Monitor"
-            default: link = nil
-            }
+            // The target comes along now. Reading only the kind is what left every card with
+            // an accent-coloured button that did nothing.
+            let link = FindingLink(kind: row["link_kind"]?.stringVal ?? "",
+                                   target: row["link_target"]?.stringVal)
             let headline = row["headline"]?.stringVal ?? ""
             let kind = row["kind"]?.stringVal ?? ""
             // These cards are about one process, and its name opens the headline. Only offer
@@ -245,7 +262,9 @@ final class EngineStore: ObservableObject {
             guard let id = row["cache_id"]?.stringVal, !seen.contains(id) else { continue }
             seen.insert(id)
             let meta = Rules.cacheMeta(id)
-            let bytes = Int64((row["size_mb"]?.intVal ?? 0)) * 1_000_000
+            // size_mb is MiB — measure() divides by 1_048_576 and CacheDetail multiplies back
+            // by it. Converting with 1_000_000 here under-reported every cache by 4.8%.
+            let bytes = Int64((row["size_mb"]?.intVal ?? 0)) * 1_048_576
             if bytes <= 0 { continue }
             let mtime = row["newest_mtime"]?.isNull == false ? row["newest_mtime"]?.intVal : nil
             let ageDays = mtime.map { Double(now - $0) / Double(Rules.DAY) }
@@ -279,7 +298,7 @@ final class EngineStore: ObservableObject {
                   let paths = try? JSONSerialization.jsonObject(with: data) as? [String]
             else { return nil }
             let name = (paths.first as NSString?)?.lastPathComponent ?? "file"
-            return DupGroup(bytes: (row["size_mb"]?.intVal ?? 0) * 1_000_000, name: name, paths: paths)
+            return DupGroup(bytes: (row["size_mb"]?.intVal ?? 0) * 1_048_576, name: name, paths: paths)
         }
     }
 
@@ -364,9 +383,10 @@ final class EngineStore: ObservableObject {
     /// rather than showing a plausible number.
     struct QuietFacts: Sendable {
         var watchingDays: Int = 0
-        var freeGb: Double = 0
-        var totalGb: Double = 0
-        var largestCacheGb: Double = 0
+        /// Bytes, like every other size in the app. See `spaceBytes(at:)`.
+        var freeBytes: Int64 = 0
+        var totalBytes: Int64 = 0
+        var largestCacheBytes: Int64 = 0
         var drivesQuietDays: Int? = nil     // nil = no drive events ever recorded
         var lastScanAt: Date? = nil
     }
@@ -377,10 +397,10 @@ final class EngineStore: ObservableObject {
         if let lo = readDB.prepare("SELECT MIN(ts) m FROM proc_samples").get()?["m"], !lo.isNull {
             f.watchingDays = max(Int((Double(Date().timeIntervalSince1970 * 1000) - Double(lo.intVal)) / 86_400_000), 0)
         }
-        (f.freeGb, f.totalGb) = bootSpace
+        (f.freeBytes, f.totalBytes) = bootSpaceBytes
         if let mb = readDB.prepare("SELECT MAX(size_mb) m FROM cache_samples WHERE ts = (SELECT MAX(ts) FROM cache_samples)")
             .get()?["m"], !mb.isNull {
-            f.largestCacheGb = Double(mb.intVal) / 1024
+            f.largestCacheBytes = mb.intVal * 1_048_576
         }
         // "steady" = time since the last unexpected mount/unmount, not an invented number
         if let last = readDB.prepare("SELECT MAX(ts) m FROM events WHERE kind IN ('mount','unmount')")
@@ -391,12 +411,17 @@ final class EngineStore: ObservableObject {
         quietFacts = f
     }
 
+    /// Where the database lives. Named so Settings can reveal it rather than offering a
+    /// Reveal button wired to an empty closure.
+    static let databasePath =
+        NSHomeDirectory() + "/Library/Application Support/com.chris.performac.v2/performac.db"
+
     /// Size of the database on disk, for Settings.
     var databaseSummary: String {
         let rows = (readDB.prepare("SELECT COUNT(*) n FROM proc_samples").get()?["n"]?.intVal ?? 0)
             + (readDB.prepare("SELECT COUNT(*) n FROM disk_samples").get()?["n"]?.intVal ?? 0)
             + (readDB.prepare("SELECT COUNT(*) n FROM cache_samples").get()?["n"]?.intVal ?? 0)
-        let path = NSHomeDirectory() + "/Library/Application Support/com.chris.performac.v2/performac.db"
+        let path = Self.databasePath
         var bytes: Int64 = 0
         for suffix in ["", "-wal", "-shm"] {
             bytes += (try? FileManager.default.attributesOfItem(atPath: path + suffix)[.size] as? Int64) as? Int64 ?? 0
@@ -470,13 +495,26 @@ final class EngineStore: ObservableObject {
 
     // MARK: Digest coach intro (Gemini, opt-in)
 
-    /// Free and total GB on the data volume, read fresh: statfs is one syscall.
-    var bootSpace: (freeGb: Double, totalGb: Double) {
+    /// Capacity of the volume holding `path`, in **bytes**, read fresh: statfs is one syscall.
+    ///
+    /// Bytes, not GB. These used to be returned as GiB (blocks × f_bsize ÷ 2^30) while `Fmt`
+    /// prints decimal GB, so whether a figure was 7.4% high or low depended on which screen
+    /// you read it on. One unit end to end leaves nothing to convert.
+    static func spaceBytes(at path: String) -> (free: Int64, total: Int64) {
+        // "/" is the sealed read-only system volume on modern macOS; the writable half that
+        // the user actually fills is the Data volume.
+        let target = (path == "/" || path == allDrives) ? "/System/Volumes/Data" : path
         var fs = statfs()
-        guard statfs("/System/Volumes/Data", &fs) == 0 else { return (0, 0) }
-        let unit = Double(fs.f_bsize) / 1_073_741_824
-        return (Double(fs.f_bavail) * unit, Double(fs.f_blocks) * unit)
+        guard statfs(target, &fs) == 0 else { return (0, 0) }
+        let block = Int64(fs.f_bsize)
+        return (Int64(fs.f_bavail) * block, Int64(fs.f_blocks) * block)
     }
+
+    var bootSpaceBytes: (free: Int64, total: Int64) { Self.spaceBytes(at: "/System/Volumes/Data") }
+
+    /// The volume the picker is pointed at, so the Disk toolbar describes the drive being
+    /// browsed instead of always reporting the internal disk beside an external drive's name.
+    var scanRootSpaceBytes: (free: Int64, total: Int64) { Self.spaceBytes(at: scanRoot) }
     @Published var coachIntro: String? = nil
     @Published var coachAt: Date? = nil
     @Published var coachBusy = false
@@ -787,19 +825,17 @@ final class EngineStore: ObservableObject {
         return out
     }
 
-    /// Which readouts the menu bar shows, in a fixed display order.
-    var menuBarItems: [MenuBarItem] {
-        guard let raw = getSetting(db, "menuBarItems")?.objectVal?["items"]?.arrayVal else {
-            return MenuBarItem.defaults
-        }
-        let on = Set(raw.compactMap { $0.stringVal })
-        return MenuBarItem.allCases.filter { on.contains($0.rawValue) }
+    /// Whether the status item prints the worst finding beside its glyph.
+    ///
+    /// This was a one-case `MenuBarItem` enum with `CaseIterable`, a `label` that ignored the
+    /// case and an empty `defaults` — the shape of a list that never got a second entry, since
+    /// the CPU and memory readouts went to Vorssaint. It is one switch, so it is one Bool.
+    var showFindingInMenuBar: Bool {
+        getSetting(db, "menuBarItems")?.objectVal?["finding"]?.boolVal ?? false
     }
 
-    func setMenuBarItem(_ item: MenuBarItem, _ on: Bool) {
-        var current = Set(menuBarItems.map(\.rawValue))
-        if on { current.insert(item.rawValue) } else { current.remove(item.rawValue) }
-        setSetting(db, "menuBarItems", JSONValue.from(["items": Array(current)]))
+    func setShowFindingInMenuBar(_ on: Bool) {
+        setSetting(db, "menuBarItems", JSONValue.from(["finding": on]))
         objectWillChange.send()
     }
 

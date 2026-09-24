@@ -3,23 +3,25 @@
 import SwiftUI
 import AppKit
 
-/// Popover vibrancy. DESIGN.md: a flat popover reads as a screenshot pasted on the desktop.
-struct VisualEffect: NSViewRepresentable {
-    var material: NSVisualEffectView.Material = .popover
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let v = NSVisualEffectView()
-        v.material = material; v.blendingMode = .behindWindow; v.state = .active
-        return v
-    }
-    func updateNSView(_ v: NSVisualEffectView, context: Context) { v.material = material }
-}
-
-/// The load-bearing component. Headline + evidence + at most one link-out that never acts.
+/// The load-bearing component. Headline + evidence + at most one link-out, which navigates or
+/// reveals but never performs the fix.
 struct CoachCardView: View {
     let finding: Finding
     var onQuit: (String) -> Void = { _ in }
     var onIgnore: ((String) -> Void)? = nil
+    var onLink: (FindingLink) -> Void = { _ in }
     @State private var confirming = false
+
+    /// The link says where it goes; the tooltip says what it will actually show you.
+    private func linkHelp(_ link: FindingLink) -> String {
+        switch link {
+        case .reveal(let path):
+            return "Select \((path as NSString).lastPathComponent) in Finder"
+        case .activityMonitor: return "Open Activity Monitor"
+        case .clean:           return "Go to the Clean screen"
+        }
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
             Rectangle().fill(finding.severity.tint).frame(width: 4)   // severity spine
@@ -34,8 +36,9 @@ struct CoachCardView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: PC.gutter) {
                         if let link = finding.link {
-                            Button(link) {}.buttonStyle(.plain)
+                            Button(link.label) { onLink(link) }.buttonStyle(.plain)
                                 .font(.pcLabel).foregroundStyle(PC.accent)
+                                .help(linkHelp(link))
                         }
                         // Offered only when the process is live and passes every refusal.
                         if let target = finding.quitTarget {
@@ -151,6 +154,8 @@ struct StorageBar: View {
 struct SizeRow: View {
     let entry: SizeEntry, maxBytes: Int64
     var onOpen: () -> Void = {}
+    var onReveal: () -> Void = {}
+    var onTrash: () -> Void = {}
     @State private var hover = false
     private var isFolder: Bool { entry.symbol == "folder.fill" }
     var body: some View {
@@ -165,8 +170,8 @@ struct SizeRow: View {
             Spacer(minLength: PC.s2)
             if hover {
                 HStack(spacing: 2) {
-                    IconButton("magnifyingglass", help: "Reveal in Finder")
-                    IconButton("trash", help: "Move to Trash")
+                    IconButtonAction("magnifyingglass", help: "Reveal in Finder", action: onReveal)
+                    IconButtonAction("trash", help: "Move to Trash…", action: onTrash)
                 }
                 .transition(.opacity)
             }
@@ -188,18 +193,6 @@ struct SizeRow: View {
         .onTapGesture(count: 2) { if isFolder { onOpen() } }
         .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
         .help(isFolder ? "Double-click to open \(entry.name)" : entry.name)
-    }
-}
-
-struct IconButton: View {
-    let name: String, help: String
-    init(_ name: String, help: String) { self.name = name; self.help = help }
-    var body: some View {
-        Button { } label: {
-            Image(systemName: name).font(.system(size: 12)).foregroundStyle(PC.ink2)
-                .frame(width: 22, height: 20)
-        }
-        .buttonStyle(.plain).help(help)
     }
 }
 

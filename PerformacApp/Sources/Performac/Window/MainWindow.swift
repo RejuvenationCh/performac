@@ -3,27 +3,15 @@
 import SwiftUI
 import AppKit
 
-enum Route: String, CaseIterable, Identifiable {
-    case dashboard, digest, disk, clean, duplicates, settings
-    var id: String { rawValue }
-    var symbol: String {
-        switch self {
-        case .dashboard: "gauge.with.dots.needle.33percent"; case .digest: "text.alignleft"; case .disk: "internaldrive"
-        case .clean: "trash"
-        case .duplicates: "doc.on.doc"; case .settings: "gearshape"
-        }
-    }
-    var title: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
-}
-
 struct MainWindow: View {
     @ObservedObject var store = EngineStore.shared
-    @State private var route: Route = .dashboard
+    /// Route lives in the store (see `Route` in ViewModels.swift) so a coach card's link-out
+    /// can navigate and so the choice survives the window closing.
     var body: some View {
         HStack(spacing: 0) {
-            Rail(route: $route)
+            Rail(route: Binding(get: { store.route }, set: { store.route = $0 }))
             Group {
-                switch route {
+                switch store.route {
                 case .dashboard: DashboardView(
                     findings: store.digest,
                     facts: store.quietFacts,
@@ -33,11 +21,13 @@ struct MainWindow: View {
                     busy: store.refreshing,
                     onRefresh: { (NSApp.delegate as? AppDelegate)?.refreshNow() },
                     quitAction: { store.requestQuit($0) },
-                    onIgnore: { store.ignoreProcess($0) })
+                    onIgnore: { store.ignoreProcess($0) },
+                    onLink: { store.openLink($0) })
                 case .digest: DigestView(
                     findings: store.digest,
                     quitAction: { store.requestQuit($0) },
                     onIgnore: { store.ignoreProcess($0) },
+                    onLink: { store.openLink($0) },
                     updatedAt: store.findingsAt,
                     busy: store.refreshing,
                     onRefresh: { (NSApp.delegate as? AppDelegate)?.refreshNow() },
@@ -82,8 +72,9 @@ struct MainWindow: View {
                     browsePath: store.browsePath,
                     onReveal: { NSWorkspace.shared.selectFile($0, inFileViewerRootedAtPath: "") },
                     onTrashPath: { store.trashPath($0) },
-                    freeGb: store.bootSpace.freeGb,
-                    totalGb: store.bootSpace.totalGb,
+                    // the volume in the picker, not always the boot disk
+                    freeBytes: store.scanRootSpaceBytes.free,
+                    totalBytes: store.scanRootSpaceBytes.total,
                     rightMode: store.rightPanelMode,
                     onRightMode: { store.setRightPanelMode($0) },
                     onCancel: { store.cancelDiskScan() })
@@ -105,15 +96,20 @@ struct MainWindow: View {
                     onScan: { store.startDupScan() },
                     onCancel: { store.cancelDupScan() },
                     onDisappear: { store.cancelDupScan() },
-                    lastScanAt: store.dupScanAt.map { Date(timeIntervalSince1970: Double($0) / 1000) })
+                    lastScanAt: store.dupScanAt.map { Date(timeIntervalSince1970: Double($0) / 1000) },
+                    onReveal: { NSWorkspace.shared.selectFile($0, inFileViewerRootedAtPath: "") },
+                    onTrashPath: { store.trashPath($0) })
                 case .settings: SettingsView(
                     config: store.config,
                     fdaGranted: store.fdaGranted,
-                    menuBarItems: store.menuBarItems,
+                    showFindingInMenuBar: store.showFindingInMenuBar,
                     databaseSummary: store.databaseSummary,
                     ignored: store.ignoredProcesses,
                     onUnignore: { store.unignoreProcess($0) },
-                    onMenuBarItem: { store.setMenuBarItem($0, $1); (NSApp.delegate as? AppDelegate)?.updateStatusTitle() },
+                    onShowFindingInMenuBar: {
+                        store.setShowFindingInMenuBar($0)
+                        (NSApp.delegate as? AppDelegate)?.updateStatusTitle()
+                    },
                     onSave: { key, value in _ = store.saveSetting(key, value) })
                 }
             }
@@ -131,7 +127,9 @@ private struct Rail: View {
             Text("P").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
                 .frame(width: 28, height: 28)
                 .background(PC.accentFill, in: RoundedRectangle(cornerRadius: PC.rLg))
-                .padding(.top, PC.gutter).padding(.bottom, PC.s2)
+                // The window uses .fullSizeContentView, so content starts at y=0 under the
+                // titlebar — this clears the traffic lights instead of sitting under them.
+                .padding(.top, 28).padding(.bottom, PC.s2)
             ForEach(Route.allCases) { r in
                 RailButton(route: r, selected: route == r) { route = r }
             }

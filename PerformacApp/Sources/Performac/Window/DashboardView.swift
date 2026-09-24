@@ -16,10 +16,15 @@ struct DashboardView: View {
     var onRefresh: () -> Void = {}
     var quitAction: (String) -> Void = { _ in }
     var onIgnore: ((String) -> Void)? = nil
+    var onLink: (FindingLink) -> Void = { _ in }
 
+    /// Most severe first. A stable sort on a rank rather than a filter per severity, so adding
+    /// a severity can never silently drop its cards off this screen.
     private var worst: [Finding] {
-        let order: [Severity] = [.red, .amber, .info]
-        return order.flatMap { sev in findings.filter { $0.severity == sev } }
+        func rank(_ s: Severity) -> Int { switch s { case .red: 0; case .amber: 1; case .info: 2 } }
+        return findings.enumerated()
+            .sorted { (rank($0.element.severity), $0.offset) < (rank($1.element.severity), $1.offset) }
+            .map(\.element)
     }
 
     var body: some View {
@@ -30,12 +35,17 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: PC.gutter) {
                     // the four measured facts, no invented numbers
                     HStack(spacing: PC.gutter) {
-                        StatTile("Free space", String(format: "%.0f GB", facts.freeGb),
-                                 String(format: "%.0f%% of the disk in use",
-                                        facts.totalGb > 0 ? (1 - facts.freeGb / facts.totalGb) * 100 : 0))
+                        // Every size goes through Fmt, so this agrees with the Disk toolbar.
+                        // It used to print raw GiB labelled "GB" and disagree by 7.4%.
+                        StatTile("Free space",
+                                 facts.totalBytes > 0 ? Fmt.bytes(facts.freeBytes) : "—",
+                                 facts.totalBytes > 0
+                                    ? String(format: "%.0f%% of the disk in use",
+                                             (1 - Double(facts.freeBytes) / Double(facts.totalBytes)) * 100)
+                                    : "not measured yet")
                         StatTile("Largest cache",
-                                 facts.largestCacheGb >= 0.1
-                                    ? String(format: "%.1f GB", facts.largestCacheGb) : "none yet",
+                                 facts.largestCacheBytes >= 100_000_000
+                                    ? Fmt.bytes(facts.largestCacheBytes) : "none yet",
                                  "biggest single cache measured")
                         StatTile("Drives quiet",
                                  facts.drivesQuietDays.map { $0 == 0 ? "today" : "\($0)d" } ?? "none seen",
@@ -63,7 +73,10 @@ struct DashboardView: View {
                         .padding(PC.gutter).pcCard()
                     } else {
                         SectionHeader(text: "Worth knowing (\(worst.count))")
-                        ForEach(worst) { CoachCardView(finding: $0, onQuit: quitAction, onIgnore: onIgnore) }
+                        ForEach(worst) {
+                            CoachCardView(finding: $0, onQuit: quitAction,
+                                          onIgnore: onIgnore, onLink: onLink)
+                        }
                     }
                 }
                 .padding(.horizontal, PC.stack).padding(.bottom, PC.stack)

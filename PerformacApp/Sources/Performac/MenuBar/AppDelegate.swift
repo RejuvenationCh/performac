@@ -137,6 +137,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         appItem.submenu = appMenu
         main.addItem(appItem)
 
+        // Settings has six text fields and file paths use .textSelection(.enabled); without
+        // this menu Cmd-C/V/X/A had no route to the first responder and silently did nothing.
+        let editItem = NSMenuItem()
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
+        let redo = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(redo)
+        editMenu.addItem(.separator())
+        editMenu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        editItem.submenu = editMenu
+        main.addItem(editItem)
+
         let winItem = NSMenuItem()
         let winMenu = NSMenu(title: "Window")
         winMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
@@ -185,7 +201,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// trackpad. Cmd-[ and Cmd-] are in the Window menu for the keyboard.
     private func startNavigationMonitor() {
         navMonitor = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown, .swipe]) { [weak self] event in
-            guard let self, self.window?.isKeyWindow == true else { return event }
+            // Only the Disk browser has back/forward history to navigate. Without this,
+            // a horizontal swipe on Dashboard/Digest/Settings silently rewrote Disk's
+            // history, and swallowing every .swipe broke horizontal scrolling everywhere.
+            guard let self, self.window?.isKeyWindow == true, self.store.route == .disk else { return event }
             switch event.type {
             case .otherMouseDown:
                 // 3 = back, 4 = forward on every multi-button mouse that reports them
@@ -211,7 +230,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         b.image = NSImage(systemSymbolName: worst?.severity.symbol ?? "gauge.with.dots.needle.33percent",
                           accessibilityDescription: "Performac")
         b.image?.isTemplate = true
-        b.title = store.menuBarItems.contains(.finding) ? worst.map { shortHeadline($0.headline) } ?? "" : ""
+        b.title = store.showFindingInMenuBar ? worst.map { shortHeadline($0.headline) } ?? "" : ""
         b.toolTip = worst?.headline ?? "Performac — nothing worth doing"
     }
 
@@ -281,6 +300,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // live observation: severity icon + worst-finding title, quiet → bare glyph
         Task { [weak self, store] in
             for await _ in store.$live.values {
+                guard let self else { return }
+                await MainActor.run { self.updateStatusTitle() }
+            }
+        }
+        // `worst` falls back to digest when live is empty, so a digest-only change
+        // must refresh the status item too.
+        Task { [weak self, store] in
+            for await _ in store.$digest.values {
                 guard let self else { return }
                 await MainActor.run { self.updateStatusTitle() }
             }

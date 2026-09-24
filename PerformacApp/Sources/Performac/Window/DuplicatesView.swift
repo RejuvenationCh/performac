@@ -12,6 +12,10 @@ struct DuplicatesView: View {
     var onCancel: () -> Void = {}
     var onDisappear: () -> Void = {}
     var lastScanAt: Date? = nil
+    var onReveal: (String) -> Void = { _ in }
+    var onTrashPath: (String) -> Void = { _ in }
+    @State private var infoTarget: RowInfo? = nil
+    @State private var trashTarget: RowInfo? = nil
     private var recoverable: Int64 {
         groups.reduce(0) { $0 + $1.bytes * Int64(max($1.paths.count - 1, 0)) }
     }
@@ -45,17 +49,28 @@ struct DuplicatesView: View {
             }
             ScrollView {
                 VStack(spacing: PC.gutter) {
-                    ForEach(groups) { g in DupGroupCard(group: g) }
+                    ForEach(groups) { g in
+                        DupGroupCard(group: g, onReveal: onReveal,
+                                     infoTarget: $infoTarget, trashTarget: $trashTarget)
+                    }
                 }
                 .padding(.horizontal, PC.stack).padding(.bottom, PC.stack)
             }
         }
         .onDisappear(perform: onDisappear)
+        .sheet(item: $infoTarget) { RowInfoSheet(info: $0) { infoTarget = nil } }
+        .sheet(item: $trashTarget) { t in
+            RowTrashSheet(info: t, onCancel: { trashTarget = nil },
+                          onConfirm: { trashTarget = nil; onTrashPath(t.path) })
+        }
     }
 }
 
 private struct DupGroupCard: View {
     let group: DupGroup
+    let onReveal: (String) -> Void
+    @Binding var infoTarget: RowInfo?
+    @Binding var trashTarget: RowInfo?
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: PC.s2) {
@@ -68,28 +83,46 @@ private struct DupGroupCard: View {
             .pcHairline(.bottom)
 
             ForEach(Array(group.paths.enumerated()), id: \.offset) { _, p in
-                DupPathRow(path: p)
+                DupPathRow(path: p, bytes: group.bytes, onReveal: onReveal,
+                           infoTarget: $infoTarget, trashTarget: $trashTarget)
             }
         }
         .pcCard()
     }
 }
 
+/// One copy. Per-copy actions only — never a bulk one, because with exact duplicates at least
+/// one copy has to survive (DESIGN.md §Do not carry over #5). That rule was already written
+/// down; these two buttons are what it asked for, and they were empty closures.
 private struct DupPathRow: View {
     let path: String
+    let bytes: Int64
+    let onReveal: (String) -> Void
+    @Binding var infoTarget: RowInfo?
+    @Binding var trashTarget: RowInfo?
     @State private var hover = false
+
+    private var info: RowInfo {
+        RowInfo(path: (path as NSString).expandingTildeInPath,
+                name: (path as NSString).lastPathComponent,
+                bytes: bytes, items: 0, isFolder: false)
+    }
+
     var body: some View {
         HStack(spacing: PC.s2) {
             Image(systemName: "doc").font(.system(size: 11)).foregroundStyle(PC.meta)
             Text(path).font(.pcSmall).foregroundStyle(PC.ink2).lineLimit(1).truncationMode(.middle)
             Spacer(minLength: PC.s2)
             if hover {
-                IconButton("magnifyingglass", help: "Reveal in Finder")
-                IconButton("trash", help: "Move this copy to the Trash")
+                IconButtonAction("magnifyingglass", help: "Reveal in Finder") { onReveal(info.path) }
+                IconButtonAction("trash", help: "Move this copy to the Trash…") { trashTarget = info }
             }
         }
         .padding(.horizontal, PC.gutter).padding(.vertical, 6)
         .background(hover ? PC.fill1.opacity(0.6) : .clear)
+        .contentShape(Rectangle())
         .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
+        .rowActions(info, infoTarget: $infoTarget, trashTarget: $trashTarget)
+        .help(path)
     }
 }
