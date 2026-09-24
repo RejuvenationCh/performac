@@ -96,18 +96,6 @@ struct QuitSheet: View {
     }
 }
 
-/// Popover header cell: uppercase label above a tabular value.
-struct MetricTile: View {
-    let label: String, value: String
-    var body: some View {
-        VStack(spacing: 3) {
-            Text(label).font(.pcLabel).foregroundStyle(PC.meta).tracking(0.4)
-            Text(value).font(.pcNum).fontWeight(.medium).foregroundStyle(PC.ink)
-        }
-        .frame(maxWidth: .infinity)
-    }
-}
-
 struct Pill: View {
     let text: String, tint: Color, soft: Color
     var body: some View {
@@ -255,70 +243,6 @@ struct TickingAgo: View {
         TimelineView(.periodic(from: .now, by: 1)) { ctx in
             Text(date.map { prefix + Ago.text($0, now: ctx.date) } ?? (prefix + "never"))
         }
-    }
-}
-
-
-/// A small filled area chart for the popover. Fixed size, no GeometryReader — same reason
-/// as ProportionBar: one per row of chrome is one layout pass too many.
-struct MiniGraph: View {
-    let values: [Double]
-    var tint: Color = PC.accentFill
-    /// nil scales to the data; a number pins the top of the chart (100 for a percentage).
-    var ceiling: Double? = nil
-    var width: CGFloat = 108
-    var height: CGFloat = 30
-
-    private var points: [CGPoint] {
-        guard values.count > 1 else { return [] }
-        let hi = ceiling ?? max(values.max() ?? 1, 0.0001)
-        let span = hi <= 0 ? 1 : hi
-        return values.enumerated().map { i, v in
-            CGPoint(x: width * Double(i) / Double(values.count - 1),
-                    y: height * (1 - min(max(v / span, 0), 1)))
-        }
-    }
-
-    var body: some View {
-        ZStack {
-            if points.count > 1 {
-                Path { p in
-                    p.addLines(points)
-                    p.addLine(to: CGPoint(x: width, y: height))
-                    p.addLine(to: CGPoint(x: 0, y: height))
-                    p.closeSubpath()
-                }
-                .fill(LinearGradient(colors: [tint.opacity(0.28), tint.opacity(0.02)],
-                                     startPoint: .top, endPoint: .bottom))
-                Path { p in p.addLines(points) }
-                    .stroke(tint, style: .init(lineWidth: 1.5, lineJoin: .round))
-            } else {
-                Text("collecting…").font(.system(size: 9)).foregroundStyle(PC.meta)
-            }
-        }
-        .frame(width: width, height: height)
-    }
-}
-
-/// Label, current value, and the trace behind it.
-struct GraphTile: View {
-    let label: String
-    let value: String
-    let values: [Double]
-    var tint: Color = PC.accentFill
-    var ceiling: Double? = nil
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(label).font(.pcLabel).foregroundStyle(PC.meta)
-                Spacer()
-                Text(value).font(.pcNum).fontWeight(.medium).foregroundStyle(PC.ink)
-            }
-            MiniGraph(values: values, tint: tint, ceiling: ceiling, width: 152, height: 34)
-        }
-        .padding(PC.s2)
-        .background(PC.fill1.opacity(0.55))
-        .clipShape(RoundedRectangle(cornerRadius: PC.rLg))
     }
 }
 

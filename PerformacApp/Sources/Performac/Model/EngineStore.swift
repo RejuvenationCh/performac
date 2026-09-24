@@ -188,12 +188,6 @@ final class EngineStore: ObservableObject {
             ?? live.first { $0.severity == .info }
     }
 
-    var worstTitle: String {
-        guard let worst else { return "" }   // bare glyph, no text
-        let s = worst.headline
-        return s.count > 30 ? String(s.prefix(30)) + "…" : s
-    }
-
     // MARK: refresh from SQLite (cheap — findings table only)
 
     func refreshFromDatabase() {
@@ -269,8 +263,7 @@ final class EngineStore: ObservableObject {
                 why: policy.consequence,
                 path: path,
                 cacheID: id,
-                cleanable: policy.cleanable,
-                contentsOnly: policy.contentsOnly))
+                cleanable: policy.cleanable))
         }
         cacheEntries = entries
     }
@@ -372,6 +365,7 @@ final class EngineStore: ObservableObject {
     struct QuietFacts: Sendable {
         var watchingDays: Int = 0
         var freeGb: Double = 0
+        var totalGb: Double = 0
         var largestCacheGb: Double = 0
         var drivesQuietDays: Int? = nil     // nil = no drive events ever recorded
         var lastScanAt: Date? = nil
@@ -383,7 +377,7 @@ final class EngineStore: ObservableObject {
         if let lo = readDB.prepare("SELECT MIN(ts) m FROM proc_samples").get()?["m"], !lo.isNull {
             f.watchingDays = max(Int((Double(Date().timeIntervalSince1970 * 1000) - Double(lo.intVal)) / 86_400_000), 0)
         }
-        f.freeGb = metrics.freeGb
+        (f.freeGb, f.totalGb) = bootSpace
         if let mb = readDB.prepare("SELECT MAX(size_mb) m FROM cache_samples WHERE ts = (SELECT MAX(ts) FROM cache_samples)")
             .get()?["m"], !mb.isNull {
             f.largestCacheGb = Double(mb.intVal) / 1024
@@ -476,8 +470,13 @@ final class EngineStore: ObservableObject {
 
     // MARK: Digest coach intro (Gemini, opt-in)
 
-    /// Read-through to MetricsStore. NOT @Published here: see MetricsStore for why.
-    var metrics: Metrics { MetricsStore.shared.current }
+    /// Free and total GB on the data volume, read fresh: statfs is one syscall.
+    var bootSpace: (freeGb: Double, totalGb: Double) {
+        var fs = statfs()
+        guard statfs("/System/Volumes/Data", &fs) == 0 else { return (0, 0) }
+        let unit = Double(fs.f_bsize) / 1_073_741_824
+        return (Double(fs.f_bavail) * unit, Double(fs.f_blocks) * unit)
+    }
     @Published var coachIntro: String? = nil
     @Published var coachAt: Date? = nil
     @Published var coachBusy = false
@@ -546,237 +545,6 @@ final class EngineStore: ObservableObject {
         }
     }
 
-    // MARK: uninstaller
-
-    @Published var apps: [InstalledApp] = []
-    @Published var selectedApp: InstalledApp? = nil
-    @Published var leftovers: [Leftover] = []
-    @Published var appRefusal: String? = nil
-    @Published var appsLoading = false
-    @Published var leftoversLoading = false
-
-    /// Where the quit-before-uninstall dance has got to.
-    ///
-    /// Two stages on purpose. Asking politely lets an app with unsaved work put up its own
-    /// save prompt — which for Premiere or Resolve is the difference between a clean exit and
-    /// losing an afternoon. Force is a separate, second decision, never an automatic fallback.
-    enum QuitPhase: Equatable, Sendable {
-        case none
-        case asking          // quit request sent, waiting for it to go
-        case needsForce      // it ignored the request; force is now the user's call
-        case forcing
-        case failed(String)
-    }
-    @Published var quitPhase: QuitPhase = .none
-
-    /// The app can be removed once it stops running; nothing else about it has changed.
-    var selectedAppIsRunningOnly: Bool {
-        guard let a = selectedApp else { return false }
-        return Uninstaller.blockedOnlyByRunning(a)
-    }
-
-    /// Stage one: ask the app to quit, the same request Cmd-Q sends.
-    func quitSelectedApp() { runQuit(force: false) }
-
-    /// Stage two: only reachable after stage one was ignored, and only by asking again.
-    func forceQuitSelectedApp() { runQuit(force: true) }
-
-    private func runQuit(force: Bool) {
-        guard let app = selectedApp, Uninstaller.blockedOnlyByRunning(app) else { return }
-        guard quitPhase != .asking, quitPhase != .forcing else { return }
-        switch ProcessControl.target(bundleID: app.bundleID, fallbackName: app.name) {
-        case .failure(let why):
-            // already gone is a success for our purposes: the blocker is cleared
-            if why == .gone { quitPhase = .none; refreshRunningState(); return }
-            quitPhase = .failed(why.rawValue)
-        case .success(let target):
-            quitPhase = force ? .forcing : .asking
-            let ok = force ? ProcessControl.force(target) : ProcessControl.quit(target)
-            guard ok else {
-                quitPhase = .failed("\(app.name) refused to quit.")
-                return
-            }
-            Task { [weak self] in
-                // a polite quit may sit behind a save dialog, so it gets longer
-                let gone = await ProcessControl.waitForExit(target, timeout: force ? 4 : 10)
-                await MainActor.run {
-                    guard let self else { return }
-                    if gone {
-                        self.quitPhase = .none
-                        self.refreshRunningState()
-                    } else {
-                        self.quitPhase = force
-                            ? .failed("\(app.name) is still running. macOS would not end it.")
-                            : .needsForce
-                    }
-                }
-            }
-        }
-    }
-
-    /// Re-read who is running and recompute the refusal, so the Trash button unlocks the
-    /// moment the app is actually gone rather than on the next full reload.
-    private func refreshRunningState() {
-        let live = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
-        for i in apps.indices where !apps[i].isFormula {
-            apps[i].isRunning = live.contains(apps[i].bundleID)
-        }
-        if var sel = selectedApp {
-            sel.isRunning = live.contains(sel.bundleID)
-            selectedApp = sel
-            appRefusal = Uninstaller.refusal(for: sel)
-            if appRefusal == nil, leftovers.isEmpty { selectAppAsync(sel) }
-        }
-    }
-
-    /// Names first, sizes after. Sizing every bundle walks gigabytes (Adobe, Xcode), which
-    /// froze the view for seconds when it ran inline on the main actor.
-    func loadApps() {
-        guard apps.isEmpty, !appsLoading else { return }
-        appsLoading = true
-        apps = Uninstaller.listApps()            // cheap: names and bundle ids only
-        Task.detached(priority: .utility) {
-            let sized = Uninstaller.withSizes(Uninstaller.listApps())
-            await MainActor.run { [weak self] in
-                self?.apps = sized
-                self?.appsLoading = false
-            }
-        }
-    }
-
-    /// Leftovers also walk directories, so they are measured off the main actor too.
-    func selectAppAsync(_ app: InstalledApp) {
-        if selectedApp?.id != app.id { quitPhase = .none }
-        selectedApp = app
-        appRefusal = Uninstaller.refusal(for: app)
-        leftovers = []
-        // Measured even when the app refuses to remove anything: for a Homebrew formula the
-        // refusal is the point, and what it leaves behind is still worth naming.
-        leftoversLoading = true
-        Task.detached(priority: .userInitiated) {
-            let found = Uninstaller.leftovers(for: app)
-            await MainActor.run { [weak self] in
-                guard self?.selectedApp?.id == app.id else { return }   // user moved on
-                self?.leftovers = found
-                self?.leftoversLoading = false
-            }
-        }
-    }
-
-    func selectApp(_ app: InstalledApp) {
-        selectedApp = app
-        appRefusal = Uninstaller.refusal(for: app)
-        leftovers = appRefusal == nil ? Uninstaller.leftovers(for: app) : []
-    }
-
-    /// Trash the bundle plus whichever leftovers are still ticked. Allowlist is built from
-    /// exactly what is on screen, so nothing outside the shown set can be removed.
-    func uninstallSelected() {
-        guard let app = selectedApp, appRefusal == nil else { return }
-        let chosen = leftovers.filter(\.selected)
-        var items = [(name: app.name, path: app.path)]
-        items += chosen.map { (name: ($0.path as NSString).lastPathComponent, path: $0.path) }
-        runTrash(items, allowed: Set(items.map(\.path)))
-        selectedApp = nil
-        leftovers = []
-        Task.detached(priority: .utility) {
-            let refreshed = Uninstaller.withSizes(Uninstaller.listApps())
-            await MainActor.run { [weak self] in self?.apps = refreshed }
-        }
-    }
-
-    // MARK: updates
-
-    @Published var outdated: [OutdatedItem] = []
-    @Published var checkingUpdates = false
-    @Published var brewMetadataAge: TimeInterval? = nil
-    var brewMissing: Bool { Updates.brewPath == nil }
-
-    func loadUpdates(force: Bool = false) {
-        guard !checkingUpdates, force || outdated.isEmpty else { return }
-        guard !brewMissing else { return }
-        checkingUpdates = true
-        Task { [weak self] in
-            let items = await Updates.outdated()
-            let age = Updates.metadataAge()
-            await MainActor.run {
-                self?.outdated = items
-                self?.brewMetadataAge = age
-                self?.checkingUpdates = false
-            }
-        }
-    }
-
-    @Published var upgrading = false
-    /// Per package, so a row can say what happened to it rather than leaving the reader to
-    /// find its name in forty lines of brew output.
-    @Published var upgradeState: [String: UpgradeOutcome] = [:]
-    @Published var upgradingID: String? = nil
-    @Published var upgradeProgress = ""
-    @Published var upgradeLog: [String] = []
-    @Published var upgradeSummary: String? = nil
-
-    func setUpdateSelected(_ id: String, _ on: Bool) {
-        guard let i = outdated.firstIndex(where: { $0.id == id }) else { return }
-        outdated[i].selected = on
-    }
-    func selectAllUpdates(_ on: Bool) {
-        for i in outdated.indices { outdated[i].selected = on }
-    }
-
-    /// Upgrade the ticked packages, one at a time, streaming brew's output.
-    func upgradeSelected() {
-        let items = outdated.filter(\.selected)
-        guard !upgrading, !items.isEmpty else { return }
-        upgrading = true
-        upgradeLog = []
-        upgradeSummary = nil
-        upgradeState = [:]
-        upgradingID = nil
-        Task { [weak self] in
-            var ok = 0, failed: [String] = [], locked: [String] = []
-            for (i, item) in items.enumerated() {
-                await MainActor.run {
-                    self?.upgradeProgress = "\(item.name) (\(i + 1) of \(items.count))"
-                    self?.upgradingID = item.id
-                    self?.upgradeLog.append("$ \(item.upgradeCommand)")
-                }
-                let good = await Updates.upgrade(item) { line in
-                    Task { @MainActor in
-                        guard let self else { return }
-                        self.upgradeLog.append(line)
-                        // brew is verbose; keep the tail rather than an unbounded transcript
-                        if self.upgradeLog.count > 400 { self.upgradeLog.removeFirst(self.upgradeLog.count - 400) }
-                    }
-                }
-                await MainActor.run { self?.upgradeState[item.id] = good }
-                switch good {
-                case .ok:            ok += 1
-                case .needsPassword: locked.append(item.name)
-                case .failed:        failed.append(item.name)
-                }
-            }
-            let done = ok, bad = failed, needsPass = locked
-            await MainActor.run {
-                guard let self else { return }
-                self.upgrading = false
-                self.upgradeProgress = ""
-                self.upgradingID = nil
-                var parts = ["Upgraded \(done) package\(done == 1 ? "" : "s")."]
-                if !needsPass.isEmpty {
-                    // not a failure — an admin password, which this app will never ask for
-                    parts.append("\(needsPass.count) need an admin password: "
-                                 + needsPass.joined(separator: ", ") + ". Run those in Terminal.")
-                }
-                if !bad.isEmpty {
-                    parts.append("\(bad.count) failed: \(bad.prefix(3).joined(separator: ", "))")
-                }
-                self.upgradeSummary = parts.joined(separator: " ")
-                self.loadUpdates(force: true)     // re-read, never assume it worked
-            }
-        }
-    }
-
     // MARK: cache breakdown
 
     @Published var breakdowns: [String: CacheBreakdown] = [:]
@@ -811,23 +579,9 @@ final class EngineStore: ObservableObject {
     func trashSelected(_ selected: [CacheEntry]) {
         let allowed = Set(cacheEntries.filter(\.cleanable)
             .map { ($0.path as NSString).expandingTildeInPath })
-        var items: [(name: String, path: String)] = []
-        var extraAllowed = allowed
-        for e in selected where e.cleanable {
-            let path = (e.path as NSString).expandingTildeInPath
-            let policy = Allowlist.policy(for: CacheTarget(id: "", label: e.name, path: path))
-            let byId = cacheEntries.first { $0.path == e.path }
-            _ = byId
-            if e.contentsOnly || policy.contentsOnly {
-                // empty it rather than remove it: the folder itself is undeletable
-                let kids = Trash.childrenOf(path)
-                extraAllowed.formUnion(kids)
-                items += kids.map { (name: ($0 as NSString).lastPathComponent, path: $0) }
-            } else {
-                items.append((name: e.name, path: path))
-            }
-        }
-        runTrash(items, allowed: extraAllowed)
+        let items = selected.filter(\.cleanable)
+            .map { (name: $0.name, path: ($0.path as NSString).expandingTildeInPath) }
+        runTrash(items, allowed: allowed)
     }
 
     /// Re-measure the paths just trashed and write fresh samples.
@@ -1176,49 +930,6 @@ final class EngineStore: ObservableObject {
             "lookbackHours": Double(cfg.hog.lookbackHours), "ignore": cfg.hog.ignore,
         ]))
         refreshFromDatabase()
-    }
-
-    // MARK: configurable surfaces
-
-    private func graphs(_ key: String, _ fallback: [GraphKind]) -> [GraphKind] {
-        guard let raw = getSetting(readDB, key)?.objectVal?["items"]?.arrayVal else { return fallback }
-        let on = Set(raw.compactMap { $0.stringVal })
-        return GraphKind.allCases.filter { on.contains($0.rawValue) }
-    }
-    private func setGraph(_ key: String, _ current: [GraphKind], _ g: GraphKind, _ on: Bool) {
-        var set = Set(current.map(\.rawValue))
-        if on { set.insert(g.rawValue) } else { set.remove(g.rawValue) }
-        setSetting(db, key, JSONValue.from(["items": Array(set)]))
-        objectWillChange.send()
-    }
-
-    /// Which cells the popover's top strip shows.
-    var metricTiles: [MetricTileKind] {
-        guard let raw = getSetting(readDB, "metricTiles")?.objectVal?["items"]?.arrayVal else {
-            return MetricTileKind.defaults
-        }
-        let on = Set(raw.compactMap { $0.stringVal })
-        return MetricTileKind.allCases.filter { on.contains($0.rawValue) }
-    }
-    func setMetricTile(_ t: MetricTileKind, _ on: Bool) {
-        var set = Set(metricTiles.map(\.rawValue))
-        if on { set.insert(t.rawValue) } else { set.remove(t.rawValue) }
-        setSetting(db, "metricTiles", JSONValue.from(["items": Array(set)]))
-        objectWillChange.send()
-    }
-
-    var popoverGraphs: [GraphKind] { graphs("popoverGraphs", GraphKind.popoverDefaults) }
-    func setPopoverGraph(_ g: GraphKind, _ on: Bool) { setGraph("popoverGraphs", popoverGraphs, g, on) }
-    var dashboardGraphs: [GraphKind] { graphs("dashboardGraphs", GraphKind.dashboardDefaults) }
-    func setDashboardGraph(_ g: GraphKind, _ on: Bool) { setGraph("dashboardGraphs", dashboardGraphs, g, on) }
-
-    /// Whether the popover lists findings under its graphs.
-    var popoverShowsFindings: Bool {
-        getSetting(readDB, "popoverFindings")?.objectVal?["on"]?.boolVal ?? true
-    }
-    func setPopoverShowsFindings(_ on: Bool) {
-        setSetting(db, "popoverFindings", JSONValue.from(["on": on]))
-        objectWillChange.send()
     }
 
     // MARK: browse history

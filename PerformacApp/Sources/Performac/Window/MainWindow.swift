@@ -4,13 +4,12 @@ import SwiftUI
 import AppKit
 
 enum Route: String, CaseIterable, Identifiable {
-    case dashboard, digest, disk, clean, apps, updates, duplicates, settings
+    case dashboard, digest, disk, clean, duplicates, settings
     var id: String { rawValue }
     var symbol: String {
         switch self {
         case .dashboard: "gauge.with.dots.needle.33percent"; case .digest: "text.alignleft"; case .disk: "internaldrive"
-        case .clean: "trash"; case .apps: "square.stack.3d.up"
-        case .updates: "arrow.triangle.2.circlepath"
+        case .clean: "trash"
         case .duplicates: "doc.on.doc"; case .settings: "gearshape"
         }
     }
@@ -27,7 +26,6 @@ struct MainWindow: View {
                 switch route {
                 case .dashboard: DashboardView(
                     findings: store.digest,
-                    graphs: store.dashboardGraphs,
                     facts: store.quietFacts,
                     trendPoints: store.trend.points,
                     trendNote: store.trend.note,
@@ -84,42 +82,11 @@ struct MainWindow: View {
                     browsePath: store.browsePath,
                     onReveal: { NSWorkspace.shared.selectFile($0, inFileViewerRootedAtPath: "") },
                     onTrashPath: { store.trashPath($0) },
-                    freeGb: store.metrics.freeGb,
-                    totalGb: store.metrics.totalGb,
+                    freeGb: store.bootSpace.freeGb,
+                    totalGb: store.bootSpace.totalGb,
                     rightMode: store.rightPanelMode,
                     onRightMode: { store.setRightPanelMode($0) },
                     onCancel: { store.cancelDiskScan() })
-                case .apps: AppsView(
-                    apps: store.apps,
-                    selected: store.selectedApp,
-                    leftovers: store.leftovers,
-                    refusal: store.appRefusal,
-                    appsLoading: store.appsLoading,
-                    leftoversLoading: store.leftoversLoading,
-                    onAppear: { store.loadApps() },
-                    onSelect: { store.selectAppAsync($0) },
-                    onToggle: { i, v in if store.leftovers.indices.contains(i) { store.leftovers[i].selected = v } },
-                    onUninstall: { store.uninstallSelected() },
-                    runningOnly: store.selectedAppIsRunningOnly,
-                    quitPhase: store.quitPhase,
-                    onQuit: { store.quitSelectedApp() },
-                    onForceQuit: { store.forceQuitSelectedApp() })
-                case .updates: UpdatesView(
-                    items: store.outdated,
-                    loading: store.checkingUpdates,
-                    metadataAge: store.brewMetadataAge,
-                    brewMissing: store.brewMissing,
-                    onAppear: { store.loadUpdates() },
-                    onRefresh: { store.loadUpdates(force: true) },
-                    upgrading: store.upgrading,
-                    progress: store.upgradeProgress,
-                    log: store.upgradeLog,
-                    summary: store.upgradeSummary,
-                    onSelect: { store.setUpdateSelected($0, $1) },
-                    onSelectAll: { store.selectAllUpdates($0) },
-                    onUpgrade: { store.upgradeSelected() },
-                    state: store.upgradeState,
-                    activeID: store.upgradingID)
                 case .clean: CleanView(
                     caches: store.cacheEntries,
                     busy: store.trashing,
@@ -144,17 +111,9 @@ struct MainWindow: View {
                     fdaGranted: store.fdaGranted,
                     menuBarItems: store.menuBarItems,
                     databaseSummary: store.databaseSummary,
-                    popoverGraphs: store.popoverGraphs,
-                    dashboardGraphs: store.dashboardGraphs,
-                    popoverFindings: store.popoverShowsFindings,
-                    metricTiles: store.metricTiles,
-                    onMetricTile: { store.setMetricTile($0, $1) },
                     ignored: store.ignoredProcesses,
                     onUnignore: { store.unignoreProcess($0) },
-                    onPopoverGraph: { store.setPopoverGraph($0, $1) },
-                    onDashboardGraph: { store.setDashboardGraph($0, $1) },
-                    onPopoverFindings: { store.setPopoverShowsFindings($0) },
-                    onMenuBarItem: { store.setMenuBarItem($0, $1) },
+                    onMenuBarItem: { store.setMenuBarItem($0, $1); (NSApp.delegate as? AppDelegate)?.updateStatusTitle() },
                     onSave: { key, value in _ = store.saveSetting(key, value) })
                 }
             }

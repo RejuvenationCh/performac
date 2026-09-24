@@ -127,17 +127,6 @@ func refreshFindings(_ db: DB, _ cfg: Config, _ now: Int64,
             db.prepare("SELECT DISTINCT name FROM proc_samples").all().compactMap { $0["name"]?.stringVal },
             running, days, cfg, now)
     }()
-    findings += Rules.batteryTrend(
-        rowsToEvents(db.prepare("SELECT * FROM events WHERE kind = 'battery' ORDER BY ts").all()).compactMap { e in
-            guard let data = e.detail.data(using: .utf8),
-                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            else { return nil }
-            return Rules.BatterySample(
-                ts: e.ts,
-                cycleCount: Int64(obj["cycleCount"] as? Double ?? 0),
-                healthPct: obj["healthPct"] as? Double ?? 0)
-        },
-        cfg, now, lastPower)
     findings += Rules.browserBloat(
         rowsToProcSamples(db.prepare("SELECT * FROM proc_samples WHERE ts > ?")
             .all([.int(now - 24 * 3_600_000)])), cfg, now)
@@ -358,7 +347,7 @@ final class Sampler: @unchecked Sendable {
             if let limit = therm.cpuSpeedLimit { lastCpuLimit = limit }
         }
 
-        // power source as context for thermal/battery rules — event only when it changes
+        // power source as context for the thermal rule — event only when it changes
         if let battText = try? await deps.execFile("pmset", ["-g", "batt", "-o"]) {
             let power = parsePower(battText)
             if let power, power != lastPower { addEvent("power", power, "") }
@@ -495,8 +484,9 @@ func cacheTick(_ db: DB, _ cfg: Config, _ deps: any SamplerDeps) async {
     let resolveCfg = readText("Library/Preferences/Blackmagic Design/DaVinci Resolve/config.dat")
     let prefs = readPremierePrefs(home)
 
-    // discover big per-bundle cache dirs in ~/Library/Caches (fixed registry entries skipped here)
-    let fixedCacheNames: Set<String> = ["com.apple.dt.Xcode", "Google", "BraveSoftware", "zen"]
+    // discover big per-bundle cache dirs in ~/Library/Caches (fixed registry entries skipped here;
+    // Homebrew too, since Vorssaint's cleaner and Homebrew panel own it)
+    let fixedCacheNames: Set<String> = ["com.apple.dt.Xcode", "Google", "BraveSoftware", "zen", "Homebrew"]
     var cacheDirs: [CacheTargetsInputs.DiscoveredCacheDir] = []
     if let names = try? FileManager.default.contentsOfDirectory(atPath: home + "/Library/Caches") {
         for name in names {
@@ -541,18 +531,6 @@ func readPremierePrefs(_ home: String) -> String {
         }
     }
     return ""
-}
-
-func batteryTick(_ db: DB, _ cfg: Config, _ deps: any SamplerDeps) async {
-    if !cfg.tier3.battery { return }
-    let t = deps.now()
-    if let stdout = try? await deps.execFile("ioreg", ["-rn", "AppleSmartBattery"]),
-       let b = parseBattery(stdout) {
-        let detail = try! JSONSerialization.data(withJSONObject: ["cycleCount": Double(b.cycleCount), "healthPct": b.healthPct])
-        db.prepare("INSERT INTO events(ts, kind, key, detail) VALUES(?,?,?,?)")
-            .run([.int(t), .text("battery"), .text("battery"), .text(String(data: detail, encoding: .utf8)!)])
-    }
-    await refreshFindings(db, loadConfig(db), t, { bin, args in try await deps.execFile(bin, args) })
 }
 
 func driftTick(_ db: DB, _ cfg: Config, _ deps: any SamplerDeps) async {

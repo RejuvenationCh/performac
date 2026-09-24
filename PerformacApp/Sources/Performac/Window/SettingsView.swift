@@ -7,19 +7,8 @@ struct SettingsView: View {
     @State private var launchAtLogin = false
     @State private var showInMenuBar = true
     @State private var menuBarOn: Set<String>
-    @State private var popGraphsOn: Set<String>
-    @State private var dashGraphsOn: Set<String>
-    @State private var popFindings: Bool
-    @State private var tilesOn: Set<String>
     var onMenuBarItem: (MenuBarItem, Bool) -> Void = { _, _ in }
     let databaseSummary: String
-    var popoverGraphs: [GraphKind] = GraphKind.popoverDefaults
-    var dashboardGraphs: [GraphKind] = GraphKind.dashboardDefaults
-    var popoverFindings: Bool = true
-    var onPopoverGraph: (GraphKind, Bool) -> Void = { _, _ in }
-    var onDashboardGraph: (GraphKind, Bool) -> Void = { _, _ in }
-    var onPopoverFindings: (Bool) -> Void = { _ in }
-    var onMetricTile: (MetricTileKind, Bool) -> Void = { _, _ in }
     var ignored: [String] = []
     var onUnignore: (String) -> Void = { _ in }
     @State private var staleDays: Int
@@ -34,31 +23,12 @@ struct SettingsView: View {
     init(config: Config = .defaults, fdaGranted: Bool = false,
          menuBarItems: [MenuBarItem] = MenuBarItem.defaults,
          databaseSummary: String = "not measured",
-         popoverGraphs: [GraphKind] = GraphKind.popoverDefaults,
-         dashboardGraphs: [GraphKind] = GraphKind.dashboardDefaults,
-         popoverFindings: Bool = true,
-         metricTiles: [MetricTileKind] = MetricTileKind.defaults,
-         onMetricTile: @escaping (MetricTileKind, Bool) -> Void = { _, _ in },
          ignored: [String] = [],
          onUnignore: @escaping (String) -> Void = { _ in },
-         onPopoverGraph: @escaping (GraphKind, Bool) -> Void = { _, _ in },
-         onDashboardGraph: @escaping (GraphKind, Bool) -> Void = { _, _ in },
-         onPopoverFindings: @escaping (Bool) -> Void = { _ in },
          onMenuBarItem: @escaping (MenuBarItem, Bool) -> Void = { _, _ in },
          onSave: @escaping (String, JSONValue) -> Void = { _, _ in }) {
         _menuBarOn = State(initialValue: Set(menuBarItems.map(\.rawValue)))
-        _popGraphsOn = State(initialValue: Set(popoverGraphs.map(\.rawValue)))
-        _dashGraphsOn = State(initialValue: Set(dashboardGraphs.map(\.rawValue)))
-        _popFindings = State(initialValue: popoverFindings)
-        _tilesOn = State(initialValue: Set(metricTiles.map(\.rawValue)))
         self.databaseSummary = databaseSummary
-        self.popoverGraphs = popoverGraphs
-        self.dashboardGraphs = dashboardGraphs
-        self.popoverFindings = popoverFindings
-        self.onPopoverGraph = onPopoverGraph
-        self.onDashboardGraph = onDashboardGraph
-        self.onPopoverFindings = onPopoverFindings
-        self.onMetricTile = onMetricTile
         self.ignored = ignored
         self.onUnignore = onUnignore
         self.onMenuBarItem = onMenuBarItem
@@ -106,7 +76,7 @@ struct SettingsView: View {
                         Row("Show in menu bar") { Toggle("", isOn: $showInMenuBar).labelsHidden() }
                         Divider().overlay(PC.hairline)
                     }
-                    SettingsGroup(header: "Menu bar readouts") {
+                    SettingsGroup(header: "Menu bar") {
                         ForEach(Array(MenuBarItem.allCases.enumerated()), id: \.element.id) { i, item in
                             if i > 0 { Divider().overlay(PC.hairline) }
                             Row(item.label) {
@@ -118,57 +88,7 @@ struct SettingsView: View {
                                     })).labelsHidden()
                             }
                         }
-                        Note("Each readout adds to the menu bar text. Network shows download and upload rates.")
-                    }
-                    SettingsGroup(header: "Dashboard graphs") {
-                        ForEach(Array(GraphKind.allCases.enumerated()), id: \.element.id) { i, g in
-                            if i > 0 { Divider().overlay(PC.hairline) }
-                            Row(g.label) {
-                                HStack(spacing: PC.gutter) {
-                                    Text(g.detail).font(.pcSmall).foregroundStyle(PC.meta)
-                                    Toggle("", isOn: Binding(
-                                        get: { dashGraphsOn.contains(g.rawValue) },
-                                        set: { on in
-                                            if on { dashGraphsOn.insert(g.rawValue) } else { dashGraphsOn.remove(g.rawValue) }
-                                            onDashboardGraph(g, on)
-                                        })).labelsHidden()
-                                }
-                            }
-                        }
-                    }
-                    SettingsGroup(header: "Menu bar popover") {
-                        ForEach(Array(GraphKind.allCases.enumerated()), id: \.element.id) { i, g in
-                            if i > 0 { Divider().overlay(PC.hairline) }
-                            Row("\(g.label) graph") {
-                                Toggle("", isOn: Binding(
-                                    get: { popGraphsOn.contains(g.rawValue) },
-                                    set: { on in
-                                        if on { popGraphsOn.insert(g.rawValue) } else { popGraphsOn.remove(g.rawValue) }
-                                        onPopoverGraph(g, on)
-                                    })).labelsHidden()
-                            }
-                        }
-                        Divider().overlay(PC.hairline)
-                        Row("List findings below the graphs") {
-                            Toggle("", isOn: Binding(get: { popFindings },
-                                                     set: { popFindings = $0; onPopoverFindings($0) }))
-                                .labelsHidden()
-                        }
-                        Note("The popover keeps three minutes of history, sampled every two seconds.")
-                    }
-                    SettingsGroup(header: "Popover top strip") {
-                        ForEach(Array(MetricTileKind.allCases.enumerated()), id: \.element.id) { i, t in
-                            if i > 0 { Divider().overlay(PC.hairline) }
-                            Row(t.label) {
-                                Toggle("", isOn: Binding(
-                                    get: { tilesOn.contains(t.rawValue) },
-                                    set: { on in
-                                        if on { tilesOn.insert(t.rawValue) } else { tilesOn.remove(t.rawValue) }
-                                        onMetricTile(t, on)
-                                    })).labelsHidden()
-                            }
-                        }
-                        Note("Four fit comfortably across the popover; more will crowd.")
+                        Note("Off, the menu bar shows only the icon, which turns to the finding's severity.")
                     }
                     SettingsGroup(header: "Thresholds") {
                         Stepper2("Warn when a cache is unused for", $staleDays, "days")

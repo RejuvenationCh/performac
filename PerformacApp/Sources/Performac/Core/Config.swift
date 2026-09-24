@@ -93,7 +93,6 @@ struct Dup: Codable, Sendable {
     var minMb: Double = 100
 }
 struct Tier3: Codable, Sendable {
-    var battery: Bool = false
     var browserBloat: Bool = false
 }
 struct Browser: Codable, Sendable {

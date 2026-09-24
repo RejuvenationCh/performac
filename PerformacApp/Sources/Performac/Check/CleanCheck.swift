@@ -86,7 +86,7 @@ enum CleanCheck {
         // Every cleanable family must explain where its size comes from. "Cache" says
         // nothing about whether losing it costs a second or an afternoon.
         for id in ["gen-adobe", "resolve-cache", "premiere-media", "premiere-peaks",
-                   "gen-deriveddata", "gen-homebrew", "gen-logs", "lr-default", "gen-zen"] {
+                   "gen-deriveddata", "lr-default", "gen-zen"] {
             c.check("origin: \(id) explains itself", (CacheDetail.origin(forID: id) ?? "").count > 40)
         }
         c.check("origin: Adobe's names After Effects, which is where the size actually is",

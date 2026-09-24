@@ -224,39 +224,6 @@ enum Rules {
         return out
     }
 
-    // tier-3 gated: [] unless cfg.tier3.battery. Samples = [{ts, cycleCount, healthPct}];
-    // power = latest power event — ~80% on AC is optimized charging holding the cap.
-    struct BatterySample: Sendable {
-        var ts: Int64
-        var cycleCount: Int64
-        var healthPct: Double
-    }
-
-    static func batteryTrend(_ batterySamples: [BatterySample], _ cfg: Config, _ now: Int64, _ power: EventRow?) -> [EngineFinding] {
-        if !cfg.tier3.battery { return [] }
-        let rows = batterySamples.sorted { $0.ts < $1.ts }
-        if rows.isEmpty { return [] }
-        let latest = rows[rows.count - 1]
-        let old = rows.filter { latest.ts - $0.ts >= 30 * DAY }.first
-        let onAcCapped = power?.key == "AC Power" && latest.healthPct >= 78 && latest.healthPct < 85
-        var severity = "info"
-        var trend = ""
-        if let old {
-            let months = Double(latest.ts - old.ts) / Double(30 * DAY)
-            let declinePerMonth = (old.healthPct - latest.healthPct) / months
-            if (latest.healthPct < 85 || declinePerMonth > 1.5) && !onAcCapped { severity = "amber" }
-            trend = " Down \(String(format: "%.1f", old.healthPct - latest.healthPct))% since \(Date(timeIntervalSince1970: Double(old.ts) / 1000).formatted(date: .numeric, time: .omitted)) (\(String(format: "%.1f", declinePerMonth))% per month)."
-        } else if latest.healthPct < 85 && !onAcCapped {
-            severity = "amber"
-        }
-        return [EngineFinding(
-            id: "battery-health", kind: "battery", severity: severity,
-            headline: "Battery health \(String(format: "%.1f", latest.healthPct))% after \(latest.cycleCount) cycles",
-            why: "macOS reports this from the battery controller.\(trend)\(onAcCapped ? " Health near 80% on AC is optimized charging holding the cap — normal." : "")",
-            detail: "Health declines naturally with charge cycles; a faster slide is worth a look at Apple service.",
-            linkKind: nil, linkTarget: nil)]
-    }
-
     // tier-3 gated. Sums RSS across browser procs per tick, requires the total ≥ rssGb
     // sustained ≥ minMinutes (same gap rule as hogs).
     static func browserBloat(_ procSamples: [ProcSample], _ cfg: Config, _ now: Int64) -> [EngineFinding] {

@@ -2,14 +2,12 @@
 //
 // Today only ever rendered the time-sensitive kinds (drive, thermal, backup), which on a
 // healthy machine is nothing at all, so it was a permanently empty page. This answers the
-// question that screen should have answered: what is this Mac doing right now, and what is
-// worth knowing about it.
+// question that screen should have answered: what is worth knowing about this Mac. Live
+// CPU, memory, network and temperature graphs lived here until Vorssaint covered them.
 import SwiftUI
 
 struct DashboardView: View {
-    @ObservedObject var live = MetricsStore.shared
     var findings: [Finding] = []
-    var graphs: [GraphKind] = GraphKind.dashboardDefaults
     var facts = EngineStore.QuietFacts()
     var trendPoints: [Double] = []
     var trendNote: String = ""
@@ -23,29 +21,18 @@ struct DashboardView: View {
         let order: [Severity] = [.red, .amber, .info]
         return order.flatMap { sev in findings.filter { $0.severity == sev } }
     }
-    private func rate(_ bps: Double) -> String {
-        let mb = bps / 1_048_576
-        return mb >= 1 ? String(format: "%.1f MB/s", mb) : String(format: "%.0f KB/s", bps / 1024)
-    }
 
     var body: some View {
         Page(title: "Dashboard",
-             subtitle: "What this Mac is doing now, and what is worth knowing.",
+             subtitle: "What is worth knowing about this Mac.",
              trailing: AnyView(FreshnessBar(at: updatedAt, busy: busy, onRefresh: onRefresh))) {
             ScrollView {
                 VStack(alignment: .leading, spacing: PC.gutter) {
-                    // live traces, one card each, only the ones enabled in Settings
-                    if !graphs.isEmpty {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: PC.gutter)],
-                                  spacing: PC.gutter) {
-                            ForEach(graphs) { g in card(for: g) }
-                        }
-                    }
-
                     // the four measured facts, no invented numbers
                     HStack(spacing: PC.gutter) {
                         StatTile("Free space", String(format: "%.0f GB", facts.freeGb),
-                                 String(format: "%.0f%% of the disk in use", live.current.diskUsedPercent))
+                                 String(format: "%.0f%% of the disk in use",
+                                        facts.totalGb > 0 ? (1 - facts.freeGb / facts.totalGb) * 100 : 0))
                         StatTile("Largest cache",
                                  facts.largestCacheGb >= 0.1
                                     ? String(format: "%.1f GB", facts.largestCacheGb) : "none yet",
@@ -82,58 +69,6 @@ struct DashboardView: View {
                 .padding(.horizontal, PC.stack).padding(.bottom, PC.stack)
             }
         }
-    }
-
-    @ViewBuilder private func card(for g: GraphKind) -> some View {
-        switch g {
-        case .cpu:
-            GraphCard(title: "CPU", value: String(format: "%.0f%%", live.current.cpuPercent),
-                      values: live.cpuSeries, tint: PC.accentFill, ceiling: 100)
-        case .memory:
-            GraphCard(title: "Memory",
-                      value: String(format: "%.1f / %.0f GB", live.current.memUsedGb, live.current.memTotalGb),
-                      values: live.memSeries, tint: PC.green, ceiling: 100)
-        case .network:
-            GraphCard(title: "Network",
-                      value: "\(rate(live.current.netDownBps)) down",
-                      values: live.netDownSeries, tint: PC.accent,
-                      secondary: (values: live.netUpSeries, tint: PC.amber,
-                                  caption: "\(rate(live.current.netUpBps)) up"))
-        case .temperature:
-            GraphCard(title: "Temperature",
-                      value: live.current.tempC.map { String(format: "%.0f°C", $0) } ?? "unavailable",
-                      values: live.tempSeries, tint: PC.red)
-        }
-    }
-}
-
-/// One live trace, optionally with a second series drawn behind it (network up and down).
-struct GraphCard: View {
-    let title: String
-    let value: String
-    let values: [Double]
-    var tint: Color = PC.accentFill
-    var ceiling: Double? = nil
-    var secondary: (values: [Double], tint: Color, caption: String)? = nil
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: PC.s1) {
-            HStack {
-                Text(title).font(.pcLabel).foregroundStyle(PC.meta)
-                Spacer()
-                Text(value).font(.pcNum).fontWeight(.medium).foregroundStyle(PC.ink)
-            }
-            ZStack {
-                if let s = secondary { MiniGraph(values: s.values, tint: s.tint, width: 206, height: 56) }
-                MiniGraph(values: values, tint: tint, ceiling: ceiling, width: 206, height: 56)
-            }
-            if let s = secondary {
-                Text(s.caption).font(.system(size: 10)).foregroundStyle(s.tint)
-            }
-        }
-        .padding(PC.gutter)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .pcCard()
     }
 }
 

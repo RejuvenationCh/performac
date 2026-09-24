@@ -78,9 +78,6 @@ white surface · 4px radius · 1px rgba(0,0,0,.1) border · small shadow · 12px
      link-out    label-md, accent               ← at most one, optional
 ```
 
-**MetricStrip** (popover header): four equal cells split by 1px vertical hairlines; each is a
-`label-md` uppercase label above a `mono-numeric` value.
-
 Others as built: `SizeRow` (name · item count · size · proportional bar, hover-revealed
 actions) · `CacheRow` (checkbox · name · size · last-written age · safety pill · why-line) ·
 `SafetyPill` ("Safe to clean" green / "Check first" amber) · `StorageBar` (red past 92%) ·
@@ -230,30 +227,15 @@ and hand back what it measured rather than tearing the stream down. A `ScanSumma
 2. A root whose tree came from a stopped scan is recorded in `partialRoots`, and the picker
    prints "partial" beside its age rather than an age that implies the whole drive.
 
-## Quitting an app to uninstall it
+## Left to Vorssaint
 
-Running was a dead end: the detail pane said "quit it first" and left you to go do that
-somewhere else. It is now the one blocker the pane can lift, and it lifts it in **two stages,
-which are two separate decisions**:
-
-1. **Quit** sends the same request Cmd-Q sends, so an app with unsaved work puts up its own
-   save prompt. Ten seconds to comply, because that prompt is allowed to sit there.
-2. **Force Quit** appears *only* after stage one was ignored, never as an automatic fallback,
-   and says what it costs before it is pressed. Chris edits video; forcing Premiere or Resolve
-   is measured in lost hours, not lost seconds.
-
-Everything routes through `ProcessControl`, which is the only place this app terminates
-anything, and removal waits on `waitForExit` — terminating is a request, not an event, and the
-uninstaller must not start deleting files while the app is still writing them.
-
-`ProcessControl.target(bundleID:)` matches on **bundle id, never display name**: two apps can
-share a name, and the wrong match here is a force-quit of something the user did not choose.
-
-`Uninstaller.isApple` is **case-insensitive**. Apple is inconsistent — Finder is
-`com.apple.finder`, Safari is `com.apple.Safari` — and a case-sensitive prefix test offered to
-uninstall Finder. Its one exception is `com.apple.safari.webapp.*`: a Safari web app carries an
-Apple bundle id but is the user's own shortcut, and refusing to remove those was refusing to
-remove three apps Chris built himself.
+Vorssaint (installed alongside) already does these, better, so Performac no longer does:
+the **Apps** tab (uninstaller and its quit-first flow), the **Updates** tab (brew formulae
+and casks), **live CPU / memory / network / temperature** graphs, the popover metric strip and
+those menu bar readouts, the **battery health** rule, and the generic cleaner rows for
+**Homebrew downloads, app logs, Xcode device support, Simulator caches and iOS backups**.
+Do not bring them back. Performac's job is what Vorssaint cannot see: where the disk went,
+duplicates, creative-app caches, and what changed over time.
 
 ## Liquid Glass
 
@@ -266,8 +248,8 @@ the split is strict:
 | the 64pt rail | table rows (SizeRow, CacheRow, OutlineRow, CompactRow) |
 | page headers | coach cards |
 | the Disk toolbar (target picker, Scan, mode switch) | treemap and bubbles |
-| the menu bar popover | the metric strip inside it |
-| every sheet (trash, uninstall, Get Info, quit) | list and detail panes |
+| the menu bar popover | coach cards inside it |
+| every sheet (trash, Get Info, quit) | list and detail panes |
 | primary controls (`.glass`, `.glassProminent`) | badges and pills |
 
 Two rules with the same weight as the placement:

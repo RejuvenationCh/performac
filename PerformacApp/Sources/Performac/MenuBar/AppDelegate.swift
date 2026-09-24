@@ -18,7 +18,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var engineCfg: Config?
     private var engineDeps: LiveDeps?
     private var engineSampler: Sampler?
-    private var metricsTimer: Timer?
     private var navMonitor: Any?
     private var engineTasks: [Task<Void, Never>] = []
 
@@ -30,7 +29,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         startEngine()
 
         installMainMenu()
-        startMetricsTimer()
         startNavigationMonitor()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         configureStatusButton()
@@ -95,14 +93,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 try? await Task.sleep(for: .seconds(3600))
             }
         })
-        // daily: battery (tier3-gated inside)
-        engineTasks.append(Task.detached(priority: .utility) { [sampler, store] in
-            while !Task.isCancelled {
-                await batteryTick(db, cfg, deps)
-                try? await Task.sleep(for: .seconds(86_400))
-            }
-        })
-
         // first refresh so the UI has real data before the first tick lands
         Task { [store] in
             await MainActor.run { store.refreshFromDatabase() }
@@ -214,73 +204,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func navigateBack() { store.goBack() }
     @objc private func navigateForward() { store.goForward() }
 
-    /// Stats-style live readout. Two seconds is frequent enough to feel live and cheap
-    /// enough to ignore: each sample is three kernel calls, no subprocess.
-    private func startMetricsTimer() {
-        _ = LiveMetrics.shared.cpu()          // prime the tick delta so the first read is real
-        // Timer.scheduledTimer does not fire until its first interval has passed, so every
-        // readout in the app sat at zero for the first two seconds. Sample once now.
-        MetricsStore.shared.current = LiveMetrics.shared.sample()
-        let t = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                guard let self else { return }
-                MetricsStore.shared.current = LiveMetrics.shared.sample()
-                self.updateStatusTitle()
-            }
-        }
-        RunLoop.main.add(t, forMode: .common)  // keeps ticking while menus are open
-        metricsTimer = t
-    }
-
-    /// Compose the title from whichever readouts are enabled, in a fixed order.
-    private func updateStatusTitle() {
+    /// Severity glyph always; the worst finding's first words too, when Settings asks.
+    func updateStatusTitle() {
         guard let b = statusItem?.button else { return }
-        let m = store.metrics
-        let items = store.menuBarItems
         let worst = store.worst
-
-        var parts: [String] = []
-        for item in items {
-            switch item {
-            case .cpu:     parts.append(String(format: "C %.0f%%", m.cpuPercent))
-            case .memory:  parts.append(String(format: "M %.0f%%", m.memPercent))
-            case .disk:    parts.append(String(format: "D %.0f%%", m.diskUsedPercent))
-            case .network: parts.append(rate(m.netDownBps, "\u{2193}") + " " + rate(m.netUpBps, "\u{2191}"))
-            case .battery: if m.batteryPercent >= 0 {
-                               parts.append("B \(m.batteryPercent)%" + (m.batteryCharging ? "+" : ""))
-                           }
-            case .finding: if let w = worst { parts.append(shortHeadline(w.headline)) }
-            }
-        }
-
-        // Nothing enabled, or nothing to say: fall back to a bare glyph so the item stays
-        // clickable rather than collapsing to zero width.
-        if parts.isEmpty {
-            b.image = NSImage(systemSymbolName: worst == nil ? "gauge.with.dots.needle.33percent"
-                                                             : worst!.severity.symbol,
-                              accessibilityDescription: "Performac")
-            b.image?.isTemplate = true
-            b.title = ""
-        } else {
-            b.image = nil
-            b.title = parts.joined(separator: "  ")
-        }
-        b.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-        b.toolTip = String(format: "CPU %.0f%%   Memory %.1f of %.0f GB   Disk %.0f%% used   Down %@   Up %@%@   %@",
-                           m.cpuPercent, m.memUsedGb, m.memTotalGb, m.diskUsedPercent,
-                           rate(m.netDownBps, ""), rate(m.netUpBps, ""),
-                           m.batteryPercent >= 0 ? "   Battery \(m.batteryPercent)%" : "",
-                           m.thermal)
-            + (worst.map { "\n\n" + $0.headline } ?? "")
-    }
-
-    /// Menu bar width is precious: one significant figure, unit implied by magnitude.
-    private func rate(_ bps: Double, _ prefix: String) -> String {
-        let mb = bps / 1_048_576
-        if mb >= 1 { return String(format: "%@%.1fM", prefix, mb) }
-        let kb = bps / 1024
-        if kb >= 1 { return String(format: "%@%.0fK", prefix, kb) }
-        return prefix + "0"
+        b.image = NSImage(systemSymbolName: worst?.severity.symbol ?? "gauge.with.dots.needle.33percent",
+                          accessibilityDescription: "Performac")
+        b.image?.isTemplate = true
+        b.title = store.menuBarItems.contains(.finding) ? worst.map { shortHeadline($0.headline) } ?? "" : ""
+        b.toolTip = worst?.headline ?? "Performac — nothing worth doing"
     }
 
     /// Closing the window retreats to the menu bar rather than quitting: the sampler must
@@ -350,15 +282,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         Task { [weak self, store] in
             for await _ in store.$live.values {
                 guard let self else { return }
-                await MainActor.run {
-                    let worst = store.worst
-                    self.statusItem.button?.image = NSImage(systemSymbolName: worst == nil
-                        ? "gauge.with.dots.needle.33percent" : "exclamationmark.triangle.fill",
-                        accessibilityDescription: "Performac")
-                    self.statusItem.button?.image?.isTemplate = true
-                    self.statusItem.button?.title = store.worstTitle
-                    self.statusItem.button?.toolTip = worst?.headline ?? "Performac — nothing worth doing"
-                }
+                await MainActor.run { self.updateStatusTitle() }
             }
         }
     }

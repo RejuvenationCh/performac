@@ -11,12 +11,6 @@ struct CleanPolicy: Sendable {
     var safe: Bool
     /// What actually happens if you trash it. Shown on the row — never omitted.
     var consequence: String
-    /// Trash the contents, not the folder itself.
-    ///
-    /// ~/Library/Logs carries an ACL of "group:everyone deny delete", so macOS refuses to
-    /// remove the folder no matter who asks. Emptying it is both possible and what you
-    /// actually want: the folder should survive, its contents should not.
-    var contentsOnly: Bool = false
 }
 
 enum Allowlist {
@@ -42,20 +36,8 @@ enum Allowlist {
             consequence: "Media-intelligence analysis, regenerated on demand."),
 
         // ---- reclaimable, with the real cost stated ----
-        "gen-homebrew": .init(cleanable: true, safe: true,
-            consequence: "Downloaded installers Homebrew keeps after installing. Re-downloaded if ever needed."),
-        "gen-logs": .init(cleanable: true, safe: true,
-            consequence: "Application logs. Only useful when diagnosing a crash you are actively chasing.",
-            contentsOnly: true),
-        "gen-xcode-devicesupport": .init(cleanable: true, safe: true,
-            consequence: "Symbols for iOS versions you have debugged. Re-fetched next time you attach that device."),
         "gen-xcode-archives": .init(cleanable: true, safe: false,
             consequence: "Built archives of apps you shipped — the only copy of those exact builds."),
-        "gen-simulators": .init(cleanable: true, safe: true,
-            consequence: "Simulator caches, rebuilt on next launch."),
-        // Not cleanable. If the phone is lost or wiped, this backup is the only copy.
-        "gen-ios-backups": .init(cleanable: false, safe: false,
-            consequence: "Your device backups — the only copy if a phone is lost. Remove them in Finder if you truly mean to."),
 
         // ---- Lightroom ----
         "lr-default": .init(cleanable: true, safe: false,

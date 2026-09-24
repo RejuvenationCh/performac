@@ -64,28 +64,6 @@ func parseThermlogLine(_ line: String?) -> Int64? {
     return Int64(m.1)
 }
 
-struct BatteryState: Equatable, Sendable {
-    var cycleCount: Int64
-    var designCap: Int64
-    var nominalCap: Int64
-    var healthPct: Double
-}
-
-func parseBattery(_ text: String?) -> BatteryState? {
-    func g(_ k: String) -> Int64? {
-        let re = try! NSRegularExpression(pattern: "\"" + k + "\"\\s*=\\s*(\\d+)")
-        let str = text ?? ""
-        guard let m = re.firstMatch(in: str, range: NSRange(str.startIndex..., in: str)),
-              m.range(at: 1).location != NSNotFound else { return nil }
-        return Int64((str as NSString).substring(with: m.range(at: 1)))
-    }
-    guard let nominal = g("NominalChargeCapacity"),
-          let design = g("DesignCapacity"),
-          let cycles = g("CycleCount") else { return nil }
-    let pct = (Double(nominal) / Double(design) * 1000).rounded() / 10
-    return BatteryState(cycleCount: cycles, designCap: design, nominalCap: nominal, healthPct: pct)
-}
-
 struct TmDestinations: Equatable, Sendable {
     var configured: Bool
     var names: [String]

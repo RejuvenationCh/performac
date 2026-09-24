@@ -66,8 +66,6 @@ struct CacheEntry: Identifiable, Sendable {
     var cacheID: String = ""
     /// Off the cleaner's allowlist → shown and measured, but never selectable or trashable.
     var cleanable = true
-    /// Emptied rather than removed (see CleanPolicy.contentsOnly).
-    var contentsOnly = false
     var selected = false
 }
 
@@ -171,71 +169,13 @@ enum RightPanelMode: String, CaseIterable, Sendable {
 }
 
 
-/// What the menu bar can display. Each is independently toggleable, RunCat/Stats style.
+/// What the menu bar can display as text. CPU, memory, network and battery readouts went
+/// to Vorssaint, which already shows them; the worst finding is the one only Performac has.
 enum MenuBarItem: String, CaseIterable, Sendable, Identifiable {
-    case cpu, memory, disk, network, battery, finding
+    case finding
     var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .cpu: "CPU usage"
-        case .memory: "Memory pressure"
-        case .disk: "Storage used"
-        case .network: "Network speed"
-        case .battery: "Battery"
-        case .finding: "Worst finding"
-        }
-    }
-    var symbol: String {
-        switch self {
-        case .cpu: "cpu"
-        case .memory: "memorychip"
-        case .disk: "internaldrive"
-        case .network: "arrow.up.arrow.down"
-        case .battery: "battery.100"
-        case .finding: "exclamationmark.triangle"
-        }
-    }
-    /// Default set matches what a diagnostic bar is usually for.
-    static let defaults: [MenuBarItem] = [.cpu, .memory]
-}
-
-
-/// A live trace that can be shown in the popover, the dashboard, or both.
-enum GraphKind: String, CaseIterable, Sendable, Identifiable {
-    case cpu, memory, network, temperature
-    var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .cpu: "CPU"; case .memory: "Memory"
-        case .network: "Network"; case .temperature: "Temperature"
-        }
-    }
-    var detail: String {
-        switch self {
-        case .cpu: "Percentage across all cores"
-        case .memory: "Share of physical memory in use"
-        case .network: "Download and upload throughput"
-        // Free space barely moves minute to minute, so a live trace of it was a flat line.
-        // Temperature actually changes under load, which is what a live graph is for.
-        case .temperature: "SoC die temperature, averaged across sensors"
-        }
-    }
-    static let popoverDefaults: [GraphKind] = [.cpu, .memory, .network]
-    static let dashboardDefaults: [GraphKind] = [.cpu, .memory, .network, .temperature]
-}
-
-/// A cell in the popover's top strip. Independently toggleable.
-enum MetricTileKind: String, CaseIterable, Sendable, Identifiable {
-    case cpu, ram, free, temp, network, battery, diskUsed
-    var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .cpu: "CPU"; case .ram: "Memory"; case .free: "Free space"
-        case .temp: "Temperature"; case .network: "Network"
-        case .battery: "Battery"; case .diskUsed: "Disk used"
-        }
-    }
-    static let defaults: [MetricTileKind] = [.cpu, .ram, .free, .temp]
+    var label: String { "Show the worst finding" }
+    static let defaults: [MenuBarItem] = []
 }
 
 

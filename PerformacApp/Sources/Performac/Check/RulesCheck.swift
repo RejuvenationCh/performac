@@ -48,7 +48,7 @@ enum RulesCheck {
     }
     static var b16cfg: Config {
         var c = Config.defaults
-        c.tier3 = Tier3(battery: true, browserBloat: true)
+        c.tier3 = Tier3(browserBloat: true)
         return c
     }
 
@@ -497,49 +497,11 @@ enum RulesCheck {
                 ["AltTab"], [], ["AltTab"], [], plenty, Config.defaults, NOW).isEmpty)
         }
 
-        // ---- batteryTrend ----
-        do {
-            let rows = [Rules.BatterySample(ts: NOW, cycleCount: 78, healthPct: 96.4)]
-            var off = Config.defaults
-            off.tier3 = Tier3(battery: false, browserBloat: true)
-            c.check("battery: gated off → none", Rules.batteryTrend(rows, off, NOW, nil).isEmpty)
-        }
-        do {
-            let rows = [Rules.BatterySample(ts: NOW, cycleCount: 78, healthPct: 96.4)]
-            let fs = Rules.batteryTrend(rows, b16cfg, NOW, nil)
-            c.check("battery: single sample info", fs.count == 1 && fs[0].severity == "info")
-            c.eq("battery: exact headline", fs.first?.headline, "Battery health 96.4% after 78 cycles")
-        }
-        do {
-            let slow = [Rules.BatterySample(ts: NOW - 60 * DAY, cycleCount: 40, healthPct: 98),
-                        Rules.BatterySample(ts: NOW, cycleCount: 78, healthPct: 96.4)]
-            let f1 = Rules.batteryTrend(slow, b16cfg, NOW, nil)
-            c.check("battery: trend sentence", f1.count == 1 && f1[0].why.contains("0.8% per month"), f1.first?.why ?? "")
-            let fast = [Rules.BatterySample(ts: NOW - 60 * DAY, cycleCount: 40, healthPct: 100),
-                        Rules.BatterySample(ts: NOW, cycleCount: 78, healthPct: 96)]
-            c.check("battery: fast decline amber", Rules.batteryTrend(fast, b16cfg, NOW, nil).first?.severity == "amber")
-        }
-        do {
-            let rows = [Rules.BatterySample(ts: NOW, cycleCount: 200, healthPct: 80)]
-            c.check("battery: below 85 amber", Rules.batteryTrend(rows, b16cfg, NOW, nil).first?.severity == "amber")
-        }
-        do {
-            let rows = [Rules.BatterySample(ts: NOW, cycleCount: 200, healthPct: 80)]
-            let ac = EventRow(ts: 0, kind: "power", key: "AC Power", detail: "")
-            let batt = EventRow(ts: 0, kind: "power", key: "Battery Power", detail: "")
-            let onAc = Rules.batteryTrend(rows, b16cfg, NOW, ac)
-            c.check("battery: 80% on AC → info", onAc.count == 1 && onAc[0].severity == "info")
-            c.check("battery: optimized charging why", onAc.count == 1 && onAc[0].why.lowercased().contains("optimized charging"), onAc.first?.why ?? "")
-            c.check("battery: 80% on battery → amber", Rules.batteryTrend(rows, b16cfg, NOW, batt).first?.severity == "amber")
-            let farGone = [Rules.BatterySample(ts: NOW, cycleCount: 300, healthPct: 70)]
-            c.check("battery: 70% on AC still amber", Rules.batteryTrend(farGone, b16cfg, NOW, ac).first?.severity == "amber")
-        }
-
         // ---- browserBloat ----
         do {
             let rows = [ProcSample(ts: NOW, pid: 1, name: "Zen", cpu: 5, rssMb: 5000)]
             var off = Config.defaults
-            off.tier3 = Tier3(battery: true, browserBloat: false)
+            off.tier3 = Tier3(browserBloat: false)
             c.check("browser: gated off → none", Rules.browserBloat(rows, off, NOW).isEmpty)
         }
         do {

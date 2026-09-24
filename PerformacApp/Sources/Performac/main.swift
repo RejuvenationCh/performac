@@ -25,20 +25,6 @@ if CommandLine.arguments.count >= 4, CommandLine.arguments[1] == "parity" {
     // against v1's engine run over the same database.
     exit(await ParityCLI.run(dbPath: CommandLine.arguments[2], now: Int64(CommandLine.arguments[3]) ?? 0))
 }
-if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "metrics" {
-    let m = LiveMetrics.shared
-    _ = m.cpu()                                  // prime the tick delta
-    _ = m.network()                              // rates need a previous reading
-    try? await Task.sleep(for: .seconds(1))
-    let s = m.sample()
-    print(String(format: "cpu %.1f%%  mem %.1f/%.1f GB (%.0f%%)  disk %.0f%% used (%.1f free of %.0f)  net down %.0f KB/s up %.0f KB/s  battery %d%%%@  thermal %@",
-                 s.cpuPercent, s.memUsedGb, s.memTotalGb, s.memPercent,
-                 s.diskUsedPercent, s.freeGb, s.totalGb,
-                 s.netDownBps / 1024, s.netUpBps / 1024,
-                 s.batteryPercent, s.batteryCharging ? " (charging)" : "", s.thermal))
-    print(String(format: "  SoC temperature: %@", s.tempC.map { String(format: "%.1f C", $0) } ?? "unavailable"))
-    exit(0)
-}
 if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "rowsbench" {
     let db = DB(path: NSHomeDirectory() + "/Library/Application Support/com.chris.performac.v2/performac.db")
     func children(_ path: String) -> Int {

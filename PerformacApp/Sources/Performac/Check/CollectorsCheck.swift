@@ -29,12 +29,6 @@ enum CollectorsCheck {
 
     static let THERMLOG = "2026-08-20 13:11:08 +0700 Thermal Warning Level = 1"
 
-    static let BATT = """
-          "NominalChargeCapacity" = 6024
-          "DesignCapacity" = 6249
-          "CycleCount" = 78
-    """
-
     static let TM_NONE = "tmutil: No destinations configured."
 
     static let TM_ONE = """
@@ -132,10 +126,6 @@ enum CollectorsCheck {
         c.eq("parseThermlogLine: level 1", parseThermlogLine(THERMLOG), 1)
         c.eq("parseThermlogLine: level 0 counts", parseThermlogLine("2026-08-20 13:11:08 +0700 Thermal Warning Level = 0"), 0)
         c.check("parseThermlogLine: unrelated → nil", parseThermlogLine("some unrelated line") == nil)
-        // battery
-        c.eq("parseBattery: real ioreg fixture", parseBattery(BATT),
-             BatteryState(cycleCount: 78, designCap: 6249, nominalCap: 6024, healthPct: 96.4))
-        c.check("parseBattery: garbage → nil", parseBattery("garbage") == nil)
         // tm
         c.eq("parseTmDestinations: none", parseTmDestinations(TM_NONE), TmDestinations(configured: false, names: []))
         c.eq("parseTmDestinations: one", parseTmDestinations(TM_ONE), TmDestinations(configured: true, names: ["T7 Backup"]))
@@ -173,7 +163,6 @@ enum CollectorsCheck {
         c.check("parsers never throw: parseFrontAppName", parseFrontAppName(nil) == nil)
         c.eq("parsers never throw: parseTherm", parseTherm(nil), ThermState(available: false, cpuSpeedLimit: nil))
         c.check("parsers never throw: parseThermlogLine", parseThermlogLine(nil) == nil)
-        c.check("parsers never throw: parseBattery", parseBattery(nil) == nil)
         c.eq("parsers never throw: parseTmDestinations", parseTmDestinations(nil), TmDestinations(configured: false, names: []))
         c.check("parsers never throw: parseTmLatest", parseTmLatest(nil) == nil)
         c.eq("parsers never throw: parseResolveConfig", parseResolveConfig(nil), ResolveConfig(fsRoot: nil, cacheDir: nil))
