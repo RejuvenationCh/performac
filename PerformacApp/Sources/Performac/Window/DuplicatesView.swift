@@ -31,6 +31,10 @@ struct DuplicatesView: View {
     @State private var infoTarget: RowInfo? = nil
     @State private var trashTarget: RowInfo? = nil
 
+    /// Wide enough for a deeply nested path, narrow enough that the row's actions stay near
+    /// the path they act on rather than pinned to the far edge of a big display.
+    static let contentWidth: CGFloat = 1040
+
     /// What you get back by keeping one copy of each group.
     private var recoverable: Int64 {
         groups.reduce(0) { $0 + $1.bytes * Int64(max($1.paths.count - 1, 0)) }
@@ -66,6 +70,7 @@ struct DuplicatesView: View {
                         Spacer()
                     }
                     .padding(.horizontal, PC.stack).padding(.vertical, PC.s2)
+                    .frame(maxWidth: Self.contentWidth, alignment: .leading)
                     .background(PC.canvas).pcHairline(.bottom)
 
                     ScrollView {
@@ -75,6 +80,10 @@ struct DuplicatesView: View {
                                               infoTarget: $infoTarget, trashTarget: $trashTarget)
                             }
                         }
+                        // Capped, like Settings. Trailing-aligned actions on a full-width row
+                        // sat ~800pt from the path they act on: a long trip to a destructive
+                        // control, and far enough that the eye stopped associating the two.
+                        .frame(maxWidth: Self.contentWidth, alignment: .leading)
                     }
                     .background(PC.surface)
                 }
