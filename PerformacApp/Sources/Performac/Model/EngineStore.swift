@@ -424,7 +424,7 @@ final class EngineStore: ObservableObject {
             .all([.text("Macintosh HD")])
         let pts = rows.compactMap { r -> (Int64, Double)? in
             guard let ts = r["ts"]?.intVal, let g = r["free_gb"] else { return nil }
-            return (ts, Double(g.stringVal) ?? 0)
+            return (ts, g.doubleVal)   // stored as REAL: stringVal is "" for those, which made every point 0
         }
         guard let first = pts.first, let last = pts.last, pts.count >= 2 else {
             trend = Trend(points: [], window: "no history yet",
