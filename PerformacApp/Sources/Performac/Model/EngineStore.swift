@@ -454,7 +454,7 @@ final class EngineStore: ObservableObject {
     // MARK: Digest — real free-space history, and an honest note about it
 
     struct Trend: Sendable {
-        var points: [Double] = []
+        var points: [TrendPoint] = []
         var window: String = ""
         var note: String = ""
         var hasEnoughHistory = false
@@ -493,9 +493,11 @@ final class EngineStore: ObservableObject {
             ? String(format: "%.0f days", spanDays)
             : String(format: "%.0f hours", spanDays * 24)
 
-        // thin out to ~60 points so the line stays readable
+        // thin out to ~60 points so the line stays readable. Timestamps ride along now: the
+        // chart is hoverable, and a point that cannot say when it was taken is half a reading.
         let step = max(1, pts.count / 60)
-        let series = stride(from: 0, to: pts.count, by: step).map { pts[$0].1 }
+        let series = stride(from: 0, to: pts.count, by: step)
+            .map { TrendPoint(ts: pts[$0].0, freeGiB: pts[$0].1) }
 
         if spanDays < 4 {
             trend = Trend(points: series, window: windowText,
@@ -517,9 +519,13 @@ final class EngineStore: ObservableObject {
                           note: "Free space is holding steady over the last \(windowText).",
                           hasEnoughHistory: true)
         } else {
-            let weeksLeft = (ys.last ?? 0) / perWeek
+            let weeksLeft = (ys.last ?? 0) / perWeek   // a ratio, so the unit cancels
+            // perWeek is GiB, like the column it came from. Printing it as "GB" put this
+            // sentence 7.4% out from every other size on the screen.
+            let perWeekText = Fmt.bytes(Int64(perWeek * 1_073_741_824))
             trend = Trend(points: series, window: windowText,
-                          note: String(format: "Losing about %.1f GB a week. At this rate roughly %.0f weeks of headroom.", perWeek, weeksLeft),
+                          note: String(format: "Losing about %@ a week. At this rate roughly %.0f weeks of headroom.",
+                                       perWeekText, weeksLeft),
                           hasEnoughHistory: true)
         }
     }

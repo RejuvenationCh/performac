@@ -19,10 +19,21 @@ struct OverviewView: View {
     var coachBusy: Bool = false
     var coachConfigured: Bool = false
     var onCoach: () -> Void = {}
-    var trendPoints: [Double] = []
+    var trendPoints: [TrendPoint] = []
     var trendWindow: String = ""
     var trendNote: String = ""
     var trendVolume: String = ""
+    /// The sample under the pointer, reported by the chart and read out in its header.
+    @State private var hoveredPoint: TrendPoint? = nil
+
+    /// Short and unambiguous: samples can be minutes apart, so the time matters as much as
+    /// the day. en_US to match every other figure in the app.
+    private static func stamp(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US")
+        f.dateFormat = "d MMM, HH:mm"
+        return f.string(from: d)
+    }
 
     /// Most severe first. A stable sort on a rank rather than a filter per severity, so adding
     /// a severity can never silently drop its cards off this screen.
@@ -103,13 +114,29 @@ struct OverviewView: View {
                     .padding(PC.gutter).frame(maxWidth: .infinity, alignment: .leading).pcCard()
 
                     VStack(alignment: .leading, spacing: PC.s2) {
-                        // Names the volume: this chart is boot-only, and a card above it can
-                        // be about an external drive heading for full.
-                        SectionHeader(text: trendWindow.isEmpty
-                                      ? "\(trendVolume) — free space"
-                                      : "\(trendVolume) — free space, last \(trendWindow)")
+                        HStack(alignment: .firstTextBaseline) {
+                            // Names the volume: this chart is boot-only, and a card above it
+                            // can be about an external drive heading for full.
+                            SectionHeader(text: trendWindow.isEmpty
+                                          ? "\(trendVolume) — free space"
+                                          : "\(trendVolume) — free space, last \(trendWindow)")
+                            Spacer()
+                            if let p = hoveredPoint {
+                                // Value leads, time follows: the reader already knows what the
+                                // chart is and came for the number. Monospaced digits so the
+                                // readout does not twitch as the pointer sweeps.
+                                HStack(spacing: PC.s2) {
+                                    Text(Fmt.bytes(p.freeBytes))
+                                        .font(.pcNum).fontWeight(.semibold).foregroundStyle(PC.ink)
+                                    Text(Self.stamp(p.date))
+                                        .font(.pcSmall).foregroundStyle(PC.meta).monospacedDigit()
+                                }
+                                .transition(.opacity)
+                            }
+                        }
                         if trendPoints.count >= 2 {
-                            Sparkline(values: trendPoints).frame(height: 54)
+                            Sparkline(points: trendPoints) { hoveredPoint = $0 }
+                                .frame(height: 54)
                         } else {
                             Text("Not enough samples to draw yet.")
                                 .font(.pcSmall).foregroundStyle(PC.meta)
@@ -183,19 +210,33 @@ struct StatTile: View {
     }
 }
 
+/// The free-space line, with a crosshair that reports the sample under the pointer.
+///
+/// The pointer aims at a *time*, not at a 1.5pt line: the hover snaps to the nearest sample
+/// on X, so the whole height of the chart is the hit target. The readout lives in the card
+/// header rather than in a floating bubble — this plot is 54pt tall, and a tooltip inside it
+/// would cover the very line it describes.
 struct Sparkline: View {
-    let values: [Double]
+    let points: [TrendPoint]
+    var onHover: (TrendPoint?) -> Void = { _ in }
+    @State private var hoverIndex: Int? = nil
+
     var body: some View {
         GeometryReader { g in
-            let lo = values.min() ?? 0, hi = values.max() ?? 1
-            let span = max(hi - lo, 0.001)
-            let pts = values.enumerated().map { i, v in
-                CGPoint(x: g.size.width * Double(i) / Double(max(values.count - 1, 1)),
-                        y: g.size.height * (1 - (v - lo) / span))
+            let vals = points.map { Double($0.freeBytes) }
+            let lo = vals.min() ?? 0, hi = vals.max() ?? 1
+            // A series that never moves is flat, not empty. Normalising it would put every
+            // point at (v-lo)/span = 0, i.e. pinned to the bottom edge, which reads as "the
+            // disk is full" — the same wrong story a flat line at zero told before.
+            let flat = (hi - lo) < max(hi, 1) * 0.005
+            let span = max(hi - lo, 1)
+            let xs = points.indices.map { g.size.width * CGFloat($0) / CGFloat(max(points.count - 1, 1)) }
+            let ys = vals.map { v in
+                flat ? g.size.height * 0.5 : g.size.height * (1 - CGFloat((v - lo) / span))
             }
-            ZStack {
-                Path { p in p.addLines(pts) }
-                    .stroke(PC.accentFill, style: .init(lineWidth: 1.5, lineJoin: .round))
+            let pts = points.indices.map { CGPoint(x: xs[$0], y: ys[$0]) }
+
+            ZStack(alignment: .topLeading) {
                 Path { p in
                     p.addLines(pts)
                     p.addLine(to: CGPoint(x: g.size.width, y: g.size.height))
@@ -203,6 +244,30 @@ struct Sparkline: View {
                 }
                 .fill(LinearGradient(colors: [PC.accentFill.opacity(0.18), .clear],
                                      startPoint: .top, endPoint: .bottom))
+                Path { p in p.addLines(pts) }
+                    .stroke(PC.accentFill, style: .init(lineWidth: 1.5, lineJoin: .round))
+
+                if let i = hoverIndex, points.indices.contains(i) {
+                    Rectangle().fill(PC.meta.opacity(0.5))
+                        .frame(width: 1, height: g.size.height)
+                        .position(x: pts[i].x, y: g.size.height / 2)
+                    // a surface ring so the marker reads against the line it sits on
+                    Circle().fill(PC.surface).frame(width: 9, height: 9).position(pts[i])
+                    Circle().fill(PC.accentFill).frame(width: 5, height: 5).position(pts[i])
+                }
+            }
+            .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let loc):
+                    guard points.count > 1 else { return }
+                    let step = g.size.width / CGFloat(points.count - 1)
+                    let i = min(max(Int((loc.x / max(step, 0.001)).rounded()), 0), points.count - 1)
+                    if i != hoverIndex { hoverIndex = i; onHover(points[i]) }
+                case .ended:
+                    hoverIndex = nil
+                    onHover(nil)
+                }
             }
         }
     }

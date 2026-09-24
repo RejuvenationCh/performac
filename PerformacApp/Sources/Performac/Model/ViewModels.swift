@@ -123,6 +123,23 @@ struct CacheEntry: Identifiable, Sendable {
     var selected = false
 }
 
+/// One sample on the free-space chart. Carries its timestamp, because a chart you can hover
+/// has to be able to say *when*, and bytes, because everything else on the screen is bytes —
+/// `disk_samples.free_gb` is GiB (df's 1K blocks over 2^20), so 926.30 stored is the 994.6 GB
+/// the Disk toolbar prints. Converting here keeps the chart and the stat tile above it from
+/// disagreeing about the same disk.
+struct TrendPoint: Sendable, Identifiable {
+    var ts: Int64
+    var freeBytes: Int64
+    var id: Int64 { ts }
+    var date: Date { Date(timeIntervalSince1970: Double(ts) / 1000) }
+
+    init(ts: Int64, freeGiB: Double) {
+        self.ts = ts
+        self.freeBytes = Int64(freeGiB * 1_073_741_824)
+    }
+}
+
 struct DupGroup: Identifiable, Sendable {
     let id = UUID()
     var bytes: Int64, name: String, paths: [String]
