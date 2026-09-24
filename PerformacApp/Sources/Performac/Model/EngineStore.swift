@@ -2,9 +2,6 @@
 // publishes what the views need. The sampler runs off the main actor and writes to
 // SQLite; after each tick the store refreshes on the main actor by reading the
 // findings table — cheap by design, never triggers a scan.
-//
-// Sample (ViewModels.swift) remains the preview/fallback the views default to when
-// this store has nothing yet — a first run with no history renders the quiet state.
 import SwiftUI
 import Foundation
 import AppKit

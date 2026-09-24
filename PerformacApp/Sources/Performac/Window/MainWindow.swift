@@ -169,7 +169,10 @@ struct Page<Content: View>: View {
             }
             .padding(.horizontal, PC.stack).padding(.top, PC.stack).padding(.bottom, PC.gutter)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .pcGlassChrome()
+            // Opaque, not glass: nothing scrolls under this row, so glass here had an opaque
+            // canvas behind it and just rendered as a flat tint — decoration, not depth.
+            .background(PC.surface)
+            .pcHairline(.bottom)
             content
         }
     }

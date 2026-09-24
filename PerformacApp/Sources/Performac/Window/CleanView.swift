@@ -9,7 +9,7 @@ import SwiftUI
 import AppKit
 
 struct CleanView: View {
-    var caches: [CacheEntry] = Sample.caches
+    var caches: [CacheEntry] = []
     var busy: Bool = false
     var progress: String = ""
     var summary: String? = nil

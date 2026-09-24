@@ -1,130 +1,193 @@
 # Design — Performac v2
 
-Recorded from the Stitch artifact (8 screens: menu bar popover, disk browser, disk scan in
-progress, today quiet state, clean view, duplicates browser, trash confirmation modal,
-settings). Every value below is one the generated HTML actually uses — read out of its
-Tailwind config and markup, not from intentions.
+The shipped app is the source of truth. Every value below is read out of `Tokens.swift`,
+`ViewModels.swift` and the views themselves, not out of intentions.
 
-**One caveat this file exists to resolve.** The artifact is a *web* mockup: Tailwind via CDN,
-**Inter** from Google Fonts, **Material Symbols** icons, and Material Design 3 colour token
-names (`surface-container-lowest`, `on-surface-variant`, `tertiary-container`). The shipping
-app is native macOS. The values are right; three of the mechanisms are not. §Translation
-below is binding — build to that, not to the HTML.
+The first version of this screen set was recorded from a web mockup. That provenance is gone
+now — three passes of defect fixes, a repalette, a screen merge and a glass audit have
+replaced nearly everything it specified — but it is worth naming what a web mockup cost a
+native app: a blue-tinted ground, a lettermark badge where an SF Symbol belongs, and glass
+used as decoration rather than reserved for what actually floats above content.
 
 ## World
 
-A quiet instrument panel. Most days it says nothing; the Today screen's default state is a
-green seal reading "Nothing worth doing." When it speaks, it is because something changed
-over time, and it says so in one sentence with the evidence attached.
+A quiet instrument panel. Most days it says nothing; Overview's empty state is a green seal
+reading "Nothing worth doing." When it speaks, it is because something changed over time,
+and it says so in one sentence with the evidence attached.
 
-Two densities, because there are two surfaces: a **popover that answers in one glance**
-(380×520), and a **window dense enough to browse a filesystem** (1200×800, 64pt rail).
+Performac is a **windowed app with a Dock icon**, one size class: 900×600 minimum, a 64pt
+rail down the left edge, content to its right. There is no second, smaller surface anymore —
+see §No menu bar.
 
-## Colour — as used
+## Colour
 
-| role | hex | used for |
-|---|---|---|
-| page ground | `#f7f9ff` | window and popover background |
-| card surface | `#ffffff` | every card, row group, modal |
-| tinted fills | `#ecf4ff` · `#e6effa` · `#e0e9f5` · `#dae3ef` | tiles, bar tracks, hover states (lightest→darkest) |
-| primary text | `#141c25` | headlines, values |
-| secondary text | `#434654` | why-lines, descriptions |
-| outline | `#747686` · `#c3c5d7` | borders, disabled |
-| hairline | `rgba(0,0,0,0.1)` | every separator, 1px |
-| accent / link | `#0045c5` | link-outs, selected rail item |
-| accent fill | `#2f5fe0` | primary buttons, progress bars |
-| **amber (warning)** | `#b24800` fill · `#ffe4d9` soft | warning severity spine, "Check first" pill |
-| **red (critical)** | `#ba1a1a` fill · `#ffdad6` soft | critical severity spine, over-threshold storage |
-| neutral chip | `#dfe3eb` | inactive badges |
+Neutral macOS greys, defined once in `Tokens.swift` as light/dark pairs and never hard-coded
+at a call site:
+
+| token | light | dark | role |
+|---|---|---|---|
+| `canvas` | `#F5F5F7` | `#1A1A1C` | window background, the darkest thing in light mode / lightest step down in dark |
+| `surface` | `#FFFFFF` | `#242426` | every card, row group, sheet |
+| `fill1`–`fill4` | `#EFEFF2` → `#D6D6DC` | `#2C2C2F` → `#424247` | tiles, bars, hover and selected states, stepping monotonically away from `surface` |
+| `ink` | `#1D1D1F` | `.labelColor` | headlines, values |
+| `ink2` | `#48484A` | `.secondaryLabelColor` | why-lines, descriptions |
+| `meta` | `#8E8E93` | `.tertiaryLabelColor` | captions, unselected rail labels |
+| `hairline` | black 10% | white 12% | every separator, 1px |
+
+The dark values for `canvas`/`surface` are explicit hex, not the semantic
+`.windowBackgroundColor`/`.controlBackgroundColor` pair — both of those resolve to `#1E1E1E`
+in dark aqua, identical, which made every card vanish into the page with only a hairline left
+to find it.
+
+**Accent is `.controlAccentColor` in both modes.** The app deliberately carries no brand
+colour of its own, so it always matches whatever accent the user picked in System Settings
+rather than shipping a hardcoded blue. Severity uses the system semantic colours directly:
+`.systemOrange` (warning), `.systemRed` (critical), `.systemGreen` (the "nothing wrong" seal).
 
 Colour carries exactly two jobs: **severity** on cards and badges, and **file-type identity**
-in the treemap legend (video · image · cache/app data · document · other/system). Nothing
+in the treemap and its legend (video · image · cache/app data · document · other/system —
+`FileKind.color`, a fixed categorical palette, deliberately excluded from this pass). Nothing
 else is coloured. No gradients, no coloured shadows, no gradient text.
 
-## Type — as used
+## Type
 
-Inter in the artifact; **SF Pro in the build** (see §Translation). Scale is unchanged.
+SF Pro throughout, via `.system`. Six sizes, all in `Tokens.swift`, plus their
+monospaced-digit variants for figures:
 
-| token | size / line / weight | used for |
+| token | size / weight | used for |
 |---|---|---|
-| display-sm | 20 / 28 / 600, −0.01em | page titles, popover metric values |
-| headline-sm | 16 / 24 / 600, −0.01em | section headings ("Cache Files", "Duplicates") |
-| title-sm | 14 / 20 / 600 | card headlines, row names, summary totals |
-| body-md | 13 / 18 / 400 | body, why-lines, list rows |
-| body-sm | 12 / 16 / 400 | meta, reassurance text, path captions |
-| label-md | 11 / 14 / 500, +0.02em | column headers, badges, link-outs, metric labels |
-| mono-numeric | 13 / 18 / 400 | all figures — **always with tabular figures** |
+| `pcDisplay` | 20 / semibold | page titles |
+| `pcHeadline` | 16 / semibold | section headings |
+| `pcTitle` | 14 / semibold | card headlines, row names |
+| `pcBody` | 13 / regular | body text, why-lines, list rows |
+| `pcSmall` | 12 / regular | meta, captions, path text |
+| `pcLabel` | 11 / medium | column headers, badges, link-outs, treemap tile names |
+| `pcNum` / `pcNumLg` | 13 / 20, `.monospacedDigit()` | every figure in the app |
 
-Every size, count, percentage and duration uses tabular figures. The artifact applies
-`tabular-nums`; the build uses `.monospacedDigit()`.
+**Nothing in the app goes below 11pt** — that is under any macOS system text size, and text
+that small stops being a design choice and starts being an accessibility failure. The
+treemap's tile labels were the last holdout at 9–10pt; they are `pcLabel` and 11pt-mono now,
+gated on tile size (`width > 60, height > 24` for the name; `height > 36` to also fit the
+size line) so a label only draws where it can render uncropped. A clipped label is worse
+than none.
 
-## Geometry — as used
+## Geometry
 
 Radii are deliberately small, which is what makes it read as desktop rather than mobile:
 **2px default · 4px (`lg`) cards and buttons · 8px (`xl`) modals · 12px (`full`) pills.**
 
 Spacing scale: **4 · 8 · 12 (gutter) · 16 (stack/margin)**. Sidebar rail is **64px** fixed.
 
-## Components — anatomy as built
+## Navigation
 
-**CoachCard** — the load-bearing component:
+Four screens on the rail — **Overview, Disk, Clean, Duplicates** — with **Settings pinned
+below a spacer**, the way Mail and Xcode place their settings affordance apart from the
+content list. The rail is the only navigation; there is no second tab row anywhere.
+
+Overview absorbed what used to be two screens, Dashboard and Digest: both rendered the same
+findings list through the same card, one worst-first and one chronological, which spent two
+of six rail slots on a single list sorted two ways. One screen now: four measured facts, a
+summary line, the free-space trend, then findings ranked worst-first.
+
+## Units
+
+Every size shown in the UI is **bytes**, formatted only through `Fmt.bytes`. This rule exists
+because ignoring it cost real, measured accuracy twice:
+
+- `statfs` reports space in blocks; converting that to a decimal-GB label while a sibling
+  screen printed raw GiB made two screens disagree about the same free space by **7.4%**.
+  `EngineStore.spaceBytes` now returns bytes (`blocks × f_bsize`) and nothing downstream
+  converts again.
+- The `cache_samples`/`dup_groups` tables store `size_mb`, and MiB is not decimal-MB:
+  converting that column with `× 1_000_000` under-reported every cache and duplicate by
+  **4.8%**. The conversion is `× 1_048_576`, done once at the database boundary
+  (`EngineStore`), never in a view.
+
+Both conversions happen at the edge where the raw unit enters the store. No view multiplies
+or divides a size; every view just calls `Fmt.bytes`.
+
+## Components
+
+**CoachCard** (`CoachCardView`) — the load-bearing component:
 
 ```
-white surface · 4px radius · 1px rgba(0,0,0,.1) border · small shadow · 12px pad (16 left)
+surface · 4px radius · 1px hairline border · small shadow · 12px pad (16 left)
 ├─ 4px full-height severity spine on the left edge   ← the severity signal
 └─ row: filled severity icon + column:
-     headline    title-sm, primary text
-     why-line    body-md, secondary text        ← mandatory, never omitted
-     link-out    label-md, accent               ← at most one, optional
+     headline    pcTitle, ink
+     why-line    pcBody, ink2                  ← mandatory, never omitted
+     link-out    pcLabel, accent               ← at most one, optional
 ```
+
+The link-out carries `FindingLink`, an enum holding its destination (`reveal(path)`,
+`.activityMonitor`, `.clean`), not just a label — it was a dead accent-coloured button until
+this pass, because the view read only the link's kind and had nothing to act on. See §Rules,
+"a control must do something."
 
 Others as built: `SizeRow` (name · item count · size · proportional bar, hover-revealed
 actions) · `CacheRow` (checkbox · name · size · last-written age · safety pill · why-line) ·
-`SafetyPill` ("Safe to clean" green / "Check first" amber) · `StorageBar` (red past 92%) ·
-`TreeMap` + legend · `Breadcrumb` · `ProgressRow` (indeterminate bar, running totals,
-elapsed, Cancel) · `QuietState` (green seal, headline, sentence, four neutral tiles).
+`Pill` (severity/safety badges) · `StorageBar` (turns red past capacity) · `TreeMap` + legend
+(squarified, so small items keep a clickable aspect ratio) · `CrumbBar` (the path trail with
+back/forward controls above the current folder) · `IconButtonAction` (a hover-revealed icon
+button that always carries a real action — see §Rules) · `ScanProgress` (indeterminate bar,
+running totals, elapsed, Cancel) · `Sparkline` (the free-space trend line).
 
-**Cards do not nest.** Tiles inside a card use a tinted fill, never a second shadowed card.
+Overview's empty state ("Nothing worth doing.") is an inline row — a green seal and one
+sentence — not a standalone component; it does not need one for something this small.
 
-## The trash confirmation — verified in the artifact
+**Cards do not nest.** Tiles inside a card use a fill token, never a second shadowed card.
 
-The one irreversible-feeling moment, and the artifact gets it right. Do not "fix" any of this:
+## The trash confirmation
 
-- The primary button is **`#2f5fe0` blue, not red.** The action is recoverable; colouring it
+The one irreversible-feeling moment. This is not up for revisiting:
+
+- The primary button is **accent-coloured, not red.** The action is recoverable; colouring it
   red teaches fear of a safe operation.
-- **Cancel carries `autofocus`** — the safe option is the default.
-- Every item lists **full path and size**, with a `title-sm` total line ("18.0 GB total").
+- **Cancel is the default focus** — the safe option is the default.
+- Every item lists **full path and size**, with a `pcTitle` total line ("18.0 GB total").
 - A permanent reassurance block with a filled trash icon:
   *"These go to the Trash, not deleted. You can put them back from Finder until you empty it."*
 
-## Translation — web artifact → native build (binding)
+## No menu bar
 
-| artifact | build |
-|---|---|
-| Inter (Google Fonts) | **SF Pro** via `.system` — no bundled or webfonts |
-| Material Symbols | **SF Symbols**, `.regular`, 16pt rows / 18pt rail |
-| Tailwind utility classes | SwiftUI modifiers; tokens above as a `Color`/`Font` extension |
-| `tabular-nums` | `.monospacedDigit()` |
-| `rgba(0,0,0,0.1)` hairlines | `Divider()` / `.separatorColor` |
-| px | pt, 1:1 at these sizes |
-| flat popover background | **`NSVisualEffectView`, `.popover` material** — a flat popover reads as a screenshot pasted on the desktop |
-| `html class="light"` only | **Light, dark, or the system's choice.** Settings › General › Appearance, stored in `UserDefaults` (not the settings table — it is applied before the database opens, and a late preference means the window paints light and then flips). Defaults to matching the system. |
+Performac is a windowed app with a Dock icon. The menu bar icon, the small window it used to
+open, and everything that rendered inside that window are gone — Vorssaint (installed
+alongside) owns the menu bar now. Closing the window does **not** quit the app: the sampler
+is the engine, and the window is just a way to look at what it has measured, so
+`applicationShouldTerminateAfterLastWindowClosed` returns `false` and the Dock icon stays
+running with no window open.
 
-## Do not carry over
+**The trap for whoever reconsiders this:** the app must stay `NSApplication.shared
+.setActivationPolicy(.regular)` for its entire life. The old build demoted itself to
+`.accessory` on window close, which was only survivable because a menu bar icon was still
+there to reopen it from. There is no menu bar icon anymore. Reintroducing the `.accessory`
+demotion without one strands a process with no Dock icon, no menu, and no way back in short
+of Force Quit. If a menu bar ever comes back, it belongs to Vorssaint, not here.
 
-Present in the artifact, wrong for this app:
+## Liquid Glass
 
-1. **`Support · Privacy Policy · License` footer** on the duplicates screen. There is no
-   support desk; this is a personal local tool.
-2. **"System Status: Optimal"** in that same footer — an evidence-free reassurance, exactly
-   what this app must never say. It would also be wrong the moment something fails.
-3. **Top tabs (`All Files · Applications · System Data`)** on duplicates and settings — a
-   second navigation competing with the 64pt rail. The rail is the only navigation.
-4. **The "speed" wordmark** that replaced "Performac" on two screens.
-5. **Checkboxes on individual duplicate copies.** With exact duplicates at least one copy must
-   survive; per-row trash actions only, so deleting every copy can never be one misclick.
-6. The treemap is drawn as vertical strips. Build a **squarified** treemap so small items keep
-   a clickable aspect ratio.
+Adopted for exactly two places, both places content genuinely floats above something:
+
+- **the 64pt rail** — a sidebar at the window edge is Apple's own glass pattern on macOS 26.
+- **every sheet** (`TrashSheet`, `RowTrashSheet`, `RowInfoSheet`, `QuitSheet`), via
+  `pcGlassPanel` — a sheet floats over the window behind it by definition.
+
+Everywhere else is opaque: title rows, toolbars, table rows, cards, badges, the treemap.
+Title rows and toolbars looked like candidates too, and were glass for a while, but both
+were wrong for the same two reasons:
+
+1. Nothing scrolls under a `Page` title row or the Disk toolbar — content begins below them,
+   not underneath — so the glass sat on an opaque canvas and rendered as a flat tint instead
+   of depth.
+2. Both rows hold real `.bordered`/`.borderedProminent` buttons (Refresh, Scan, Cancel), and
+   those buttons **are themselves Liquid Glass on macOS 26.** Wrapping glass chrome around a
+   glass button is glass stacked on glass — muddy, not layered.
+
+Two rules that matter as much as the placement:
+
+1. **Never stack glass on glass.** Nested layers read as muddy grey rather than depth.
+2. **Legibility outranks the effect.** Anything carrying a number a decision rests on stays
+   on an opaque surface.
 
 ## Dark mode
 
@@ -134,21 +197,11 @@ invisible in the code: `.windowBackgroundColor` and `.controlBackgroundColor` **
 `#1E1E1E`** in dark aqua. This layout is cards on a ground, so the semantic pair made every card
 vanish into the page with only a hairline left to find it.
 
-So the dark surfaces are explicit, and continue the fill ladder as one sequence:
-
-| token | dark | role |
-|---|---|---|
-| `canvas` | `#161719` | the page, the darkest thing on screen |
-| `surface` | `#202226` | a card, one step above the page |
-| `fill1`–`fill4` | `#2a2c30` · `#303338` · `#36393f` · `#3d4147` | tiles and hover states inside a card |
-
-The checks assert what that ladder has to be true of, in **both** modes: a card is
-distinguishable from its page, the fills step monotonically away from the card, and every text
-and severity colour keeps its distance from the surface it is printed on.
-
-The menu bar is the system's, not the app's. `statusItem.button.appearance` is pinned to `nil`
-so the template glyph always matches the menu bar it sits in — forcing the app dark under a
-light system would otherwise render it white on white.
+So the dark surfaces are explicit, and continue the fill ladder as one sequence — see the
+dark column in §Colour above. The checks assert what that ladder has to be true of, in
+**both** modes: a card is distinguishable from its page, the fills step monotonically away
+from the card, and every text and severity colour keeps its distance from the surface it is
+printed on.
 
 ## The all-drives root
 
@@ -231,49 +284,35 @@ and hand back what it measured rather than tearing the stream down. A `ScanSumma
 
 Vorssaint (installed alongside) already does these, better, so Performac no longer does:
 the **Apps** tab (uninstaller and its quit-first flow), the **Updates** tab (brew formulae
-and casks), **live CPU / memory / network / temperature** graphs, the popover metric strip and
-those menu bar readouts, the **battery health** rule, and the generic cleaner rows for
-**Homebrew downloads, app logs, Xcode device support, Simulator caches and iOS backups**.
+and casks), **live CPU / memory / network / temperature** graphs, the menu bar and its
+readouts, the **battery health** rule, and the generic cleaner rows for **Homebrew
+downloads, app logs, Xcode device support, Simulator caches and iOS backups**.
 Do not bring them back. Performac's job is what Vorssaint cannot see: where the disk went,
 duplicates, creative-app caches, and what changed over time.
-
-## Liquid Glass
-
-Adopted for the **interface layer only**, per Apple's guidance that Liquid Glass belongs to
-what floats above content, not to content itself. This app is mostly dense tabular data, so
-the split is strict:
-
-| glass | opaque |
-|---|---|
-| the 64pt rail | table rows (SizeRow, CacheRow, OutlineRow, CompactRow) |
-| page headers | coach cards |
-| the Disk toolbar (target picker, Scan, mode switch) | treemap and bubbles |
-| the menu bar popover | coach cards inside it |
-| every sheet (trash, Get Info, quit) | list and detail panes |
-| primary controls (`.glass`, `.glassProminent`) | badges and pills |
-
-Two rules with the same weight as the placement:
-
-1. **Never stack glass on glass.** Nested layers read as muddy grey rather than depth, which
-   is why a sheet is glass but its rows are not.
-2. **Legibility outranks the effect.** Anything carrying a number a decision rests on stays
-   on an opaque surface.
-
-The popover's `NSVisualEffectView` was replaced by `.glassEffect`; the deployment target is
-`macOS 26` (`Package.swift` uses the string form, the enum has no `.v26`).
 
 ## Rules the next change must keep
 
 1. **Native, dense, macOS.** If a change would look at home on a phone, it is wrong here.
    No bottom tabs, no FABs, no oversized touch targets, no second navigation.
-2. **Colour only for severity or treemap file type.** Everything else is neutral.
+2. **Colour only for severity or treemap file type.** Everything else is neutral, and the
+   app has no brand colour of its own — `.controlAccentColor` is the accent in both modes.
 3. **The why-line is mandatory.** A card showing a size without its evidence does not ship.
-4. **All figures are tabular.**
+4. **All figures are tabular**, and every size in the UI is bytes through `Fmt.bytes` — see
+   §Units. Nothing converts a unit twice.
 5. **Icons are SF Symbols. No emoji**, in UI or in copy.
 6. **One action per card, and it never performs the fix** — except the Clean view, whose one
    action is always and only **"Move to Trash"**, never "Clean", "Optimize", or "Free up".
-7. **Destructive confirmations stay blue, with Cancel focused**, and always state recoverability.
+7. **Destructive confirmations stay accent-coloured, with Cancel focused**, and always state
+   recoverability.
 8. **Cards do not nest.**
-9. **Every token carries both values** — never hard-code a bare hex or a bare `.white` at a call site. The one sanctioned exception is the treemap, whose tile fills are a fixed palette by design, so the black label and white hairline drawn on them are correct in either mode.
-10. **Glass is chrome, never content.** If a surface carries a figure the user will act on, it is opaque. Never nest glass inside glass.
-10. **Never state a status the app cannot evidence.**
+9. **Every token carries both values** — never hard-code a bare hex or a bare `.white` at a
+   call site. The one sanctioned exception is the treemap, whose tile fills are a fixed
+   palette by design, so the black label and white hairline drawn on them are correct in
+   either mode.
+10. **Glass is the rail and sheets, never content.** Headers, toolbars, rows, cards and the
+    treemap are opaque. Never nest glass inside glass.
+11. **Never state a status the app cannot evidence.**
+12. **A control that cannot act must not be drawn.** The audit that started this pass found
+    eight controls wired to empty closures, including the coach card's only link-out. An
+    affordance with no effect is worse than no affordance — it teaches the user that buttons
+    in this app might not do anything.

@@ -1,5 +1,5 @@
 // Components.swift — the shared vocabulary from DESIGN.md §Components, built as recorded
-// from the Stitch artifact (4pt severity spine, mandatory why-line, at most one link-out).
+// 4pt severity spine, mandatory why-line, at most one link-out.
 import SwiftUI
 import AppKit
 

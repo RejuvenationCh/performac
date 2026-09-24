@@ -3,7 +3,7 @@
 import SwiftUI
 
 struct DuplicatesView: View {
-    var groups: [DupGroup] = Sample.dups
+    var groups: [DupGroup] = []
     var scanning: Bool = false
     var hashed: Int = 0
     var candidates: Int = 0

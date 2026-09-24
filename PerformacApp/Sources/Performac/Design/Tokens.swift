@@ -1,7 +1,9 @@
-// Tokens.swift — the design system from DESIGN.md, recorded from the Stitch artifact.
-// Repalette pass: the blue-tinted web ground and hardcoded accent are gone in favour of
-// neutral macOS greys and the system accent colour, so the app matches whatever accent
-// the user picked in System Settings instead of shipping its own blue.
+// Tokens.swift — the design system. DESIGN.md documents it; this file is the source of truth
+// for the values.
+//
+// The blue-tinted web ground and hardcoded accent are gone in favour of neutral macOS greys
+// and the system accent colour, so the app matches whatever accent the user picked in System
+// Settings instead of shipping its own blue.
 import SwiftUI
 import AppKit
 
@@ -50,9 +52,6 @@ enum PC {
     static let greenSoft = dyn(NSColor.systemGreen.withAlphaComponent(0.14), NSColor.systemGreen.withAlphaComponent(0.22))
     static let chip      = dyn(NSColor(hex: 0xE4E4E9), NSColor(hex: 0x35353A))
     static let cardShadow = dyn(NSColor(white: 0, alpha: 0.05), NSColor(white: 0, alpha: 0.30))
-    /// shadcn's focus treatment, borrowed for pass 2 — not wired to anything yet.
-    static let focusRing = dyn(NSColor.controlAccentColor.withAlphaComponent(0.55),
-                              NSColor.controlAccentColor.withAlphaComponent(0.70))
 
     // MARK: geometry (DESIGN.md: deliberately small radii — this is what reads as desktop)
     static let r: CGFloat = 2, rLg: CGFloat = 4, rXl: CGFloat = 8, rPill: CGFloat = 12
@@ -61,7 +60,8 @@ enum PC {
     static let rail: CGFloat = 64
 }
 
-// MARK: type scale — SF Pro, sizes recorded from the artifact
+// MARK: type scale — SF Pro. Six steps, nothing below 11pt: smaller than that is under any
+// macOS system text size, which is where the 9pt rail labels went wrong.
 extension Font {
     static let pcDisplay  = Font.system(size: 20, weight: .semibold)
     static let pcHeadline = Font.system(size: 16, weight: .semibold)
@@ -97,9 +97,15 @@ extension View {
 // MARK: - Liquid Glass
 //
 // Apple's guidance is that Liquid Glass is a material for the layer that FLOATS ABOVE
-// content — navigation, toolbars, controls, popovers, sheets. Content itself stays opaque.
-// This app is mostly dense tabular data, so glass goes on the rail, the headers, the
-// floating controls and the sheets, and never behind a table row, a treemap or a card.
+// content — navigation, popovers, sheets. Content itself stays opaque. Headers and toolbars
+// looked like they qualified too, but they don't: nothing scrolls under this app's title rows
+// or toolbars, so the glass there sat on an opaque canvas and read as a flat tint, not depth.
+// Worse, `.bordered`/`.borderedProminent` buttons ARE Liquid Glass on macOS 26, so glass chrome
+// wrapped around them was glass stacked on glass. So glass now goes in exactly two places:
+//   * the 64pt rail — a sidebar at the window edge is Apple's own glass pattern
+//   * sheets (TrashSheet, RowTrashSheet, RowInfoSheet, QuitSheet) — they genuinely float above
+//     the content behind them
+// Never on a title row, a toolbar, a table row, a card or the treemap.
 //
 // Two rules that matter as much as where it goes:
 //   * never stack glass on glass — nested layers read as muddy grey, not depth

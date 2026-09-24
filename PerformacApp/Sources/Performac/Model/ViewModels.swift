@@ -1,6 +1,5 @@
-// ViewModels.swift — UI-facing types and the sample data the views render until Phase 1
-// wires the real engine. Shapes mirror v1's Finding/cache/dup rows so the swap is a
-// data-source change, not a view rewrite.
+// ViewModels.swift — UI-facing types the views render. Shapes mirror v1's Finding/cache/dup
+// rows so the engine swap was a data-source change, not a view rewrite.
 import SwiftUI
 
 /// The engine only ever writes these three. `good` existed for years and was never produced,
@@ -155,50 +154,6 @@ enum Fmt {
         counter.string(from: NSNumber(value: n)) ?? "\(n)"
     }
 }
-
-// MARK: sample data — replaced by the engine in Phase 1
-@MainActor enum Sample {
-    static let findings: [Finding] = [
-        .init(severity: .amber, headline: "RobloxPlayer has averaged 99% CPU for 46 minutes",
-              why: "That's sustained load, not a spike — quit it from Activity Monitor if you're not using it.",
-              link: .activityMonitor),
-        .init(severity: .red, headline: "External SSD disconnected and reconnected 2 times today",
-              why: "A loose cable shows up as surprise unmount cycles — check it before your next shoot."),
-        .init(severity: .info, headline: "Resolve's media cache is 27.7 GB",
-              why: "Last written 15 days ago, still under your 21-day line — leave it."),
-    ]
-    static let disk: [SizeEntry] = [
-        .init(name: "Data C (General)", items: 42_105, bytes: 355_395_000_000, kind: .video),
-        .init(name: "Movies", items: 124, bytes: 31_997_000_000, kind: .video),
-        .init(name: "Downloads", items: 892, bytes: 21_474_000_000, kind: .other),
-        .init(name: "Library", items: 15_302, bytes: 19_756_000_000, kind: .cache),
-        .init(name: "Desktop", items: 45, bytes: 6_012_000_000, kind: .document),
-        .init(name: "Documents", items: 312, bytes: 4_617_000_000, kind: .document),
-    ]
-    static let caches: [CacheEntry] = [
-        .init(name: "Resolve render cache", bytes: 31_997_000_000, age: "15 days ago", safe: false,
-              why: "Clearing this forces Resolve to re-render previews.", path: "~/Movies/CacheClip"),
-        .init(name: "Adobe Media Cache", bytes: 13_314_000_000, age: "2 days ago", safe: false,
-              why: "In active use — Premiere will rebuild it on next open.",
-              path: "~/Library/Application Support/Adobe/Common/Media Cache Files"),
-        .init(name: "Analyzer Cache Files", bytes: 6_549_000_000, age: "41 days ago", safe: true,
-              why: "Media-intelligence analysis, regenerated on demand.",
-              path: "~/Library/Application Support/Adobe/Common/Analyzer Cache Files", selected: true),
-        .init(name: "Browser caches", bytes: 3_435_000_000, age: "today", safe: true,
-              why: "Rebuilds itself, signs you out of nothing.", path: "~/Library/Caches/zen", selected: true),
-        .init(name: "Xcode DerivedData", bytes: 9_341_000_000, age: "60 days ago", safe: true,
-              why: "Rebuilt on next build.", path: "~/Library/Developer/Xcode/DerivedData", selected: true),
-    ]
-    static let dups: [DupGroup] = [
-        .init(bytes: 2_362_000_000, name: "TE Rally Games Final Export.mov",
-              paths: ["~/Data C (General)/UC/Projects/Oweek/TE Rally Games/Export/", "~/Movies/Exports/"]),
-        .init(bytes: 933_000_000, name: "Divisi Recap v2.mp4",
-              paths: ["~/Downloads/", "~/Documents/Projects/Recap/", "~/Movies/"]),
-        .init(bytes: 432_000_000, name: "Upacara Infinity Master.mov",
-              paths: ["~/Movies/Raw/", "~/Documents/Upacara/"]),
-    ]
-}
-
 
 /// How the Disk view draws the current folder. Outline is the default: it is the only mode
 /// that shows depth without losing your place.

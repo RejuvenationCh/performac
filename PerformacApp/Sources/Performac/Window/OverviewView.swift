@@ -5,7 +5,7 @@
 import SwiftUI
 
 struct OverviewView: View {
-    var findings: [Finding] = Sample.findings
+    var findings: [Finding] = []
     var facts = EngineStore.QuietFacts()
     var updatedAt: Date? = nil
     var busy: Bool = false

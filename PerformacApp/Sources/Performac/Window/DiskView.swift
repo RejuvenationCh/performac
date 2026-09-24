@@ -1,10 +1,10 @@
 // DiskView.swift — replaces OmniDiskSweeper (drill-down list) and GrandPerspective (treemap).
-// Layout follows the Stitch artifact: breadcrumb + storage bar above a 60/40 split.
+// Layout: toolbar + breadcrumb above a 60/40 split, list on the left, shapes on the right.
 import SwiftUI
 import AppKit
 
 struct DiskView: View {
-    var entries: [SizeEntry] = Sample.disk
+    var entries: [SizeEntry] = []
     var scanning: Bool = false
     var scanFiles: Int = 0
     var scanBytes: Int64 = 0
@@ -85,7 +85,9 @@ struct DiskView: View {
                 StorageBar(freeBytes: freeBytes, totalBytes: totalBytes)
             }
             .padding(.horizontal, PC.stack).padding(.vertical, PC.s2 + 2)
-            .pcGlassChrome().pcHairline(.bottom)
+            // Opaque, not glass: this row holds real bordered/borderedProminent buttons, which
+            // are themselves Liquid Glass on macOS 26 — glass chrome around them was glass on glass.
+            .background(PC.surface).pcHairline(.bottom)
 
             if !crumbs.isEmpty {
                 HStack(spacing: PC.s2) {
@@ -368,7 +370,8 @@ struct ScanProgress: View {
     }
 }
 
-// MARK: squarified treemap — DESIGN.md rules out the strip layout the artifact drew
+// MARK: squarified treemap — deliberately not vertical strips, which give small items an
+// aspect ratio too thin to click
 struct TreeMap: View {
     let entries: [SizeEntry]
     var body: some View {
@@ -383,14 +386,14 @@ struct TreeMap: View {
                         .overlay(RoundedRectangle(cornerRadius: PC.r).stroke(.white.opacity(0.7), lineWidth: 1))
                         .overlay(alignment: .topLeading) {
                             // Name with its size beneath, whenever the tile can hold both.
-                            if r.width > 54 && r.height > 20 {
+                            if r.width > 60 && r.height > 24 {
                                 VStack(alignment: .leading, spacing: 0) {
-                                    Text(e.display).font(.system(size: 10, weight: .medium))
+                                    Text(e.display).font(.pcLabel)
                                         .foregroundStyle(.black.opacity(0.72))
                                         .lineLimit(1)
-                                    if r.height > 32 {
+                                    if r.height > 36 {
                                         Text(Fmt.bytes(e.bytes))
-                                            .font(.system(size: 9).monospacedDigit())
+                                            .font(.system(size: 11).monospacedDigit())
                                             .foregroundStyle(.black.opacity(0.52))
                                             .lineLimit(1)
                                     }
