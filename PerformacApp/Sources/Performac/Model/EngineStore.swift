@@ -254,7 +254,7 @@ final class EngineStore: ObservableObject {
             entries.append(CacheEntry(
                 name: meta.app,
                 bytes: bytes,
-                age: Rules.ageText(ageDays) + (mtime == nil ? "" : " ago"),
+                age: Rules.ageTextAgo(ageDays),
                 ageDays: ageDays ?? 0,
                 safe: policy.safe,
                 why: policy.consequence,
@@ -262,7 +262,40 @@ final class EngineStore: ObservableObject {
                 cacheID: id,
                 cleanable: policy.cleanable))
         }
-        cacheEntries = entries
+        cacheEntries = Self.disambiguated(entries)
+    }
+
+    /// Several distinct caches can share one label — every `lr-*` id renders as
+    /// "Lightroom Classic" via `LR_META`. Give each same-named group a suffix drawn from its
+    /// own path so the rows are no longer indistinguishable.
+    static func disambiguated(_ entries: [CacheEntry]) -> [CacheEntry] {
+        var byName: [String: [Int]] = [:]
+        for (i, e) in entries.enumerated() { byName[e.name, default: []].append(i) }
+        let generic: Set<String> = ["Cache", "Caches", "Data", "tmp"]
+        var out = entries
+        for (name, idxs) in byName where idxs.count > 1 {
+            var labels: [Int: String] = [:]
+            for i in idxs {
+                let comps = (out[i].path as NSString).pathComponents.filter { $0 != "/" }
+                var suffix = comps.last ?? out[i].path
+                if generic.contains(suffix), comps.count >= 2 {
+                    suffix = comps.suffix(2).joined(separator: "/")
+                }
+                labels[i] = "\(name) — \(suffix)"
+            }
+            // entries are already unique by path, but a suffix can still collide (e.g. two
+            // catalogs both ending ".../Cache") — fall back to the cache id for just those
+            var firstSeen: [String: Int] = [:]
+            var collided = Set<Int>()
+            for i in idxs {
+                if let prev = firstSeen[labels[i]!] { collided.insert(prev); collided.insert(i) }
+                else { firstSeen[labels[i]!] = i }
+            }
+            for i in idxs {
+                out[i].name = collided.contains(i) ? "\(name) — \(out[i].cacheID)" : labels[i]!
+            }
+        }
+        return out
     }
 
     // MARK: Duplicates view — v1's last scan rows (the rescanner arrives with Clean)

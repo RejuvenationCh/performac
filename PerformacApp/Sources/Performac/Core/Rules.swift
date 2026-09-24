@@ -67,9 +67,28 @@ enum Rules {
         "gen-zen": ("Zen", "check-first"),
     ]
 
+    /// Casings that plain title-casing gets wrong, kept small and local rather than a
+    /// general-purpose app-name dictionary.
+    private static let humanizeTokens: [String: String] = [
+        "vscode": "VS Code", "npm": "npm", "ios": "iOS", "macos": "macOS",
+    ]
+    /// Reverse-DNS vendor components a bundle id leads with — never part of the app's name.
+    private static let humanizeVendorPrefixes: Set<String> =
+        ["com", "org", "io", "net", "co", "dev", "app", "me", "us"]
+
+    /// "com-microsoft-vscode-shipit" → "Microsoft VS Code". Drops the vendor prefix and
+    /// Squirrel's "shipit" updater suffix before title-casing what's left.
     static func humanize(_ slugName: String) -> String {
-        slugName.split(separator: "-").filter { !$0.isEmpty }
-            .map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+        var parts = slugName.split(separator: "-").map(String.init).filter { !$0.isEmpty }
+        if let first = parts.first, humanizeVendorPrefixes.contains(first.lowercased()) {
+            parts.removeFirst()
+        }
+        if let last = parts.last, last.lowercased() == "shipit" {
+            parts.removeLast()
+        }
+        guard !parts.isEmpty else { return slugName }   // never hand back an empty name
+        return parts.map { humanizeTokens[$0.lowercased()] ?? ($0.prefix(1).uppercased() + $0.dropFirst()) }
+            .joined(separator: " ")
     }
 
     static func cacheMeta(_ id: String) -> (app: String, media: Bool, safety: String, clearing: String) {

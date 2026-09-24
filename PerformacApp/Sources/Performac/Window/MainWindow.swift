@@ -1,4 +1,4 @@
-// MainWindow.swift — 64pt icon rail + content. The rail is the ONLY navigation
+// MainWindow.swift — 76pt icon rail + content. The rail is the ONLY navigation
 // (DESIGN.md §Do not carry over: no competing top tabs).
 import SwiftUI
 import AppKit
@@ -142,7 +142,7 @@ private struct RailButton: View {
                 Text(route.title).font(.pcLabel)
             }
             .foregroundStyle(selected ? PC.accent : PC.meta)
-            .frame(width: 52, height: 44)
+            .frame(width: 64, height: 44)
             .background(selected ? PC.fill1 : (hover ? PC.fill1.opacity(0.6) : .clear),
                         in: RoundedRectangle(cornerRadius: PC.rLg))
         }

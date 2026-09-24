@@ -57,7 +57,9 @@ enum PC {
     static let r: CGFloat = 2, rLg: CGFloat = 4, rXl: CGFloat = 8, rPill: CGFloat = 12
     static let s1: CGFloat = 4, s2: CGFloat = 8, gutter: CGFloat = 12, stack: CGFloat = 16
     static let s5: CGFloat = 24, s6: CGFloat = 32
-    static let rail: CGFloat = 64
+    // 76, not 64: at the 11pt label floor, "Duplicates" is the longest rail title and needs
+    // this much width to avoid truncating — the rail follows the label, not the other way round.
+    static let rail: CGFloat = 76
 }
 
 // MARK: type scale — SF Pro. Six steps, nothing below 11pt: smaller than that is under any
@@ -102,7 +104,7 @@ extension View {
 // or toolbars, so the glass there sat on an opaque canvas and read as a flat tint, not depth.
 // Worse, `.bordered`/`.borderedProminent` buttons ARE Liquid Glass on macOS 26, so glass chrome
 // wrapped around them was glass stacked on glass. So glass now goes in exactly two places:
-//   * the 64pt rail — a sidebar at the window edge is Apple's own glass pattern
+//   * the 76pt rail — a sidebar at the window edge is Apple's own glass pattern
 //   * sheets (TrashSheet, RowTrashSheet, RowInfoSheet, QuitSheet) — they genuinely float above
 //     the content behind them
 // Never on a title row, a toolbar, a table row, a card or the treemap.

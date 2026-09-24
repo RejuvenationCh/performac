@@ -15,7 +15,7 @@ A quiet instrument panel. Most days it says nothing; Overview's empty state is a
 reading "Nothing worth doing." When it speaks, it is because something changed over time,
 and it says so in one sentence with the evidence attached.
 
-Performac is a **windowed app with a Dock icon**, one size class: 900×600 minimum, a 64pt
+Performac is a **windowed app with a Dock icon**, one size class: 900×600 minimum, a 76pt
 rail down the left edge, content to its right. There is no second, smaller surface anymore —
 see §No menu bar.
 
@@ -76,7 +76,8 @@ than none.
 Radii are deliberately small, which is what makes it read as desktop rather than mobile:
 **2px default · 4px (`lg`) cards and buttons · 8px (`xl`) modals · 12px (`full`) pills.**
 
-Spacing scale: **4 · 8 · 12 (gutter) · 16 (stack/margin)**. Sidebar rail is **64px** fixed.
+Spacing scale: **4 · 8 · 12 (gutter) · 16 (stack/margin)**. Sidebar rail is **76px** fixed —
+width follows the longest rail label ("Duplicates") at the 11pt floor, not the other way round.
 
 ## Navigation
 
@@ -168,7 +169,7 @@ of Force Quit. If a menu bar ever comes back, it belongs to Vorssaint, not here.
 
 Adopted for exactly two places, both places content genuinely floats above something:
 
-- **the 64pt rail** — a sidebar at the window edge is Apple's own glass pattern on macOS 26.
+- **the 76pt rail** — a sidebar at the window edge is Apple's own glass pattern on macOS 26.
 - **every sheet** (`TrashSheet`, `RowTrashSheet`, `RowInfoSheet`, `QuitSheet`), via
   `pcGlassPanel` — a sheet floats over the window behind it by definition.
 

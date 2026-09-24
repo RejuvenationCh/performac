@@ -134,6 +134,8 @@ enum Fmt {
     // "29.8 GB", never "29,8 GB". ByteCountFormatter has no locale knob, so format directly.
     private static let en = Locale(identifier: "en_US")
     static func bytes(_ b: Int64) -> String {
+        // Every branch below falls through to KB once b is 0, printing "0 KB" — say what it is.
+        if b <= 0 { return "0 bytes" }
         // TB matters here: without it a 2 TB drive read "2000.0 GB".
         let tb = Double(b) / 1_000_000_000_000
         if tb >= 1 { return String(format: "%.2f TB", locale: en, tb) }
