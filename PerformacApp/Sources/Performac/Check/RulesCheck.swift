@@ -116,8 +116,10 @@ enum RulesCheck {
             c.check("cache: one red finding", fs.count == 1)
             let f = fs[0]
             c.eq("cache: severity", f.severity, "red")
-            c.eq("cache: exact headline", f.headline, "Premiere's media cache is 38.0 GB and hasn't been written to in 24 days")
-            c.check("cache: growth why", f.why.contains("grew 2.0 GB in the last 7 days"), f.why)
+            // size_mb is MiB; 32/36/38 "GB" in the fixture are really GiB, so the correct decimal
+            // text (mbText, matching Fmt.bytes) reads a bit larger — 38 GiB is 40.8 GB, not 38.0.
+            c.eq("cache: exact headline", f.headline, "Premiere's media cache is 40.8 GB and hasn't been written to in 24 days")
+            c.check("cache: growth why", f.why.contains("grew 2.1 GB in the last 7 days"), f.why)
             c.eq("cache: linkKind", f.linkKind, "reveal")
             c.eq("cache: linkTarget", f.linkTarget, "/test/Media Cache Files")
             c.check("cache: in-app route", f.detail.contains("Settings → Media Cache"), f.detail)
@@ -203,6 +205,39 @@ enum RulesCheck {
                                                    EventRow(ts: NOW, kind: "power", key: "Battery Power", detail: ""))
             c.check("thermal: battery is explained, not blamed on cooling",
                     onBatt.first?.detail.contains("battery") == true)
+
+            // the reported bug: two unrelated bursts days apart must not fuse into one export.
+            // Old code took first/last across a process's whole retained history, so a 30-min
+            // burst four days ago and a 15-min burst just now became one ~5775-minute "export"
+            // peaking at whichever burst happened to run hotter.
+            let oldT0 = NOW - 4 * DAY
+            let recentT0 = NOW - 20 * 60_000
+            let oldBurst = exportRun("Adobe Premiere Pro 2026", 30).map {
+                ProcSample(ts: oldT0 + ($0.ts - T0), pid: $0.pid, name: $0.name, cpu: $0.cpu, rssMb: $0.rssMb)
+            }
+            let recentBurst = exportRun("Adobe Premiere Pro 2026", 15).map {
+                ProcSample(ts: recentT0 + ($0.ts - T0), pid: $0.pid, name: $0.name, cpu: $0.cpu, rssMb: $0.rssMb)
+            }
+            let oldTemps = temps(30, 95).map { TempSample(ts: oldT0 + ($0.ts - T0), celsius: $0.celsius) }
+            let recentTemps = temps(15, 60).map { TempSample(ts: recentT0 + ($0.ts - T0), celsius: $0.celsius) }
+            let split = Rules.thermalDuringExport(oldBurst + recentBurst, oldTemps + recentTemps, cfgT, NOW, nil)
+            c.check("thermal: two bursts days apart → one card", split.count == 1)
+            c.check("thermal: peak is the recent window's, not the old hot burst's",
+                    split.first?.headline.contains("60°C") == true, split.first?.headline ?? "")
+            c.check("thermal: not the 4-day span reported as the export length",
+                    split.first?.headline.contains("95°C") != true, split.first?.headline ?? "")
+            c.check("thermal: recent window is cool → info, not amber off the old burst",
+                    split.first?.severity == "info", split.first?.severity ?? "")
+        }
+
+        // ---- exportWindows: the shared window splitter isExportWindow and thermalDuringExport both use ----
+        do {
+            let cfgT = Config.defaults
+            func s(_ ts: Int64, _ cpu: Double) -> ProcSample { ProcSample(ts: ts, pid: 1, name: "Resolve", cpu: cpu, rssMb: 500) }
+            let apart = [s(0, 300), s(60_000, 300), s(5 * 60_000, 300), s(6 * 60_000, 300)]
+            c.eq("exportWindows: gap over 2 min stays two windows", Rules.exportWindows(apart, cfgT).count, 2)
+            let close = [s(0, 300), s(60_000, 300), s(150_000, 300), s(210_000, 300)]
+            c.eq("exportWindows: gap under 2 min merges into one window", Rules.exportWindows(close, cfgT).count, 1)
         }
 
         // ---- driveInstability ----
@@ -347,12 +382,14 @@ enum RulesCheck {
             ]
             let fs = Rules.dupFindings(groups, Config.defaults)
             c.check("dup: 3 groups", fs.count == 3)
-            c.check("dup: sorted by wasted bytes", fs[0].headline.contains("4.2 GB file exists in 3 places"), fs[0].headline)
+            // sizeMb is MiB; 4301 MiB decimal is 4.5 GB (not the old 4301/1024 = "4.2 GB").
+            c.check("dup: sorted by wasted bytes", fs[0].headline.contains("4.5 GB file exists in 3 places"), fs[0].headline)
             c.eq("dup: 3 copies amber", fs[0].severity, "amber")
             c.check("dup: byte-for-byte", fs[0].why.contains("byte-for-byte match (SHA-256)"), fs[0].why)
             c.eq("dup: reveal", fs[0].linkKind, "reveal")
             c.eq("dup: target", fs[0].linkTarget, "/x/a")
-            c.eq("dup: second headline", fs[1].headline, "The same 300 MB file exists in 2 places")
+            // 300 MiB decimal is 315 MB (not the old bare "300 MB", which treated MiB as MB).
+            c.eq("dup: second headline", fs[1].headline, "The same 315 MB file exists in 2 places")
             c.eq("dup: 2 copies info", fs[1].severity, "info")
             c.check("dup: extra paths in detail", fs[0].detail.contains("/z/c"), fs[0].detail)
             c.check("dup: empty → empty", Rules.dupFindings([], Config.defaults).isEmpty)
@@ -451,7 +488,8 @@ enum RulesCheck {
             ]
             let fs = Rules.drift(entries, dcfg2, NOW)
             c.check("drift: one card", fs.count == 1 && fs[0].severity == "info")
-            c.eq("drift: exact headline", fs.first?.headline, "4 old installers and exports are sitting in Downloads (11.2 GB)")
+            // 11469 MiB decimal is 12.0 GB (not the old 11469/1024 = "11.2 GB").
+            c.eq("drift: exact headline", fs.first?.headline, "4 old installers and exports are sitting in Downloads (12.0 GB)")
             c.check("drift: per-item why", fs.count == 1 && fs[0].why.contains("Setup.dmg") && fs[0].why.contains("untouched 6 months"), fs.first?.why ?? "")
             c.eq("drift: reveal", fs.first?.linkKind, "reveal")
             c.eq("drift: target", fs.first?.linkTarget, DL)
