@@ -223,8 +223,15 @@ enum Ago {
             let d = s / 86_400, h = s % 86_400 / 3600
             return h == 0 ? "\(d)d ago" : "\(d)d \(h)h ago"
         }
-        let w = s / 604_800, d = s % 604_800 / 86_400                       // 3w 2d ago
-        return d == 0 ? "\(w)w ago" : "\(w)w \(d)d ago"
+        // Weeks stop being readable somewhere around two months: a disk browser full of
+        // archives was printing "39w 6d ago" and "44w ago", which nobody converts in their
+        // head. Past eight weeks the scale is months.
+        if s < 4_838_400 {                                                  // 3w 2d ago
+            let w = s / 604_800, d = s % 604_800 / 86_400
+            return d == 0 ? "\(w)w ago" : "\(w)w \(d)d ago"
+        }
+        let mo = s / 2_629_800, w = s % 2_629_800 / 604_800                 // 9mo 2w ago
+        return w == 0 ? "\(mo)mo ago" : "\(mo)mo \(w)w ago"
     }
 }
 
