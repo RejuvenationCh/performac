@@ -36,15 +36,18 @@ struct OverviewView: View {
         if findings.isEmpty {
             return "Nothing worth doing. Caches are in normal range and nothing has changed enough to mention."
         }
+        // The breakdown has to add up to the heading's total. This counted only red and amber,
+        // so it read "1 needing attention and 1 worth a look" directly above a section heading
+        // that said 19 — the summary contradicting the list it introduces.
         let red = findings.filter { $0.severity == .red }.count
         let amber = findings.filter { $0.severity == .amber }.count
+        let info = findings.count - red - amber
         var parts: [String] = []
         if red > 0 { parts.append("\(red) needing attention") }
         if amber > 0 { parts.append("\(amber) worth a look") }
-        let head = parts.isEmpty
-            ? "\(findings.count) thing\(findings.count == 1 ? "" : "s") to know about"
-            : parts.joined(separator: " and ")
-        return "\(head), biggest first. Each card carries the evidence behind it — the age, the trend, or the count that made it worth showing."
+        if info > 0 { parts.append("\(info) for information") }
+        return "\(findings.count) in total — \(parts.joined(separator: ", ")), biggest first. "
+             + "Each card carries the evidence behind it: the age, the trend, or the count that made it worth showing."
     }
 
     var body: some View {
