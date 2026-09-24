@@ -13,7 +13,13 @@ final class EngineStore: ObservableObject {
     @Published var digest: [Finding] = []
     /// Which screen the window shows. Here rather than in the view so a card's link-out can
     /// navigate to Clean, and so closing the window does not reset the choice.
-    @Published var route: Route = .overview
+    ///
+    /// Persisted in UserDefaults rather than the settings table: it is read before the first
+    /// render and written on every tab click, which is the wrong traffic for SQLite.
+    @Published var route: Route = UserDefaults.standard.string(forKey: "route")
+        .flatMap(Route.init(rawValue:)) ?? .overview {
+        didSet { UserDefaults.standard.set(route.rawValue, forKey: "route") }
+    }
     @Published var cacheEntries: [CacheEntry] = []
     @Published var dupGroups: [DupGroup] = []
     @Published var dupScanAt: Int64? = nil

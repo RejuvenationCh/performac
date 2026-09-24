@@ -1,5 +1,19 @@
 // DuplicatesView.swift — exact matches only. No bulk action: with duplicates one copy must
-// survive, so trashing every copy can never be a single misclick (DESIGN.md §Do not carry over).
+// survive, so trashing every copy can never be a single misclick.
+//
+// A dense table, not a stack of cards. The job on this screen is comparing two *locations* and
+// deciding which copy to lose, so the layout is built around that one comparison:
+//
+//   * the size sits in a fixed right-aligned column, so the whole list shares one left edge.
+//     A variable-width size at the head of each card pushed the name to a different x on every
+//     row, which is what made the screen look broken before anything else did.
+//   * a path row shows its DIRECTORY, never the filename — the filename is the group title and
+//     repeating it at the end of both paths is the one part guaranteed to be identical.
+//   * the shared leading directories are dimmed and only the part where the copies diverge is
+//     printed at full strength. Two of these paths differed at component nine out of twelve;
+//     finding that by eye is the work, and the view should do it for you.
+//   * actions are always visible. Hover-only icons made a screen with no working actions and a
+//     screen with working actions look exactly the same at rest.
 import SwiftUI
 
 struct DuplicatesView: View {
@@ -16,15 +30,21 @@ struct DuplicatesView: View {
     var onTrashPath: (String) -> Void = { _ in }
     @State private var infoTarget: RowInfo? = nil
     @State private var trashTarget: RowInfo? = nil
+
+    /// What you get back by keeping one copy of each group.
     private var recoverable: Int64 {
         groups.reduce(0) { $0 + $1.bytes * Int64(max($1.paths.count - 1, 0)) }
     }
+
     var body: some View {
         Page(title: "Duplicates",
-             subtitle: "Exact matches only — same file, byte for byte. \(groups.count) groups, \(Fmt.bytes(recoverable)) recoverable.",
+             subtitle: groups.isEmpty
+                ? "Exact matches only — same file, byte for byte."
+                : "Exact matches only — same file, byte for byte. \(groups.count) groups, \(Fmt.bytes(recoverable)) recoverable.",
              trailing: AnyView(
                 HStack(spacing: PC.gutter) {
-                    TickingAgo(date: lastScanAt, prefix: "Last scan: ").font(.pcSmall).foregroundStyle(PC.meta).monospacedDigit()
+                    TickingAgo(date: lastScanAt, prefix: "Last scan: ")
+                        .font(.pcSmall).foregroundStyle(PC.meta).monospacedDigit()
                     if scanning {
                         Button("Cancel", action: onCancel).controlSize(.small)
                     } else {
@@ -33,28 +53,31 @@ struct DuplicatesView: View {
                             .help("Hashes files over the size threshold. Exact matches only.")
                     }
                 })) {
-            if scanning {
-                HStack(spacing: PC.s2) {
-                    ProgressView().controlSize(.small)
-                    Text(candidates > 0
-                         ? "Hashing \(Fmt.count(hashed)) of \(Fmt.count(candidates)) candidates…"
-                         : "Looking for same-size files…")
-                        .font(.pcSmall).foregroundStyle(PC.ink2)
-                    Text(currentPath).font(.pcSmall).foregroundStyle(PC.meta)
-                        .lineLimit(1).truncationMode(.head)
-                    Spacer()
-                }
-                .padding(.horizontal, PC.stack).padding(.vertical, PC.s2)
-                .background(PC.fill1).pcHairline(.bottom)
-            }
-            ScrollView {
-                VStack(spacing: PC.gutter) {
-                    ForEach(groups) { g in
-                        DupGroupCard(group: g, onReveal: onReveal,
-                                     infoTarget: $infoTarget, trashTarget: $trashTarget)
+            VStack(spacing: 0) {
+                if scanning { progressBar }
+
+                if groups.isEmpty && !scanning {
+                    emptyState
+                } else {
+                    HStack(spacing: PC.gutter) {
+                        Text("SIZE").font(.pcLabel).foregroundStyle(PC.meta)
+                            .frame(width: 72, alignment: .trailing)
+                        Text("FILE").font(.pcLabel).foregroundStyle(PC.meta)
+                        Spacer()
                     }
+                    .padding(.horizontal, PC.stack).padding(.vertical, PC.s2)
+                    .background(PC.canvas).pcHairline(.bottom)
+
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(groups) { g in
+                                DupGroup_Rows(group: g, onReveal: onReveal,
+                                              infoTarget: $infoTarget, trashTarget: $trashTarget)
+                            }
+                        }
+                    }
+                    .background(PC.surface)
                 }
-                .padding(.horizontal, PC.stack).padding(.bottom, PC.stack)
             }
         }
         .onDisappear(perform: onDisappear)
@@ -64,39 +87,99 @@ struct DuplicatesView: View {
                           onConfirm: { trashTarget = nil; onTrashPath(t.path) })
         }
     }
+
+    private var progressBar: some View {
+        HStack(spacing: PC.s2) {
+            ProgressView().controlSize(.small)
+            Text(candidates > 0
+                 ? "Hashing \(Fmt.count(hashed)) of \(Fmt.count(candidates)) candidates…"
+                 : "Looking for same-size files…")
+                .font(.pcSmall).foregroundStyle(PC.ink2)
+            Text(currentPath).font(.pcSmall).foregroundStyle(PC.meta)
+                .lineLimit(1).truncationMode(.head)
+            Spacer()
+        }
+        .padding(.horizontal, PC.stack).padding(.vertical, PC.s2)
+        .background(PC.fill1).pcHairline(.bottom)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: PC.s2) {
+            Image(systemName: lastScanAt == nil ? "doc.on.doc" : "checkmark.seal.fill")
+                .font(.system(size: 26))
+                .foregroundStyle(lastScanAt == nil ? PC.meta : PC.green)
+            Text(lastScanAt == nil ? "Not scanned yet" : "No duplicates")
+                .font(.pcTitle).foregroundStyle(PC.ink)
+            Text(lastScanAt == nil
+                 ? "Scanning hashes every file over the size threshold in Settings."
+                 : "Nothing in the scanned folders matches another file byte for byte.")
+                .font(.pcSmall).foregroundStyle(PC.ink2).multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 48)
+    }
 }
 
-private struct DupGroupCard: View {
+/// One group: a heading row carrying the size and filename, then one row per copy.
+private struct DupGroup_Rows: View {
     let group: DupGroup
     let onReveal: (String) -> Void
     @Binding var infoTarget: RowInfo?
     @Binding var trashTarget: RowInfo?
+
+    /// Directory components shared by every copy. Printed dimmed so the divergence stands out.
+    private var sharedPrefix: [String] {
+        let parts = group.paths.map { Self.dirComponents($0) }
+        guard var common = parts.first else { return [] }
+        for p in parts.dropFirst() {
+            var i = 0
+            while i < common.count, i < p.count, common[i] == p[i] { i += 1 }
+            common = Array(common.prefix(i))
+        }
+        // Never dim the whole thing: if two copies sit in the same directory they differ only
+        // by filename, and dimming every component would leave nothing to read.
+        return common.count == parts.first?.count ? Array(common.dropLast()) : common
+    }
+
+    static func dirComponents(_ path: String) -> [String] {
+        let dir = (path as NSString).deletingLastPathComponent
+            .replacingOccurrences(of: NSHomeDirectory(), with: "~")
+        return dir.split(separator: "/").map(String.init)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: PC.s2) {
-                Text(Fmt.bytes(group.bytes)).font(.pcNumLg).foregroundStyle(PC.ink)
-                Pill(text: "\(group.paths.count) copies", tint: PC.accent, soft: PC.fill1)
-                Text(group.name).font(.pcTitle).foregroundStyle(PC.ink).lineLimit(1)
-                Spacer()
+        VStack(spacing: 0) {
+            HStack(spacing: PC.gutter) {
+                Text(Fmt.bytes(group.bytes)).font(.pcNum).fontWeight(.semibold)
+                    .foregroundStyle(PC.ink)
+                    .frame(width: 72, alignment: .trailing)
+                Text(group.name).font(.pcBody).foregroundStyle(PC.ink)
+                    .lineLimit(1).truncationMode(.middle)
+                // Earns its place only when it says something "2 copies" does not: every
+                // group has at least two, so the common case is not worth a badge.
+                if group.paths.count > 2 {
+                    Pill(text: "\(group.paths.count) copies", tint: PC.accent, soft: PC.fill1)
+                }
+                Spacer(minLength: PC.s2)
             }
-            .padding(.horizontal, PC.gutter).padding(.vertical, PC.s2 + 2)
-            .pcHairline(.bottom)
+            .padding(.horizontal, PC.stack).padding(.top, PC.s2 + 2).padding(.bottom, 2)
 
             ForEach(Array(group.paths.enumerated()), id: \.offset) { _, p in
-                DupPathRow(path: p, bytes: group.bytes, onReveal: onReveal,
+                DupPathRow(path: p, bytes: group.bytes, shared: sharedPrefix,
+                           onReveal: onReveal,
                            infoTarget: $infoTarget, trashTarget: $trashTarget)
             }
         }
-        .pcCard()
+        .padding(.bottom, PC.s2)
+        .pcHairline(.bottom)
     }
 }
 
 /// One copy. Per-copy actions only — never a bulk one, because with exact duplicates at least
-/// one copy has to survive (DESIGN.md §Do not carry over #5). That rule was already written
-/// down; these two buttons are what it asked for, and they were empty closures.
+/// one copy has to survive.
 private struct DupPathRow: View {
     let path: String
     let bytes: Int64
+    let shared: [String]
     let onReveal: (String) -> Void
     @Binding var infoTarget: RowInfo?
     @Binding var trashTarget: RowInfo?
@@ -108,21 +191,34 @@ private struct DupPathRow: View {
                 bytes: bytes, items: 0, isFolder: false)
     }
 
+    private var components: [String] { DupGroup_Rows.dirComponents(path) }
+
     var body: some View {
-        HStack(spacing: PC.s2) {
-            Image(systemName: "doc").font(.system(size: 11)).foregroundStyle(PC.meta)
-            Text(path).font(.pcSmall).foregroundStyle(PC.ink2).lineLimit(1).truncationMode(.middle)
+        HStack(spacing: PC.gutter) {
+            Spacer().frame(width: 72)            // aligns under the size column
+            Image(systemName: "folder").font(.system(size: 11)).foregroundStyle(PC.meta)
+            pathText
+                .lineLimit(1).truncationMode(.head)
             Spacer(minLength: PC.s2)
-            if hover {
-                IconButtonAction("magnifyingglass", help: "Reveal in Finder") { onReveal(info.path) }
-                IconButtonAction("trash", help: "Move this copy to the Trash…") { trashTarget = info }
-            }
+            IconButtonAction("magnifyingglass", help: "Reveal in Finder") { onReveal(info.path) }
+            IconButtonAction("trash", help: "Move this copy to the Trash…") { trashTarget = info }
         }
-        .padding(.horizontal, PC.gutter).padding(.vertical, 6)
-        .background(hover ? PC.fill1.opacity(0.6) : .clear)
+        .padding(.horizontal, PC.stack).padding(.vertical, 4)
+        .background(hover ? PC.fill1 : .clear)
         .contentShape(Rectangle())
-        .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
+        .onHover { hover = $0 }
         .rowActions(info, infoTarget: $infoTarget, trashTarget: $trashTarget)
         .help(path)
+    }
+
+    /// Shared leading directories dimmed, the diverging tail at full strength.
+    private var pathText: Text {
+        var s = AttributedString()
+        for (i, c) in components.enumerated() {
+            var run = AttributedString(c + (i == components.count - 1 ? "" : "/"))
+            run.foregroundColor = (i < shared.count && shared[i] == c) ? PC.meta : PC.ink
+            s += run
+        }
+        return Text(s).font(.pcSmall)
     }
 }
