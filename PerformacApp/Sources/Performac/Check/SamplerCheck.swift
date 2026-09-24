@@ -25,8 +25,16 @@ final class FakeDeps: SamplerDeps, @unchecked Sendable {
     var diskutilInfo: ([String]) -> String
     var nowFn: () -> Int64
     var power: () -> String?
-    private(set) var calls: [[String]] = []
-    private(set) var streams: [FakeStream] = []
+    /// `@unchecked Sendable` is a promise this class has to keep, and it was not keeping it:
+    /// Sampler.tick() calls execFile and spawn from concurrent tasks, and appending to a plain
+    /// Array from two threads corrupts its refcounts. That segfaulted a check run
+    /// (EXC_BAD_ACCESS in _swift_release_dealloc under Array.append). Rare enough to look like
+    /// a fluke, which is the dangerous kind — the whole suite is the gate on every change here.
+    private let lock = NSLock()
+    private var _calls: [[String]] = []
+    private var _streams: [FakeStream] = []
+    var calls: [[String]] { lock.withLock { _calls } }
+    var streams: [FakeStream] { lock.withLock { _streams } }
     let statfsResult: StatFs = StatFs(bsize: 4096, blocks: 1_000_000, bavail: 500_000)
 
     init(ps: String, volumes: @escaping @Sendable () -> [String], diskutilInfo: @escaping @Sendable ([String]) -> String,
@@ -39,7 +47,7 @@ final class FakeDeps: SamplerDeps, @unchecked Sendable {
     }
 
     func execFile(_ bin: String, _ args: [String]) async throws -> String {
-        calls.append([bin] + args)
+        lock.withLock { _calls.append([bin] + args) }
         switch bin {
         case "ps": return ps
         case "lsappinfo":
@@ -58,7 +66,7 @@ final class FakeDeps: SamplerDeps, @unchecked Sendable {
 
     func spawn(_ bin: String, _ args: [String]) -> StreamChild {
         let c = FakeStream(bin: bin, args: args)
-        streams.append(c)
+        lock.withLock { _streams.append(c) }
         return c
     }
 
