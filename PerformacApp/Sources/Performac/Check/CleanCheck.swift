@@ -43,8 +43,13 @@ enum CleanCheck {
         c.check("clean: allowlisted path is trashed", ok.first?.ok == true)
         c.check("clean: trashed item still exists in the Trash",
                 ok.first?.trashedTo.map { FileManager.default.fileExists(atPath: $0) } == true)
-        // the trashed fixture is left in place: it proves recoverability, and re-trashing
-        // it would only add a second entry to the Bin
+        // Put it back, which proves recovery and stops every run leaving a folder in the
+        // user's Trash. A move, not a delete: it returns to the temp dir the OS clears.
+        if let trashed = ok.first?.trashedTo {
+            c.check("clean: trashed item can be put back",
+                    (try? FileManager.default.moveItem(atPath: trashed, toPath: tmp)) != nil
+                    && FileManager.default.fileExists(atPath: sub))
+        }
         // ---- sorting ----
         do {
             var st = SortState()
