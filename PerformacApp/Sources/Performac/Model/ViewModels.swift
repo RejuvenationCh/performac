@@ -32,7 +32,7 @@ enum FindingLink: Sendable, Equatable {
     case loginSettings
     /// `disable_agent` in the database, carrying the plist's path. Unlike every other case
     /// this one performs an action rather than merely navigating, so it must NOT be acted on
-    /// from `openLink` — CoachCardView confirms it first, the way it already does for a quit.
+    /// from `openLink` — FindingCard confirms it first, the way it already does for a quit.
     case disableAgent(String)
 
     var label: String {

@@ -1,6 +1,6 @@
 // OverviewView.swift — replaces Dashboard and Digest, which rendered the same
-// `store.digest` array through the same CoachCardView in two sort orders, on two of six
-// rail slots. One screen: the four measured facts, the summary (with the Gemini rewrite),
+// `store.digest` array through the same FindingCard in two sort orders, on two of six
+// rail slots. One screen: the four measured facts, the templated summary,
 // the free-space trend, then findings ranked worst-first.
 import SwiftUI
 
@@ -14,11 +14,6 @@ struct OverviewView: View {
     var onIgnore: ((String) -> Void)? = nil
     var onLink: (FindingLink) -> Void = { _ in }
     var onDisableAgent: (String) -> Void = { _ in }
-    var coachIntro: String? = nil
-    var coachAt: Date? = nil
-    var coachBusy: Bool = false
-    var coachConfigured: Bool = false
-    var onCoach: () -> Void = {}
     var trendPoints: [TrendPoint] = []
     var trendWindow: String = ""
     var trendNote: String = ""
@@ -92,22 +87,8 @@ struct OverviewView: View {
                     }
 
                     VStack(alignment: .leading, spacing: PC.s2) {
-                        HStack {
-                            SectionHeader(text: "Summary")
-                            Spacer()
-                            if coachConfigured {
-                                if coachBusy {
-                                    ProgressView().controlSize(.small).scaleEffect(0.6)
-                                } else {
-                                    Button("Rewrite", action: onCoach)
-                                        .buttonStyle(.link).font(.pcLabel)
-                                        .help("Ask Gemini to summarise the findings below")
-                                }
-                            }
-                        }
-                        // Gemini's paragraph when configured and available; otherwise the
-                        // templated one. Either way it only restates the cards.
-                        Text(coachIntro ?? summary)
+                        SectionHeader(text: "Summary")
+                        Text(summary)
                             .font(.pcBody).foregroundStyle(PC.ink2).lineSpacing(3)
                             .frame(maxWidth: 620, alignment: .leading)
                     }
@@ -156,7 +137,7 @@ struct OverviewView: View {
                     } else {
                         SectionHeader(text: "Worth knowing (\(worst.count))")
                         ForEach(worst) {
-                            CoachCardView(finding: $0, onQuit: quitAction,
+                            FindingCard(finding: $0, onQuit: quitAction,
                                           onIgnore: onIgnore, onLink: onLink,
                                           onDisableAgent: onDisableAgent)
                         }

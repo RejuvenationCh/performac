@@ -5,7 +5,7 @@ import AppKit
 
 /// The load-bearing component. Headline + evidence + at most one link-out, which navigates or
 /// reveals but never performs the fix.
-struct CoachCardView: View {
+struct FindingCard: View {
     let finding: Finding
     var onQuit: (String) -> Void = { _ in }
     var onIgnore: ((String) -> Void)? = nil

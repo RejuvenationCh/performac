@@ -5,7 +5,7 @@ import AppKit
 
 struct MainWindow: View {
     @ObservedObject var store = EngineStore.shared
-    /// Route lives in the store (see `Route` in ViewModels.swift) so a coach card's link-out
+    /// Route lives in the store (see `Route` in ViewModels.swift) so a finding card's link-out
     /// can navigate and so the choice survives the window closing.
     var body: some View {
         HStack(spacing: 0) {
@@ -22,11 +22,6 @@ struct MainWindow: View {
                     onIgnore: { store.ignoreProcess($0) },
                     onLink: { store.openLink($0) },
                     onDisableAgent: { store.disableAgent($0) },
-                    coachIntro: store.coachIntro,
-                    coachAt: store.coachAt,
-                    coachBusy: store.coachBusy,
-                    coachConfigured: store.coachConfigured,
-                    onCoach: { store.refreshCoachIntro() },
                     trendPoints: store.trend.points,
                     trendWindow: store.trend.window,
                     trendNote: store.trend.note,

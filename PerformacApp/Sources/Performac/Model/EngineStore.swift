@@ -106,7 +106,6 @@ final class EngineStore: ObservableObject {
         // Separate handle for browsing reads so the UI never waits on the sampler's lock.
         self.readDB = (db == nil && path != nil) ? DB(path: path!, readOnly: true) : self.db
         loadPersistedScan()   // reopening shows the last result, labelled as a snapshot
-        loadCoachIntro()
         mountedVolumes = Self.volumePaths()
         watchVolumes()
     }
@@ -187,7 +186,7 @@ final class EngineStore: ObservableObject {
     }
 
     /// Perform a card's one link-out. Reveals or navigates only — `.disableAgent` acts, so
-    /// CoachCardView intercepts it for confirmation before this is ever called with one.
+    /// FindingCard intercepts it for confirmation before this is ever called with one.
     func openLink(_ link: FindingLink) {
         switch link {
         case .reveal(let path):
@@ -530,8 +529,6 @@ final class EngineStore: ObservableObject {
         }
     }
 
-    // MARK: Digest coach intro (Gemini, opt-in)
-
     /// Capacity of the volume holding `path`, in **bytes**, read fresh: statfs is one syscall.
     ///
     /// Bytes, not GB. These used to be returned as GiB (blocks × f_bsize ÷ 2^30) while `Fmt`
@@ -552,40 +549,6 @@ final class EngineStore: ObservableObject {
     /// The volume the picker is pointed at, so the Disk toolbar describes the drive being
     /// browsed instead of always reporting the internal disk beside an external drive's name.
     var scanRootSpaceBytes: (free: Int64, total: Int64) { Self.spaceBytes(at: scanRoot) }
-    @Published var coachIntro: String? = nil
-    @Published var coachAt: Date? = nil
-    @Published var coachBusy = false
-    var coachConfigured: Bool { CoachIntro.isConfigured }
-
-    func loadCoachIntro() {
-        guard let o = getSetting(db, "coachIntro")?.objectVal else { return }
-        coachIntro = o["text"]?.stringVal
-        coachAt = o["ts"]?.doubleVal.map { Date(timeIntervalSince1970: $0 / 1000) }
-    }
-
-    /// Only severity, headline and why-line leave the machine — never paths. See CoachIntro.
-    func refreshCoachIntro() {
-        guard CoachIntro.isConfigured, !coachBusy else { return }
-        coachBusy = true
-        let rows = readDB.prepare("SELECT severity, headline, why FROM findings ORDER BY id").all()
-            .map { (severity: $0["severity"]?.stringVal ?? "info",
-                    headline: $0["headline"]?.stringVal ?? "",
-                    why: $0["why"]?.stringVal ?? "") }
-        let prompt = CoachIntro.buildPrompt(rows)
-        Task { [weak self] in
-            let text = await CoachIntro.fetch(prompt: prompt)
-            await MainActor.run {
-                guard let self else { return }
-                self.coachBusy = false
-                guard let text else { return }          // failure keeps the previous text
-                let ts = Date()
-                self.coachIntro = text
-                self.coachAt = ts
-                setSetting(self.db, "coachIntro",
-                           JSONValue.from(["text": text, "ts": ts.timeIntervalSince1970 * 1000]))
-            }
-        }
-    }
 
     /// Trash one item chosen in the browser. The allowlist is that single path, so this can
     /// never widen to anything the user did not point at.

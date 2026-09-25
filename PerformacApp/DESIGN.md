@@ -118,7 +118,7 @@ or divides a size; every view just calls `Fmt.bytes`.
 
 ## Components
 
-**CoachCard** (`CoachCardView`) — the load-bearing component:
+**FindingCard** (`FindingCard`) — the load-bearing component:
 
 ```
 surface · 4px radius · 1px hairline border · small shadow · 12px pad (16 left)
@@ -133,7 +133,7 @@ The link-out carries `FindingLink`, an enum holding its destination (`reveal(pat
 `.activityMonitor`, `.clean`, `.loginSettings`, `.disableAgent(path)`), not just a label — it
 was a dead accent-coloured button until this pass, because the view read only the link's kind
 and had nothing to act on. See §Rules, "a control must do something." Every case but
-`.disableAgent` navigates; that one performs an action, so `CoachCardView` intercepts it for
+`.disableAgent` navigates; that one performs an action, so `FindingCard` intercepts it for
 confirmation instead of routing it through `EngineStore.openLink` — the same shape as the
 Quit button beside it.
 
@@ -333,6 +333,6 @@ duplicates, creative-app caches, and what changed over time.
     treemap are opaque. Never nest glass inside glass.
 11. **Never state a status the app cannot evidence.**
 12. **A control that cannot act must not be drawn.** The audit that started this pass found
-    eight controls wired to empty closures, including the coach card's only link-out. An
+    eight controls wired to empty closures, including the finding card's only link-out. An
     affordance with no effect is worse than no affordance — it teaches the user that buttons
     in this app might not do anything.
