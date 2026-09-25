@@ -1,4 +1,4 @@
-// MainWindow.swift — 76pt icon rail + content. The rail is the ONLY navigation
+// MainWindow.swift: 76pt icon rail + content. The rail is the ONLY navigation
 // (DESIGN.md §Do not carry over: no competing top tabs).
 import SwiftUI
 import AppKit
@@ -106,7 +106,7 @@ private struct Rail: View {
     @Binding var route: Route
     var body: some View {
         VStack(spacing: PC.s1) {
-            // An SF Symbol mark, not a lettermark in a coloured square — that read as the
+            // An SF Symbol mark, not a lettermark in a coloured square: that read as the
             // most generic possible app badge and was not a control.
             Image(systemName: "gauge.with.needle")
                 .font(.system(size: 17, weight: .medium))
@@ -165,7 +165,7 @@ struct Page<Content: View>: View {
             .padding(.horizontal, PC.stack).padding(.top, PC.stack).padding(.bottom, PC.gutter)
             .frame(maxWidth: .infinity, alignment: .leading)
             // Opaque, not glass: nothing scrolls under this row, so glass here had an opaque
-            // canvas behind it and just rendered as a flat tint — decoration, not depth.
+            // canvas behind it and just rendered as a flat tint: decoration, not depth.
             .background(PC.surface)
             .pcHairline(.bottom)
             content

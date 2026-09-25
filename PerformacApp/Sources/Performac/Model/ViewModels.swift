@@ -1,4 +1,4 @@
-// ViewModels.swift — UI-facing types the views render. Shapes mirror v1's Finding/cache/dup
+// ViewModels.swift: UI-facing types the views render. Shapes mirror v1's Finding/cache/dup
 // rows so the engine swap was a data-source change, not a view rewrite.
 import SwiftUI
 
@@ -32,7 +32,7 @@ enum FindingLink: Sendable, Equatable {
     case loginSettings
     /// `disable_agent` in the database, carrying the plist's path. Unlike every other case
     /// this one performs an action rather than merely navigating, so it must NOT be acted on
-    /// from `openLink` — FindingCard confirms it first, the way it already does for a quit.
+    /// from `openLink`: FindingCard confirms it first, the way it already does for a quit.
     case disableAgent(String)
 
     var label: String {
@@ -68,7 +68,7 @@ struct Finding: Identifiable, Sendable {
     var why: String
     var link: FindingLink? = nil  // at most one; `.disableAgent` is confirmed before it acts
     /// Process this card is about, when it is safe to offer quitting it. Set by the store,
-    /// never by the engine — the rules stay advisory and parity with v1 is unaffected.
+    /// never by the engine: the rules stay advisory and parity with v1 is unaffected.
     var quitTarget: String? = nil
 }
 
@@ -97,7 +97,7 @@ struct SizeEntry: Identifiable, Sendable {
     let id = UUID()
     /// The navigation key: always the real path component under the parent, never prettified.
     var name: String, items: Int, bytes: Int64
-    /// Shown instead of `name` when the two differ. Only the all-drives root uses this — its
+    /// Shown instead of `name` when the two differ. Only the all-drives root uses this: its
     /// children are named "Users/you" and "Volumes/External SSD" so that appending them
     /// to "/" still produces a real path, while the row reads "Home" and "External SSD".
     var label: String? = nil
@@ -124,7 +124,7 @@ struct CacheEntry: Identifiable, Sendable {
 }
 
 /// One sample on the free-space chart. Carries its timestamp, because a chart you can hover
-/// has to be able to say *when*, and bytes, because everything else on the screen is bytes —
+    /// has to be able to say *when*, and bytes, because everything else on the screen is bytes:
 /// `disk_samples.free_gb` is GiB (df's 1K blocks over 2^20), so 926.30 stored is the 994.6 GB
 /// the Disk toolbar prints. Converting here keeps the chart and the stat tile above it from
 /// disagreeing about the same disk.
@@ -145,13 +145,13 @@ struct DupGroup: Identifiable, Sendable {
     var bytes: Int64, name: String, paths: [String]
 }
 
-// MARK: formatting — one place, so every figure in the app matches
+// MARK: formatting, one place, so every figure in the app matches
 enum Fmt {
-    // DESIGN.md: decimal GB/MB, one decimal place, en_US regardless of system locale —
+    // DESIGN.md: decimal GB/MB, one decimal place, en_US regardless of system locale:
     // "29.8 GB", never "29,8 GB". ByteCountFormatter has no locale knob, so format directly.
     private static let en = Locale(identifier: "en_US")
     static func bytes(_ b: Int64) -> String {
-        // Every branch below falls through to KB once b is 0, printing "0 KB" — say what it is.
+        // Every branch below falls through to KB once b is 0, printing "0 KB": say what it is.
         if b <= 0 { return "0 bytes" }
         // TB matters here: without it a 2 TB drive read "2000.0 GB".
         let tb = Double(b) / 1_000_000_000_000

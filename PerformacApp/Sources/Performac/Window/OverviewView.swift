@@ -1,4 +1,4 @@
-// OverviewView.swift — replaces Dashboard and Digest, which rendered the same
+// OverviewView.swift: replaces Dashboard and Digest, which rendered the same
 // `store.digest` array through the same FindingCard in two sort orders, on two of six
 // rail slots. One screen: the four measured facts, the templated summary,
 // the free-space trend, then findings ranked worst-first.
@@ -46,7 +46,7 @@ struct OverviewView: View {
         }
         // The breakdown has to add up to the heading's total. This counted only red and amber,
         // so it read "1 needing attention and 1 worth a look" directly above a section heading
-        // that said 19 — the summary contradicting the list it introduces.
+        // that said 19: the summary contradicting the list it introduces.
         let red = findings.filter { $0.severity == .red }.count
         let amber = findings.filter { $0.severity == .amber }.count
         let info = findings.count - red - amber
@@ -54,7 +54,7 @@ struct OverviewView: View {
         if red > 0 { parts.append("\(red) needing attention") }
         if amber > 0 { parts.append("\(amber) worth a look") }
         if info > 0 { parts.append("\(info) for information") }
-        return "\(findings.count) in total — \(parts.joined(separator: ", ")), biggest first. "
+        return "\(findings.count) in total: \(parts.joined(separator: ", ")), biggest first. "
              + "Each card carries the evidence behind it: the age, the trend, or the count that made it worth showing."
     }
 
@@ -69,7 +69,7 @@ struct OverviewView: View {
                         // Every size goes through Fmt, so this agrees with the Disk toolbar.
                         // It used to print raw GiB labelled "GB" and disagree by 7.4%.
                         StatTile("Free space",
-                                 facts.totalBytes > 0 ? Fmt.bytes(facts.freeBytes) : "—",
+                                 facts.totalBytes > 0 ? Fmt.bytes(facts.freeBytes) : "none yet",
                                  facts.totalBytes > 0
                                     ? String(format: "%.0f%% of the disk in use",
                                              (1 - Double(facts.freeBytes) / Double(facts.totalBytes)) * 100)
@@ -99,8 +99,8 @@ struct OverviewView: View {
                             // Names the volume: this chart is boot-only, and a card above it
                             // can be about an external drive heading for full.
                             SectionHeader(text: trendWindow.isEmpty
-                                          ? "\(trendVolume) — free space"
-                                          : "\(trendVolume) — free space, last \(trendWindow)")
+                                          ? "\(trendVolume): free space"
+                                          : "\(trendVolume): free space, last \(trendWindow)")
                             Spacer()
                             if let p = hoveredPoint {
                                 // Value leads, time follows: the reader already knows what the
@@ -195,7 +195,7 @@ struct StatTile: View {
 ///
 /// The pointer aims at a *time*, not at a 1.5pt line: the hover snaps to the nearest sample
 /// on X, so the whole height of the chart is the hit target. The readout lives in the card
-/// header rather than in a floating bubble — this plot is 54pt tall, and a tooltip inside it
+/// header rather than in a floating bubble: this plot is 54pt tall, and a tooltip inside it
 /// would cover the very line it describes.
 struct Sparkline: View {
     let points: [TrendPoint]
@@ -208,7 +208,7 @@ struct Sparkline: View {
             let lo = vals.min() ?? 0, hi = vals.max() ?? 1
             // A series that never moves is flat, not empty. Normalising it would put every
             // point at (v-lo)/span = 0, i.e. pinned to the bottom edge, which reads as "the
-            // disk is full" — the same wrong story a flat line at zero told before.
+            // disk is full": the same wrong story a flat line at zero told before.
             let flat = (hi - lo) < max(hi, 1) * 0.005
             let span = max(hi - lo, 1)
             let xs = points.indices.map { g.size.width * CGFloat($0) / CGFloat(max(points.count - 1, 1)) }

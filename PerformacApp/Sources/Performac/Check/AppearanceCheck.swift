@@ -1,9 +1,9 @@
-// AppearanceCheck.swift — the tokens resolved under both appearances.
+// AppearanceCheck.swift: the tokens resolved under both appearances.
 //
 // These exist because dark mode had one real failure and it was invisible in the source: the
 // semantic pair .windowBackgroundColor / .controlBackgroundColor both resolve to #1E1E1E in
 // dark aqua. The whole layout is cards on a ground, so every card vanished into the page.
-// A check that only read the code could not have caught it — these resolve the colours.
+// A check that only read the code could not have caught it: these resolve the colours.
 import AppKit
 import SwiftUI
 

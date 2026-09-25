@@ -1,9 +1,9 @@
-// Core/FileKind.swift — file-type taxonomy, classified by measurement (extension and
+// Core/FileKind.swift: file-type taxonomy, classified by measurement (extension and
 // cache-path membership), not by folder name. The old heuristic guessed from folder-name
 // keywords ("movie", "photo", "cache") and matched none of this user's project-shorthand
 // folder names (UC, Render, ALP Juna, GMS...), so everything fell to .other. This type is
 // engine-layer (used by the scanner while it walks the tree) and carries no SwiftUI
-// dependency — its `color` lives in Design/Tokens.swift instead.
+// dependency: its `color` lives in Design/Tokens.swift instead.
 import Foundation
 
 public enum FileKind: String, CaseIterable, Sendable {
@@ -27,7 +27,7 @@ public enum FileKind: String, CaseIterable, Sendable {
     ]
 
     /// Classify one file: cache membership first (a cache hit is disposable regardless of
-    /// what it contains), then extension. Cheap string checks only — this runs once per item
+    /// what it contains), then extension. Cheap string checks only: this runs once per item
     /// in the scanner's hot loop, ~936k times a scan, and must add no stat calls.
     public static func forFile(path: String) -> FileKind {
         if isCachePath(path) { return .cache }
@@ -43,7 +43,7 @@ public enum FileKind: String, CaseIterable, Sendable {
         return .other
     }
 
-    /// Substring checks rather than splitting into path components — no array allocation
+    /// Substring checks rather than splitting into path components: no array allocation
     /// in the per-file hot loop. Every scanned path is absolute, so "/Cache/" or "/Caches/"
     /// as a substring is exactly "a Cache/Caches directory component" the spec asks for.
     static func isCachePath(_ path: String) -> Bool {
@@ -79,8 +79,8 @@ public struct KindTally: Sendable {
         cache += other.cache; document += other.document; self.other += other.other
     }
 
-    /// A directory's colour: whichever kind holds the most bytes beneath it. A tie — including
-    /// the all-zero tie of an empty or entirely unclassifiable directory — is not a confident
+    /// A directory's colour: whichever kind holds the most bytes beneath it. A tie, including
+    /// the all-zero tie of an empty or entirely unclassifiable directory, is not a confident
     /// answer, so it falls to `.other` rather than picking a winner arbitrarily.
     public var dominant: FileKind {
         let pairs: [(FileKind, Int64)] = [

@@ -1,4 +1,4 @@
-// Check/CheckHarness.swift — the assert-based check pattern (CommandLineTools ships
+// Check/CheckHarness.swift: the assert-based check pattern (CommandLineTools ships
 // neither swift-testing nor XCTest). Every ported v1 test becomes one check() here;
 // `Performac check` runs all suites and reports the total.
 import Foundation
@@ -14,7 +14,7 @@ final class CheckSuite {
             print("PASS \(name)")
         } else {
             failed += 1
-            print("FAIL \(name)\(detail.isEmpty ? "" : " — \(detail)")")
+            print("FAIL \(name)\(detail.isEmpty ? "" : " (\(detail))")")
         }
     }
 

@@ -1,4 +1,4 @@
-// CleanPolicy.swift — what the cleaner is allowed to touch, and what it costs you.
+// CleanPolicy.swift: what the cleaner is allowed to touch, and what it costs you.
 //
 // Default is DENY: an id with no policy here is never cleanable. Adding a path to the
 // cleaner is a deliberate act, not something a new cache detector can do by accident.
@@ -9,7 +9,7 @@ struct CleanPolicy: Sendable {
     /// true → "Safe to clean" (regenerates silently). false → "Check first" (regenerates
     /// loudly: re-renders, re-analysis, time you will notice).
     var safe: Bool
-    /// What actually happens if you trash it. Shown on the row — never omitted.
+    /// What actually happens if you trash it. Shown on the row: never omitted.
     var consequence: String
 }
 
@@ -17,10 +17,10 @@ enum Allowlist {
     private static let table: [String: CleanPolicy] = [
         // ---- Resolve ----
         "resolve-cache": .init(cleanable: true, safe: false,
-            consequence: "Resolve re-renders previews on next open — a long timeline can take a while."),
+            consequence: "Resolve re-renders previews on next open: a long timeline can take a while."),
         "resolve-proxy": .init(cleanable: true, safe: false,
             consequence: "Proxies must be regenerated before you can edit with them again."),
-        // NOT cleanable. ~/Movies/.gallery holds .dpx stills — saved grades and reference
+        // NOT cleanable. ~/Movies/.gallery holds .dpx stills: saved grades and reference
         // frames a colourist chose to keep. That is user work wearing a cache's clothing.
         "resolve-gallery": .init(cleanable: false, safe: false,
             consequence: "Saved stills and grades, not cache. Performac will never trash this."),
@@ -37,7 +37,7 @@ enum Allowlist {
 
         // ---- reclaimable, with the real cost stated ----
         "gen-xcode-archives": .init(cleanable: true, safe: false,
-            consequence: "Built archives of apps you shipped — the only copy of those exact builds."),
+            consequence: "Built archives of apps you shipped: the only copy of those exact builds."),
 
         // ---- Lightroom ----
         "lr-default": .init(cleanable: true, safe: false,
@@ -59,7 +59,7 @@ enum Allowlist {
         default:
             // Unknown → not cleanable. Measuring is fine; trashing is not.
             return .init(cleanable: false, safe: false,
-                         consequence: "Not on the cleaner's allowlist — Performac will not trash it.")
+                         consequence: "Not on the cleaner's allowlist: Performac will not trash it.")
         }
     }
 }

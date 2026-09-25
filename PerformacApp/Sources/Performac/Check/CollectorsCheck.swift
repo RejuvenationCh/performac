@@ -1,4 +1,4 @@
-// Check/CollectorsCheck.swift — ports of v1 test/collectors.test.js.
+// Check/CollectorsCheck.swift: ports of v1 test/collectors.test.js.
 // Fixtures are the real captured outputs, brought across verbatim.
 import Foundation
 
@@ -135,7 +135,7 @@ enum CollectorsCheck {
         // resolve config
         c.eq("parseResolveConfig", parseResolveConfig(RESOLVE_CFG),
              ResolveConfig(fsRoot: "/Users/you/Movies", cacheDir: "CacheClip"))
-        // diskutil activity — real lines
+        // diskutil activity: real lines
         c.eq("parseDiskutilActivity: appeared with ts", parseDiskutilActivity(DU_APPEAR),
              DiskActivity(kind: "appeared", volume: "T7", ts: local(2026, 8, 20, 18, 7, 36)))
         c.eq("parseDiskutilActivity: disappeared with ts", parseDiskutilActivity(DU_GONE),

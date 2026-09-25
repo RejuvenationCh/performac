@@ -1,4 +1,4 @@
-// Components.swift — the shared vocabulary from DESIGN.md §Components, built as recorded
+// Components.swift: the shared vocabulary from DESIGN.md §Components, built as recorded
 // 4pt severity spine, mandatory why-line, at most one link-out.
 import SwiftUI
 import AppKit
@@ -41,7 +41,7 @@ struct FindingCard: View {
                     HStack(spacing: PC.gutter) {
                         if let link = finding.link {
                             // `.disableAgent` acts rather than navigates, so it is confirmed
-                            // first — same shape as the quit button below, never bare onLink.
+                            // first: same shape as the quit button below, never bare onLink.
                             Button(link.label) {
                                 if case .disableAgent = link { confirmingDisable = true }
                                 else { onLink(link) }
@@ -100,7 +100,7 @@ struct QuitSheet: View {
             HStack(alignment: .top, spacing: PC.gutter) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 14)).foregroundStyle(PC.amber)
-                Text("Performac asks the app to quit, the same way Cmd-Q does — if it has unsaved work it will prompt you first. It is not forced.")
+                Text("Performac asks the app to quit, the same way Cmd-Q does, if it has unsaved work it will prompt you first. It is not forced.")
                     .font(.pcSmall).foregroundStyle(PC.ink2).lineSpacing(2)
             }
             .padding(.horizontal, 24).padding(.bottom, PC.stack)
@@ -135,7 +135,7 @@ struct DisableAgentSheet: View {
             HStack(alignment: .top, spacing: PC.gutter) {
                 Image(systemName: "trash.fill")
                     .font(.system(size: 14)).foregroundStyle(PC.accent)
-                Text("Performac unloads it from launchd, then moves this file to the Trash — it is not deleted. You can put it back from Finder, or restore it there, until you empty the Trash.")
+                Text("Performac unloads it from launchd, then moves this file to the Trash: it is not deleted. You can put it back from Finder, or restore it there, until you empty the Trash.")
                     .font(.pcSmall).foregroundStyle(PC.ink2).lineSpacing(2)
             }
             .padding(.horizontal, 24).padding(.bottom, PC.stack)
@@ -168,7 +168,7 @@ struct StorageBar: View {
     /// This crashed the app. Metrics start at zero and the first sample lands two seconds
     /// after launch, so opening Disk inside that window divided by a zero total: 1 - 0/0 is
     /// NaN, and Int(NaN) is a trap, not a zero. Swift's Double-to-Int conversion has no
-    /// saturating behaviour to fall back on — it terminates the process. A width of NaN would
+    /// saturating behaviour to fall back on: it terminates the process. A width of NaN would
     /// have taken the layout down on its own too.
     private var usedFrac: Double? {
         guard totalBytes > 0 else { return nil }
@@ -198,7 +198,7 @@ struct StorageBar: View {
             }
         }
         .help(usedFrac == nil ? "Disk capacity not measured yet"
-              : "\(Fmt.bytes(freeBytes)) free of \(Fmt.bytes(totalBytes)) — \(Int(usedFrac! * 100))% full")
+              : "\(Fmt.bytes(freeBytes)) free of \(Fmt.bytes(totalBytes)): \(Int(usedFrac! * 100))% full")
     }
 }
 
@@ -229,7 +229,7 @@ struct SizeRow: View {
             }
             Text(entry.mtime > 0
                  ? Ago.text(Date(timeIntervalSince1970: Double(entry.mtime) / 1000))
-                 : "—")
+                 : "-")
                 .font(.pcNum).foregroundStyle(PC.meta)
                 .frame(width: 84, alignment: .trailing).lineLimit(1)
             Text(Fmt.count(entry.items)).font(.pcNum).foregroundStyle(PC.meta)
@@ -299,7 +299,7 @@ struct TickingAgo: View {
 }
 
 
-/// A column header that is also the sort control. The label IS the button — a separate
+/// A column header that is also the sort control. The label IS the button: a separate
 /// sort menu would be a second place to look for something the header already implies.
 struct SortHeader: View {
     let title: String

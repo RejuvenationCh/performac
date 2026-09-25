@@ -1,4 +1,4 @@
-// Trash.swift — the ONLY deletion path in this application.
+// Trash.swift: the ONLY deletion path in this application.
 //
 // FileManager.trashItem and nothing else. No unlink, no removeItem, no rm. Everything the
 // app removes stays recoverable from the Trash, because the user has ~331 GB of
@@ -18,7 +18,7 @@ enum Trash {
     }
 
     /// `allowed` is the set of absolute paths the cleaner currently offers. A path must BE
-    /// one of them — not merely live under one — so a crafted subpath cannot widen scope.
+    /// one of them, not merely live under one, so a crafted subpath cannot widen scope.
     static func moveToTrash(_ paths: [String], allowed: Set<String>, db: DB?, now: Int64) -> [Outcome] {
         var out: [Outcome] = []
         let fm = FileManager.default
@@ -52,7 +52,7 @@ enum Trash {
         return out
     }
 
-    /// A drive, the home folder, or the filesystem root — none of which is a thing to trash.
+    /// A drive, the home folder, or the filesystem root: none of which is a thing to trash.
     ///
     /// The browser used to be rooted inside a drive, so every row was a child and this could
     /// not be reached. The all-drives view lists the drives themselves as rows, which puts a

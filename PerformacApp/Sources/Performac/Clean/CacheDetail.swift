@@ -1,4 +1,4 @@
-// CacheDetail.swift — what a cache is actually made of.
+// CacheDetail.swift: what a cache is actually made of.
 //
 // "Adobe's cache is 99 GB" is a number without an explanation, and an unexplained number is
 // not something a person can act on. The real answer for this machine was that 92.5 GB of

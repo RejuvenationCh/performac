@@ -1,4 +1,4 @@
-// DupScanner.swift — on-demand exact-duplicate scan, ported from v1's dedupe.js.
+// DupScanner.swift: on-demand exact-duplicate scan, ported from v1's dedupe.js.
 //
 // Pipeline, unchanged from v1: walk (files >= minMb) -> size buckets -> 128 KB head+tail
 // partial SHA-256 -> full-stream SHA-256 for survivors. Exact matches only: no fuzzy or
@@ -40,7 +40,7 @@ final class DupScanner: @unchecked Sendable {
                 }
                 let candidates = bySize.values.filter { $0.count > 1 }.reduce(0) { $0 + $1.count }
 
-                // ---- 2. partial hash (head + tail) — cheap elimination ----
+                // ---- 2. partial hash (head + tail): cheap elimination ----
                 var byPartial: [String: (size: Int64, files: [String])] = [:]
                 var hashed = 0
                 for (size, files) in bySize where files.count > 1 {
@@ -110,7 +110,7 @@ final class DupScanner: @unchecked Sendable {
         d.compactMap { String(format: "%02x", $0) }.joined()
     }
 
-    // MARK: walk — v1's skip rules exactly
+    // MARK: walk, v1's skip rules exactly
 
     func walk(_ root: String, minBytes: Int64, _ onFile: (String, Int64) -> Void) {
         let fm = FileManager.default

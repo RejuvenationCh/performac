@@ -1,4 +1,4 @@
-// Check/FileKindCheck.swift — the file-type taxonomy that replaced the folder-name guess.
+// Check/FileKindCheck.swift: the file-type taxonomy that replaced the folder-name guess.
 // Written to falsify: an extension misclassified, a cache path let through by extension,
 // or a directory rollup picking a kind that isn't actually dominant by bytes.
 import Foundation

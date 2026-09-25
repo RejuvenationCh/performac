@@ -1,8 +1,8 @@
-// ProcessControl.swift — the ONLY place this app terminates anything.
+// ProcessControl.swift: the ONLY place this app terminates anything.
 //
 // Two stages, deliberately. `quit` sends a real quit request (the same one Cmd-Q sends), so
 // an app with unsaved work gets to prompt you and save it. `force` is a separate, explicit
-// escalation for when that is ignored — it kills immediately and unsaved work is lost.
+// escalation for when that is ignored: it kills immediately and unsaved work is lost.
 //
 // Never offered for anything the system needs: root-owned processes, low PIDs, and a
 // denylist of things whose death takes the session with them.
@@ -25,7 +25,7 @@ enum ProcessControl {
     }
 
     enum Refusal: String, Error, Sendable {
-        case systemCritical = "This process is part of macOS — quitting it would end your session."
+        case systemCritical = "This process is part of macOS: quitting it would end your session."
         case notYours = "Owned by another user or by root, so Performac will not touch it."
         case gone = "That process is no longer running."
     }

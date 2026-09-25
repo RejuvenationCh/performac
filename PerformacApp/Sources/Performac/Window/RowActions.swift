@@ -1,4 +1,4 @@
-// RowActions.swift — the right-click menu for disk browser rows, and the two panels it opens.
+// RowActions.swift: the right-click menu for disk browser rows, and the two panels it opens.
 //
 // The Clean view trashes from a reviewed allowlist. This is different: every row here can be
 // the user's actual work, so the trash action is per item, always confirmed, shows the full

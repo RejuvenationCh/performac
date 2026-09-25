@@ -1,4 +1,4 @@
-// DiskView.swift — replaces OmniDiskSweeper (drill-down list) and GrandPerspective (treemap).
+// DiskView.swift: replaces OmniDiskSweeper (drill-down list) and GrandPerspective (treemap).
 // Layout: toolbar + breadcrumb above a 60/40 split, list on the left, shapes on the right.
 import SwiftUI
 import AppKit
@@ -86,7 +86,7 @@ struct DiskView: View {
             }
             .padding(.horizontal, PC.stack).padding(.vertical, PC.s2 + 2)
             // Opaque, not glass: this row holds real bordered/borderedProminent buttons, which
-            // are themselves Liquid Glass on macOS 26 — glass chrome around them was glass on glass.
+            // are themselves Liquid Glass on macOS 26: glass chrome around them was glass on glass.
             .background(PC.surface).pcHairline(.bottom)
 
             if !crumbs.isEmpty {
@@ -242,11 +242,11 @@ struct DiskView: View {
     }
 }
 
-/// Persisted results are shown so reopening the view is not a blank screen — but they are
+/// Persisted results are shown so reopening the view is not a blank screen, but they are
 /// a snapshot, and the app must never let a stale number pass as a current one.
 ///
-/// It only *warns* once the snapshot is actually old. It used to paint amber — the warning
-/// colour — the instant any scan existed, so two seconds after a clean scan you got a caution
+/// It only *warns* once the snapshot is actually old. It used to paint amber (the warning
+/// colour) the instant any scan existed, so two seconds after a clean scan you got a caution
 /// strip reading "Last scan: 2s ago", which teaches you to ignore the colour.
 struct StaleBanner: View {
     let at: Int64
@@ -262,7 +262,7 @@ struct StaleBanner: View {
             TickingAgo(date: date, prefix: "Last scan: ")
                 .font(.pcSmall).foregroundStyle(PC.ink2).monospacedDigit()
             if stale {
-                Text("— rescan for current numbers").font(.pcSmall).foregroundStyle(PC.amber)
+                Text("· rescan for current numbers").font(.pcSmall).foregroundStyle(PC.amber)
             }
             Spacer()
         }
@@ -343,7 +343,7 @@ struct CrumbBar: View {
     }
 }
 
-/// Streaming scan state — this is what you look at most while using Disk.
+/// Streaming scan state: this is what you look at most while using Disk.
 struct ScanProgress: View {
     var files: Int = 0
     var bytes: Int64 = 0
@@ -370,7 +370,7 @@ struct ScanProgress: View {
     }
 }
 
-// MARK: squarified treemap — deliberately not vertical strips, which give small items an
+// MARK: squarified treemap, deliberately not vertical strips, which give small items an
 // aspect ratio too thin to click
 struct TreeMap: View {
     let entries: [SizeEntry]
@@ -404,7 +404,7 @@ struct TreeMap: View {
                         }
                         .frame(width: r.width, height: r.height)
                         .position(x: r.midX, y: r.midY)
-                        .help("\(e.display) — \(Fmt.bytes(e.bytes))")
+                        .help("\(e.display) (\(Fmt.bytes(e.bytes)))")
                 }
             }
         }

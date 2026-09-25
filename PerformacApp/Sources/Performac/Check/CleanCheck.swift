@@ -1,4 +1,4 @@
-// CleanCheck.swift — the cleaner's safety properties, written to falsify.
+// CleanCheck.swift: the cleaner's safety properties, written to falsify.
 import Foundation
 
 enum CleanCheck {
@@ -20,7 +20,7 @@ enum CleanCheck {
         // runtime-discovered Lightroom catalogs inherit the family policy
         c.check("clean: lr-<slug> inherits check-first",
                 Allowlist.policy(for: CacheTarget(id: "lr-abc123", label: "c", path: "/c")).cleanable)
-        // every policy states a consequence — a row without one must not ship
+        // every policy states a consequence: a row without one must not ship
         for id in ["resolve-cache", "premiere-peaks", "lr-default", "unknown-x"] {
             c.check("clean: \(id) states a consequence",
                     !Allowlist.policy(for: CacheTarget(id: id, label: id, path: "/x")).consequence.isEmpty)
@@ -115,7 +115,7 @@ enum CleanCheck {
         let tf = Rules.trashHolding(18_000_000_000, 42, cfg, 0)
         c.check("trash: fires when holding real space", tf.count == 1)
         c.check("trash: headline names the size", tf.first?.headline.contains("GB") == true)
-        // the app must never offer to empty it — the Trash is the undo for everything
+        // the app must never offer to empty it: the Trash is the undo for everything
         c.check("trash: only reveals, never empties", tf.first?.linkKind == "reveal")
         c.check("trash: detail says Performac will not empty it",
                 tf.first?.detail.contains("never empties") == true)
@@ -181,7 +181,7 @@ extension CleanCheck {
         c.check("trash: /Volumes itself is not mistaken for a volume",
                 !Trash.isRootLike("/Volumes/External SSD/Videos/clip.mov"))
 
-        // the guard is in moveToTrash, not only in the menu — an allowlisted drive is refused
+        // the guard is in moveToTrash, not only in the menu: an allowlisted drive is refused
         let r = Trash.moveToTrash([NSHomeDirectory()], allowed: [NSHomeDirectory()],
                                   db: nil, now: 0)
         c.check("trash: moveToTrash refuses a drive even when allowlisted",
@@ -199,7 +199,7 @@ extension CleanCheck {
 }
 
 extension CleanCheck {
-    /// The combined scan, against a throwaway database — the same buildTree and childrenOf
+    /// The combined scan, against a throwaway database: the same buildTree and childrenOf
     /// the Disk tab uses, so the synthetic "/" rows are exercised rather than assumed.
     @MainActor static func allDrivesChecks(_ c: CheckSuite) {
         let tmp = NSTemporaryDirectory() + "performac-drives-\(UUID().uuidString).db"

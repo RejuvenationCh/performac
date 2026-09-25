@@ -1,4 +1,4 @@
-// AppDelegate.swift — the shell: a window for the work, and nothing else. Regular
+// AppDelegate.swift, the shell: a window for the work, and nothing else. Regular
 // activation policy: Dock icon, no menu bar item.
 //
 // Phase 1 wiring: owns the EngineStore, boots the Sampler with real deps, schedules the
@@ -33,7 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         openWindow()
     }
 
-    // MARK: engine — off-main sampling loops, main-actor store refreshes
+    // MARK: engine, off-main sampling loops, main-actor store refreshes
 
     private func startEngine() {
         let db = store.db
@@ -203,7 +203,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func navigateBack() { store.goBack() }
     @objc private func navigateForward() { store.goForward() }
 
-    /// Never quit just because the window closed. The engine is the app — the sampler must
+    /// Never quit just because the window closed. The engine is the app: the sampler must
     /// keep running so history keeps accruing, and the Dock icon is the way back in.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
@@ -215,7 +215,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// actually expect from a maximise, so make zoom mean exactly that.
     ///
     /// This routes through the system setting rather than around it: if the user has set
-    /// double-click to Minimize or Do Nothing, that still wins — we only define what
+    /// double-click to Minimize or Do Nothing, that still wins: we only define what
     /// happens when it does zoom.
     func windowWillUseStandardFrame(_ window: NSWindow, defaultFrame: NSRect) -> NSRect {
         guard let screen = window.screen ?? NSScreen.main else { return defaultFrame }
@@ -241,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func openWindow() {
         if let w = window { w.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return }
         // No .fullSizeContentView. It put the SwiftUI content across the whole window
-        // including the titlebar strip, which swallowed double-clicks there — so the system's
+        // including the titlebar strip, which swallowed double-clicks there, so the system's
         // "double-click the title bar to zoom" never reached windowWillUseStandardFrame below.
         // It also forced the rail to carry a 28pt top pad to dodge the traffic lights. Letting
         // AppKit own a real titlebar restores the gesture for free and drops the workaround.

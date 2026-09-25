@@ -1,4 +1,4 @@
-// Tokens.swift — the design system. DESIGN.md documents it; this file is the source of truth
+// Tokens.swift: the design system. DESIGN.md documents it; this file is the source of truth
 // for the values.
 //
 // The blue-tinted web ground and hardcoded accent are gone in favour of neutral macOS greys
@@ -22,7 +22,7 @@ enum PC {
     // MARK: surfaces
     //
     // The dark values are explicit rather than .windowBackgroundColor / .controlBackgroundColor,
-    // which both resolve to #1E1E1E in dark aqua — identical. This whole layout is cards on a
+    // which both resolve to #1E1E1E in dark aqua, identical. This whole layout is cards on a
     // ground, so the semantic pair made every card disappear into the page with only a hairline
     // left to find it. These keep the light relationship (the card sits a step above the ground)
     // and continue the fill ladder stepping monotonically away from `surface`.
@@ -39,7 +39,7 @@ enum PC {
     static let meta      = dyn(NSColor(hex: 0x8E8E93), .tertiaryLabelColor)
     static let hairline  = dyn(NSColor(white: 0, alpha: 0.10), NSColor(white: 1, alpha: 0.12))
 
-    // MARK: state — the only colours that carry meaning
+    // MARK: state, the only colours that carry meaning
     // The central native move: the app's own accent is gone, so it matches whatever the user
     // picked in System Settings instead of shipping a hardcoded blue.
     static let accent    = dyn(.controlAccentColor, .controlAccentColor)
@@ -53,16 +53,16 @@ enum PC {
     static let chip      = dyn(NSColor(hex: 0xE4E4E9), NSColor(hex: 0x35353A))
     static let cardShadow = dyn(NSColor(white: 0, alpha: 0.05), NSColor(white: 0, alpha: 0.30))
 
-    // MARK: geometry (DESIGN.md: deliberately small radii — this is what reads as desktop)
+    // MARK: geometry (DESIGN.md: deliberately small radii, this is what reads as desktop)
     static let r: CGFloat = 2, rLg: CGFloat = 4, rXl: CGFloat = 8, rPill: CGFloat = 12
     static let s1: CGFloat = 4, s2: CGFloat = 8, gutter: CGFloat = 12, stack: CGFloat = 16
     static let s5: CGFloat = 24, s6: CGFloat = 32
     // 76, not 64: at the 11pt label floor, "Duplicates" is the longest rail title and needs
-    // this much width to avoid truncating — the rail follows the label, not the other way round.
+    // this much width to avoid truncating: the rail follows the label, not the other way round.
     static let rail: CGFloat = 76
 }
 
-// MARK: type scale — SF Pro. Six steps, nothing below 11pt: smaller than that is under any
+// MARK: type scale, SF Pro. Six steps, nothing below 11pt: smaller than that is under any
 // macOS system text size, which is where the 9pt rail labels went wrong.
 extension Font {
     static let pcDisplay  = Font.system(size: 20, weight: .semibold)
@@ -99,18 +99,18 @@ extension View {
 // MARK: - Liquid Glass
 //
 // Apple's guidance is that Liquid Glass is a material for the layer that FLOATS ABOVE
-// content — navigation, popovers, sheets. Content itself stays opaque. Headers and toolbars
+// content: navigation, popovers, sheets. Content itself stays opaque. Headers and toolbars
 // looked like they qualified too, but they don't: nothing scrolls under this app's title rows
 // or toolbars, so the glass there sat on an opaque canvas and read as a flat tint, not depth.
 // Worse, `.bordered`/`.borderedProminent` buttons ARE Liquid Glass on macOS 26, so glass chrome
 // wrapped around them was glass stacked on glass. So glass now goes in exactly two places:
-//   * the 76pt rail — a sidebar at the window edge is Apple's own glass pattern
-//   * sheets (TrashSheet, RowTrashSheet, RowInfoSheet, QuitSheet) — they genuinely float above
+//   * the 76pt rail: a sidebar at the window edge is Apple's own glass pattern
+//   * sheets (TrashSheet, RowTrashSheet, RowInfoSheet, QuitSheet): they genuinely float above
 //     the content behind them
 // Never on a title row, a toolbar, a table row, a card or the treemap.
 //
 // Two rules that matter as much as where it goes:
-//   * never stack glass on glass — nested layers read as muddy grey, not depth
+//   * never stack glass on glass: nested layers read as muddy grey, not depth
 //   * group adjacent glass in a GlassEffectContainer so the shapes blend rather than
 //     each rendering its own separate refraction
 // MARK: - FileKind colour

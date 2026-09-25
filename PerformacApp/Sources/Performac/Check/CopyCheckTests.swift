@@ -1,4 +1,4 @@
-// CopyCheckTests.swift — the single-copy detector, written to falsify.
+// CopyCheckTests.swift: the single-copy detector, written to falsify.
 // The dangerous failure is telling someone a folder is safe when it is not.
 import Foundation
 
@@ -27,7 +27,7 @@ enum CopyCheckTests {
         c.check("copies: a 3% size difference still counts as a copy",
                 CopyCheck.compare(roots: [home, t7], minBytes: 5 * gb, listing: nearly)
                     .first { $0.path == home + "/Oweek" }?.hasCopy == true)
-        // but a wildly different size does not — same name is not the same folder
+        // but a wildly different size does not: same name is not the same folder
         let notReally = listing([home: [("Oweek", 40 * gb, true)],
                                  t7:   [("Oweek", 2 * gb, true)]])
         c.check("copies: same name at a very different size is NOT a copy",

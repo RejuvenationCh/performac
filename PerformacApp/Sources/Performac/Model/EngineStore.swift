@@ -1,7 +1,7 @@
-// Model/EngineStore.swift — the single observable store. Owns the v2 database and
+// Model/EngineStore.swift: the single observable store. Owns the v2 database and
 // publishes what the views need. The sampler runs off the main actor and writes to
 // SQLite; after each tick the store refreshes on the main actor by reading the
-// findings table — cheap by design, never triggers a scan.
+// findings table, cheap by design, never triggers a scan.
 import SwiftUI
 import Foundation
 import AppKit
@@ -51,7 +51,7 @@ final class EngineStore: ObservableObject {
     @Published var scanRoot: String = NSHomeDirectory()
     /// When the persisted results were produced. nil = never scanned on this machine.
     /// When each root was last scanned, keyed by its path. Scans accumulate now, so there is
-    /// no single "last scan" — Home and the T7 each have their own.
+    /// no single "last scan": Home and the T7 each have their own.
     @Published var scanTimes: [String: Int64] = [:]
 
     /// Roots whose stored tree came from a scan that was stopped early. Kept separately so the
@@ -115,7 +115,7 @@ final class EngineStore: ObservableObject {
     // MARK: drives arriving and leaving
 
     /// The externals currently in /Volumes. Published, because scanTargets used to read the
-    /// directory on every render — which meant a drive plugged in while the Disk tab was open
+    /// directory on every render, which meant a drive plugged in while the Disk tab was open
     /// never showed up, since nothing told SwiftUI anything had changed.
     @Published private(set) var mountedVolumes: [String] = []
 
@@ -139,7 +139,7 @@ final class EngineStore: ObservableObject {
     /// NSWorkspace posts these on the main thread, so no polling and no extra process.
     ///
     /// macOS mounts internal APFS volumes constantly and fires the same notification for them,
-    /// but those land under /System/Volumes and so never change this list — comparing the
+    /// but those land under /System/Volumes and so never change this list: comparing the
     /// computed list rather than trusting the notification filters that noise for free.
     private func watchVolumes() {
         let nc = NSWorkspace.shared.notificationCenter
@@ -185,7 +185,7 @@ final class EngineStore: ObservableObject {
         startDiskScan()
     }
 
-    /// Perform a card's one link-out. Reveals or navigates only — `.disableAgent` acts, so
+    /// Perform a card's one link-out. Reveals or navigates only: `.disableAgent` acts, so
     /// FindingCard intercepts it for confirmation before this is ever called with one.
     func openLink(_ link: FindingLink) {
         switch link {
@@ -198,11 +198,11 @@ final class EngineStore: ObservableObject {
         case .loginSettings:
             NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension")!)
         case .disableAgent:
-            break   // never acts from here — see disableAgent(_:)
+            break   // never acts from here: see disableAgent(_:)
         }
     }
 
-    // MARK: refresh from SQLite (cheap — findings table only)
+    // MARK: refresh from SQLite (cheap, findings table only)
 
     func refreshFromDatabase() {
         let rows = readDB.prepare("SELECT id, kind, severity, headline, why, detail, link_kind, link_target, updated FROM findings ORDER BY updated DESC").all()
@@ -239,7 +239,7 @@ final class EngineStore: ObservableObject {
         fdaGranted = EngineStore.checkFullDiskAccess()
     }
 
-    // MARK: Clean view — latest cache sample per target + v1's meta copy
+    // MARK: Clean view, latest cache sample per target + v1's meta copy
 
     private func refreshCacheEntries() {
         var entries: [CacheEntry] = []
@@ -250,14 +250,14 @@ final class EngineStore: ObservableObject {
             guard let id = row["cache_id"]?.stringVal, !seen.contains(id) else { continue }
             seen.insert(id)
             let meta = Rules.cacheMeta(id)
-            // size_mb is MiB — measure() divides by 1_048_576 and CacheDetail multiplies back
+            // size_mb is MiB: measure() divides by 1_048_576 and CacheDetail multiplies back
             // by it. Converting with 1_000_000 here under-reported every cache by 4.8%.
             let bytes = Int64((row["size_mb"]?.intVal ?? 0)) * 1_048_576
             if bytes <= 0 { continue }
             let mtime = row["newest_mtime"]?.isNull == false ? row["newest_mtime"]?.intVal : nil
             let ageDays = mtime.map { Double(now - $0) / Double(Rules.DAY) }
             let path = row["path"]?.stringVal ?? ""
-            // The cleaner's allowlist decides — not the measurement registry. Anything
+            // The cleaner's allowlist decides, not the measurement registry. Anything
             // without an explicit policy is shown but cannot be selected or trashed.
             let policy = Allowlist.policy(for: CacheTarget(id: id, label: meta.app, path: path,
                                                            safety: meta.safety))
@@ -275,7 +275,7 @@ final class EngineStore: ObservableObject {
         cacheEntries = Self.disambiguated(entries)
     }
 
-    /// Several distinct caches can share one label — every `lr-*` id renders as
+    /// Several distinct caches can share one label: every `lr-*` id renders as
     /// "Lightroom Classic" via `LR_META`. Give each same-named group a suffix drawn from its
     /// own path so the rows are no longer indistinguishable.
     static func disambiguated(_ entries: [CacheEntry]) -> [CacheEntry] {
@@ -291,10 +291,10 @@ final class EngineStore: ObservableObject {
                 if generic.contains(suffix), comps.count >= 2 {
                     suffix = comps.suffix(2).joined(separator: "/")
                 }
-                labels[i] = "\(name) — \(suffix)"
+                labels[i] = "\(name) (\(suffix))"
             }
             // entries are already unique by path, but a suffix can still collide (e.g. two
-            // catalogs both ending ".../Cache") — fall back to the cache id for just those
+            // catalogs both ending ".../Cache"): fall back to the cache id for just those
             var firstSeen: [String: Int] = [:]
             var collided = Set<Int>()
             for i in idxs {
@@ -302,13 +302,13 @@ final class EngineStore: ObservableObject {
                 else { firstSeen[labels[i]!] = i }
             }
             for i in idxs {
-                out[i].name = collided.contains(i) ? "\(name) — \(out[i].cacheID)" : labels[i]!
+                out[i].name = collided.contains(i) ? "\(name) (\(out[i].cacheID))" : labels[i]!
             }
         }
         return out
     }
 
-    // MARK: Duplicates view — v1's last scan rows (the rescanner arrives with Clean)
+    // MARK: Duplicates view, v1's last scan rows (the rescanner arrives with Clean)
 
     private func refreshDupGroups() {
         let rows = readDB.prepare("SELECT * FROM dup_groups WHERE scan_ts = (SELECT MAX(scan_ts) FROM dup_groups) ORDER BY size_mb DESC").all()
@@ -353,7 +353,7 @@ final class EngineStore: ObservableObject {
         }
     }
 
-    // MARK: duplicate scan — on-demand, cancels when you leave, like the disk scan
+    // MARK: duplicate scan, on-demand, cancels when you leave, like the disk scan
 
     @Published var dupScanning = false
     @Published var dupHashed = 0
@@ -450,7 +450,7 @@ final class EngineStore: ObservableObject {
         return "\(Fmt.count(Int(rows))) samples · \(Fmt.bytes(bytes))"
     }
 
-    // MARK: Digest — real free-space history, and an honest note about it
+    // MARK: Digest, real free-space history, and an honest note about it
 
     struct Trend: Sendable {
         var points: [TrendPoint] = []
@@ -463,7 +463,7 @@ final class EngineStore: ObservableObject {
         var volume: String = Trend.bootVolume
 
         /// The name `disk_samples` records the boot disk under. On Trend rather than the
-        /// store because the store is @MainActor and Trend is Sendable — a main-actor static
+        /// store because the store is @MainActor and Trend is Sendable: a main-actor static
         /// cannot be a default for a nonisolated value.
         static let bootVolume = "Macintosh HD"
     }
@@ -500,7 +500,7 @@ final class EngineStore: ObservableObject {
 
         if spanDays < 4 {
             trend = Trend(points: series, window: windowText,
-                          note: "Only \(windowText) of history — too early to call a trend. It needs about four days.",
+                          note: "Only \(windowText) of history: too early to call a trend. It needs about four days.",
                           hasEnoughHistory: false)
             return
         }
@@ -583,7 +583,7 @@ final class EngineStore: ObservableObject {
         }
     }
 
-    /// Disable a LaunchAgent: unload it (tolerating failure — this finding only fires for
+    /// Disable a LaunchAgent: unload it (tolerating failure, this finding only fires for
     /// agents that are NOT currently running, so "already unloaded" is the normal case),
     /// then Trash its plist through the app's one deletion path. Recoverable from there,
     /// same as every other removal Performac performs.
@@ -594,7 +594,7 @@ final class EngineStore: ObservableObject {
         trashProgress = "Disabling \(name)…"
         let db = self.db
         Task.detached(priority: .userInitiated) { [weak self] in
-            // The plist's own Label key, not its filename — the two are not guaranteed to
+            // The plist's own Label key, not its filename: the two are not guaranteed to
             // match, and launchctl only understands the label.
             let label = (NSDictionary(contentsOfFile: path)?["Label"] as? String)
                 ?? (name as NSString).deletingPathExtension
@@ -650,7 +650,7 @@ final class EngineStore: ObservableObject {
         }
     }
 
-    // MARK: the cleaner — the only place the app removes anything
+    // MARK: the cleaner, the only place the app removes anything
 
     @Published var lastTrashSummary: String? = nil
     /// Trashing is not instant. The Adobe cache alone is ~250,000 files, and trashItem walks
@@ -671,7 +671,7 @@ final class EngineStore: ObservableObject {
 
     /// Re-measure the paths just trashed and write fresh samples.
     ///
-    /// This is what made trashing look slow. The move itself takes about 0.02 s — it is a
+    /// This is what made trashing look slow. The move itself takes about 0.02 s. It is a
     /// rename. But the Clean list reads cache_samples, which only cacheTick writes, and that
     /// runs hourly. So the row sat there at its old size long after the files were gone, and
     /// the Trash card kept its old total. Nothing was slow; the screen was just stale.
@@ -691,7 +691,7 @@ final class EngineStore: ObservableObject {
     ///
     /// The move itself is a rename and finishes in milliseconds, but every list here is fed
     /// by a database read, and those only refresh at the end of the batch. That left rows
-    /// sitting there looking untouched — a duplicate you had just removed was still offering
+    /// sitting there looking untouched: a duplicate you had just removed was still offering
     /// to be removed. Anything that fails comes back on the refresh that follows.
     private func forgetTrashed(_ paths: Set<String>) {
         Self.afterTrash(paths: paths, browsePath: browsePath,
@@ -713,7 +713,7 @@ final class EngineStore: ObservableObject {
             if paths.contains(where: { $0.hasPrefix(dir) }) { cacheEntries[i].bytes = 0 }
         }
         // a SizeEntry is keyed by name within the directory being browsed, so only paths
-        // whose parent IS that directory may drop a row — otherwise trashing some unrelated
+        // whose parent IS that directory may drop a row: otherwise trashing some unrelated
         // "Caches" folder would blank a row of the same name somewhere else entirely
         let hereNames = Set(paths
             .filter { ($0 as NSString).deletingLastPathComponent == browsePath }
@@ -778,9 +778,9 @@ final class EngineStore: ObservableObject {
         return true
     }
 
-    // MARK: disk scan (DiskView) — streams progressively, Cancel cancels
+    // MARK: disk scan (DiskView), streams progressively, Cancel cancels
 
-    /// Held so Stop can let the walk unwind instead of tearing the stream down — that is what
+    /// Held so Stop can let the walk unwind instead of tearing the stream down: that is what
     /// makes a stopped scan hand back what it already measured.
     private var scanCancel: CancelFlag?
 
@@ -846,7 +846,7 @@ final class EngineStore: ObservableObject {
     }
 
     /// Scanning every drive in one pass. "/" is a real path, so breadcrumbs, navigation, the
-    /// trash allowlist and the scan_entries table all keep working with no special case —
+    /// trash allowlist and the scan_entries table all keep working with no special case:
     /// the only thing that needs handling is what its children are called.
     static let allDrives = "/"
 
@@ -883,7 +883,7 @@ final class EngineStore: ObservableObject {
     }
 
     /// Switching target shows what is already stored for it. Trees are kept per root, so
-    /// picking the T7 after scanning Home browses the T7's last scan immediately — the Scan
+    /// picking the T7 after scanning Home browses the T7's last scan immediately: the Scan
     /// button is for refreshing it, not for seeing it.
     func setScanRoot(_ path: String) {
         scanRoot = path
@@ -897,7 +897,7 @@ final class EngineStore: ObservableObject {
 
     /// Persist each scanned root, leaving every other root's tree alone.
     ///
-    /// This used to be `DELETE FROM scan_entries` — one tree at a time, so scanning the T7
+    /// This used to be `DELETE FROM scan_entries`, one tree at a time, so scanning the T7
     /// threw away the scan of Home. Worse, when the T7 scan was returning nothing it deleted
     /// a good tree and inserted an empty one, turning a display bug into lost data. Now only
     /// the rows under the root being replaced are removed, and a root that came back empty is
@@ -922,7 +922,7 @@ final class EngineStore: ObservableObject {
             // an empty result is far likelier to be a bug or a permissions wall than a truly
             // empty drive, so it must never replace a tree that already has content
             if sum.entries.isEmpty, stored > 0 { continue }
-            // nor may a stopped scan overwrite a finished one — half a tree that looks whole
+            // nor may a stopped scan overwrite a finished one: half a tree that looks whole
             // is worse than an old tree that is honestly labelled
             if sum.partial, stored > 0 { continue }
 
@@ -933,14 +933,14 @@ final class EngineStore: ObservableObject {
                          .int(e.isDirectory ? 1 : 0), .int(e.mtime), .text(e.kind.rawValue)])
             }
             // One row per drive directly under "/", written for every scan and not only a
-            // combined one — that is what lets "All drives" show Home and the T7 together
+            // combined one: that is what lets "All drives" show Home and the T7 together
             // after they were scanned separately, with no rescan.
             let name = String(sum.root.dropFirst())
             if !name.isEmpty {
                 wipeRoot.run([.text(Self.allDrives), .text(name)])
                 if !sum.entries.isEmpty {
                     // The root itself is one of sum.entries (its dominant kind already rolled
-                    // up the whole tree) — reuse it rather than re-deriving from scratch.
+                    // up the whole tree): reuse it rather than re-deriving from scratch.
                     let rootKind = sum.entries.first { $0.path == sum.root }?.kind ?? .other
                     ins.run([.text(Self.allDrives), .text(name), .int(Int64(sum.files)),
                              .int(sum.bytes), .int(1),
@@ -1084,7 +1084,7 @@ final class EngineStore: ObservableObject {
         scanCancel?.cancel()
     }
 
-    /// The Disk view is on screen. A scan only starts here when the user has opted in —
+    /// The Disk view is on screen. A scan only starts here when the user has opted in:
     /// scanning ~900 GB is minutes of sustained I/O and must never be something the app
     /// does merely because a window opened.
     func diskViewAppeared() {
@@ -1103,7 +1103,7 @@ final class EngineStore: ObservableObject {
     }
 
     /// Persist the entry list so reopening the view shows the last result instead of a
-    /// blank screen — labelled as of its scan time, never presented as current.
+    /// blank screen, labelled as of its scan time, never presented as current.
     /// One timestamp per root. The tree itself is already in scan_entries; this is only the
     /// metadata that lets the view say how old what it is showing actually is.
     private func persistScan(_ roots: [String]) {
@@ -1141,7 +1141,7 @@ final class EngineStore: ObservableObject {
         diskEntries = childrenOf(browsePath)
     }
 
-    // MARK: Full Disk Access — real state, not a hardcoded pill
+    // MARK: Full Disk Access, real state, not a hardcoded pill
 
     static func checkFullDiskAccess() -> Bool {
         // ~/Library/Safari is FDA-protected; a plain read succeeds only with the grant.
@@ -1149,6 +1149,6 @@ final class EngineStore: ObservableObject {
     }
 }
 
-/// v1's live database — the seeding source. Read-only, opened only through the
+/// v1's live database: the seeding source. Read-only, opened only through the
 /// online-backup copy path.
 let V1_DATABASE_PATH = "/Users/you/Data C (General)/Projects/Personal/Performac/performac.db"

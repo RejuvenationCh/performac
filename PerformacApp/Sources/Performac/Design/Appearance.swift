@@ -1,4 +1,4 @@
-// Appearance.swift — light, dark, or whatever the system is doing.
+// Appearance.swift: light, dark, or whatever the system is doing.
 //
 // Kept in UserDefaults rather than the settings table because it has to be applied in
 // applicationDidFinishLaunching, before the database is open. A preference that arrives a

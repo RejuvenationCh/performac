@@ -1,4 +1,4 @@
-// Core/Notify.swift — osascript notification, cooldown-gated. Cooldown persists in
+// Core/Notify.swift: osascript notification, cooldown-gated. Cooldown persists in
 // findings.last_notified so it survives restarts. Port of v1 notify.js.
 import Foundation
 

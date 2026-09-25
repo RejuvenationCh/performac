@@ -1,4 +1,4 @@
-// DuplicatesView.swift — exact matches only. No bulk action: with duplicates one copy must
+// DuplicatesView.swift: exact matches only. No bulk action: with duplicates one copy must
 // survive, so trashing every copy can never be a single misclick.
 //
 // A dense table, not a stack of cards. The job on this screen is comparing two *locations* and
@@ -7,7 +7,7 @@
 //   * the size sits in a fixed right-aligned column, so the whole list shares one left edge.
 //     A variable-width size at the head of each card pushed the name to a different x on every
 //     row, which is what made the screen look broken before anything else did.
-//   * a path row shows its DIRECTORY, never the filename — the filename is the group title and
+//   * a path row shows its DIRECTORY, never the filename: the filename is the group title and
 //     repeating it at the end of both paths is the one part guaranteed to be identical.
 //   * the shared leading directories are dimmed and only the part where the copies diverge is
 //     printed at full strength. Two of these paths differed at component nine out of twelve;
@@ -43,8 +43,8 @@ struct DuplicatesView: View {
     var body: some View {
         Page(title: "Duplicates",
              subtitle: groups.isEmpty
-                ? "Exact matches only — same file, byte for byte."
-                : "Exact matches only — same file, byte for byte. \(groups.count) groups, \(Fmt.bytes(recoverable)) recoverable.",
+                ? "Exact matches only: same file, byte for byte."
+                : "Exact matches only: same file, byte for byte. \(groups.count) groups, \(Fmt.bytes(recoverable)) recoverable.",
              trailing: AnyView(
                 HStack(spacing: PC.gutter) {
                     TickingAgo(date: lastScanAt, prefix: "Last scan: ")
@@ -183,7 +183,7 @@ private struct DupGroup_Rows: View {
     }
 }
 
-/// One copy. Per-copy actions only — never a bulk one, because with exact duplicates at least
+/// One copy. Per-copy actions only: never a bulk one, because with exact duplicates at least
 /// one copy has to survive.
 private struct DupPathRow: View {
     let path: String

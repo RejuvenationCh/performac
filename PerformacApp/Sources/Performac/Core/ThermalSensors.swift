@@ -1,4 +1,4 @@
-// ThermalSensors.swift — real die temperature on Apple Silicon.
+// ThermalSensors.swift: real die temperature on Apple Silicon.
 //
 // pmset and powermetrics gave nothing useful without root, which is why this app shipped
 // thermal *pressure* rather than degrees. That was an incomplete conclusion: the sensors are

@@ -1,8 +1,8 @@
-// CleanView.swift — replaces Purge. Allowlisted caches only, Trash-only, every row explains why.
+// CleanView.swift: replaces Purge. Allowlisted caches only, Trash-only, every row explains why.
 //
 // The list is NOT copied into @State. It used to be: `_caches = State(initialValue: caches)`
 // seeds once and then ignores the parameter forever, so every later value of
-// `store.cacheEntries` was invisible here. That is what made trashing look broken — the store
+// `store.cacheEntries` was invisible here. That is what made trashing look broken: the store
 // dropped the rows immediately (EngineStore.afterTrash) and this view kept rendering its
 // original snapshot until you navigated away and back. Only the selection is view-local.
 import SwiftUI
@@ -37,7 +37,7 @@ struct CleanView: View {
     }
 
     /// Click anywhere on a row to toggle it. Shift-click selects the whole run from the last
-    /// row you touched, the way a file list does — clicking twelve checkboxes to clear a
+    /// row you touched, the way a file list does: clicking twelve checkboxes to clear a
     /// cache list is busywork.
     private func toggle(_ path: String, shift: Bool) {
         guard let entry = caches.first(where: { $0.path == path }), entry.cleanable else { return }
@@ -62,7 +62,7 @@ struct CleanView: View {
 
     var body: some View {
         Page(title: "Clean",
-             subtitle: "Caches apps rebuild on their own. Nothing here is deleted — it goes to the Trash.") {
+             subtitle: "Caches apps rebuild on their own. Nothing here is deleted: it goes to the Trash.") {
             VStack(spacing: 0) {
                 HStack(spacing: PC.gutter) {
                     Toggle("", isOn: Binding(get: { allSelected }, set: setAll))
@@ -101,7 +101,7 @@ struct CleanView: View {
                             Text("Large caches hold hundreds of thousands of files, so this takes a moment.")
                                 .font(.pcSmall).foregroundStyle(PC.meta)
                         } else {
-                            Text("\(selected.count) selected — \(Fmt.bytes(selectedBytes))")
+                            Text("\(selected.count) selected: \(Fmt.bytes(selectedBytes))")
                                 .font(.pcTitle).foregroundStyle(PC.ink)
                             Text(summary ?? "Everything goes to the Trash and stays recoverable.")
                                 .font(.pcSmall).foregroundStyle(PC.meta)
@@ -149,7 +149,7 @@ struct CacheRow: View {
                 // Protected: measured and shown, but the app will not trash it.
                 Image(systemName: "lock.fill").font(.system(size: 10)).foregroundStyle(PC.meta)
                     .frame(width: 14).padding(.top, 3)
-                    .help("Not on the cleaner's allowlist — Performac will not trash this.")
+                    .help("Not on the cleaner's allowlist: Performac will not trash this.")
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.name).font(.pcBody).foregroundStyle(PC.ink)
@@ -193,7 +193,7 @@ struct CacheRow: View {
         }
         .onHover { hover = $0 }
         .help(entry.cleanable ? "Click to select. Shift-click to select a range."
-                              : "Not on the cleaner's allowlist — Performac will not trash this.")
+                              : "Not on the cleaner's allowlist: Performac will not trash this.")
 
         if expanded { detail }
     }

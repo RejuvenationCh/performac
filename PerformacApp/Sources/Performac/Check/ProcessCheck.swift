@@ -1,4 +1,4 @@
-// ProcessCheck.swift — the refusals, written to falsify. Nothing here kills anything.
+// ProcessCheck.swift: the refusals, written to falsify. Nothing here kills anything.
 import Foundation
 
 enum ProcessCheck {

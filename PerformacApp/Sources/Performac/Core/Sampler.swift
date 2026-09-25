@@ -1,4 +1,4 @@
-// Core/Sampler.swift — 30s tick loop + two long-running event streams. Writes
+// Core/Sampler.swift: 30s tick loop + two long-running event streams. Writes
 // samples/events; no parsing logic here (that lives in Collectors). Port of v1
 // sampler.js: all spawns go through injectable deps so checks never touch real
 // binaries. deps.execFile resolves stdout text; deps.statfs resolves fs stats;
@@ -76,7 +76,7 @@ func refreshFindings(_ db: DB, _ cfg: Config, _ now: Int64,
     findings += {
         // Compare the top level of every scanned root. scan_entries already holds the sizes,
         // so this is a couple of indexed reads rather than another walk.
-        // This read was `WHERE parent NOT LIKE ?%` bound to "" — not valid SQL, so prepare
+        // This read was `WHERE parent NOT LIKE ?%` bound to "": not valid SQL, so prepare
         // failed on every tick, roots came back empty, and singleCopy never ran once. The
         // card warning that a large folder exists in only one place has never fired.
         //
@@ -102,7 +102,7 @@ func refreshFindings(_ db: DB, _ cfg: Config, _ now: Int64,
     findings += Rules.drift(driftEntries(db), cfg, now)
     findings += {
         // Agents are stored as {label, program}; a database copied from v1 holds bare
-        // strings, so tolerate both — an unresolved program just falls back to the label.
+        // strings, so tolerate both: an unresolved program just falls back to the label.
         let raw = getSetting(db, "loginAgents")?.objectVal?["agents"]?.arrayVal ?? []
         let agents: [Rules.LoginAgent] = raw.compactMap { v in
             if let o = v.objectVal, let label = o["label"]?.stringVal {
@@ -137,7 +137,7 @@ func refreshFindings(_ db: DB, _ cfg: Config, _ now: Int64,
         findings.append(EngineFinding(
             id: "perm-drift", kind: "perm", severity: "info",
             headline: "macOS blocked Performac from checking some folders",
-            why: "Performac could not read \(eperm.joined(separator: ", ")) — grant Files & Folders access in System Settings → Privacy & Security, then restart Performac.",
+            why: "Performac could not read \(eperm.joined(separator: ", ")): grant Files & Folders access in System Settings → Privacy & Security, then restart Performac.",
             detail: "", linkKind: nil, linkTarget: nil))
     }
     if let sb = getSetting(db, "premiere-sidebyside"), sb.stringVal == "1" {
@@ -229,7 +229,7 @@ final class Sampler: @unchecked Sendable {
 
     // external-only: macOS mounts internal APFS system volumes (Recovery/Update/VM/…)
     // constantly and the feature is about external drives. Verdict cached per volume
-    // name — one diskutil info call per name per session, never one per event.
+    // name: one diskutil info call per name per session, never one per event.
     private var verdictCache: [String: Bool] = [:]      // successful probes only
     private var inflight: [String: Task<Bool?, Never>] = [:]
 
@@ -264,7 +264,7 @@ final class Sampler: @unchecked Sendable {
 
     /// external-only filter. The entry is set while the probe is in flight so concurrent
     /// events share one call, then dropped again if it failed. Caching a failure would
-    /// write the volume off for the life of the process — and a drive with a loose
+    /// write the volume off for the life of the process, and a drive with a loose
     /// connector is the likeliest to be slow to enumerate, i.e. exactly the drive we
     /// must not go blind to.
     private func isExternal(_ name: String) async -> Bool {
@@ -284,8 +284,8 @@ final class Sampler: @unchecked Sendable {
             }
             inflight[name] = task
             probeTasks.append(Task { _ = await task.value })
-            // cache definite verdicts only (external AND internal). Failed probes — throw or
-            // nil parse — are dropped so a reappearing drive is re-probed: a drive with a
+            // cache definite verdicts only (external AND internal). Failed probes, throw or
+            // nil parse, are dropped so a reappearing drive is re-probed: a drive with a
             // loose connector is the likeliest to fail, i.e. exactly the drive we must not
             // go blind to.
             Task { [weak self] in
@@ -299,7 +299,7 @@ final class Sampler: @unchecked Sendable {
     }
 
     // a reconcile event is skipped if the stream already reported it. The window must
-    // cover the tick offset — a stream line lands up to one tick before the next
+    // cover the tick offset: a stream line lands up to one tick before the next
     // reconcile, so 5 s missed every stream-then-tick pair in real time.
     private var DEDUPE_MS: Int64 { Int64(cfg.tickSec * 2) * 1000 }
     private func recentEvent(_ kind: String, _ key: String) -> Bool {
@@ -307,7 +307,7 @@ final class Sampler: @unchecked Sendable {
             .get([.text(kind), .text(key), .int(deps.now() - DEDUPE_MS)]) != nil
     }
 
-    // implicit sleep detection — no pmset log parsing: if the wall clock jumped ≥ 3 ticks
+    // implicit sleep detection, no pmset log parsing: if the wall clock jumped ≥ 3 ticks
     // between samples, the machine slept. detail = pre-sleep tick ms, ts = the wake tick.
     private var GAP_MS: Int64 { 3 * Int64(cfg.tickSec) * 1000 }
 
@@ -327,9 +327,9 @@ final class Sampler: @unchecked Sendable {
         }
 
         if let frontText = try? await deps.execFile("lsappinfo", ["front"]) {
-            // real `lsappinfo info -only name` needs the ASN: prefix — a bare ASN returns
+            // real `lsappinfo info -only name` needs the ASN: prefix; a bare ASN returns
             // nothing, which silently recorded zero front_app events since day one.
-            // ASN shape is ASN:0x<hex>-0x<hex> — both halves carry the 0x prefix.
+            // ASN shape is ASN:0x<hex>-0x<hex>; both halves carry the 0x prefix.
             var frontName: String?
             if let asn = frontText.firstMatch(of: /ASN:0x[0-9a-fA-F]+-0x[0-9a-fA-F]+/) {
                 if let infoText = try? await deps.execFile("lsappinfo", ["info", "-only", "name", String(asn.0)]) {
@@ -348,7 +348,7 @@ final class Sampler: @unchecked Sendable {
             if let limit = therm.cpuSpeedLimit { lastCpuLimit = limit }
         }
 
-        // power source as context for the thermal rule — event only when it changes
+        // power source as context for the thermal rule: event only when it changes
         if let battText = try? await deps.execFile("pmset", ["-g", "batt", "-o"]) {
             let power = parsePower(battText)
             if let power, power != lastPower { addEvent("power", power, "") }
@@ -422,7 +422,7 @@ final class Sampler: @unchecked Sendable {
         streams.append(child)
     }
 
-    /// diskutil activity stream handler — ported exactly (async verdict + dedupe + line ts)
+    /// diskutil activity stream handler: ported exactly (async verdict + dedupe + line ts)
     func handleDiskutilLine(_ line: String) {
         guard let p = parseDiskutilActivity(line) else { return }
         let kind = p.kind == "appeared" ? "mount" : "unmount"
@@ -541,7 +541,7 @@ func driftTick(_ db: DB, _ cfg: Config, _ deps: any SamplerDeps) async {
     var eperm: [String] = []
     for p in cfg.drift.paths {
         // dropFirst(2) removed "~/" including the separator, so "~/Downloads" became
-        // "/Users/youDownloads" — a path that never exists. Every drift walk then
+        // "/Users/youDownloads": a path that never exists. Every drift walk then
         // failed with EPERM and the app blamed macOS permissions for its own typo.
         let dir = (p as NSString).expandingTildeInPath
         guard let tops = try? FileManager.default.contentsOfDirectory(at: URL(fileURLWithPath: dir), includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey]) else {
@@ -659,6 +659,6 @@ func mondayDigestCheck(_ db: DB, _ cfg: Config, _ now: Int64, _ execFile: @Senda
     if Int64(getSetting(db, "lastDigestNotify")?.doubleVal ?? 0) >= monday9Ms { return }
     let n = db.prepare("SELECT COUNT(*) n FROM findings WHERE severity != 'info'").get()?["n"]?.intVal ?? 0
     _ = try? await execFile("osascript", ["-e",
-        "display notification \"Your weekly Mac digest is ready — \(n) thing\(n == 1 ? "" : "s") worth doing\" with title \"Performac\""])
+        "display notification \"Your weekly Mac digest is ready: \(n) thing\(n == 1 ? "" : "s") worth doing\" with title \"Performac\""])
     setSetting(db, "lastDigestNotify", JSONValue.number(Double(now)))
 }

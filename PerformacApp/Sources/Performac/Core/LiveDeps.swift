@@ -1,5 +1,5 @@
-// Core/LiveDeps.swift — the real SamplerDeps: Process-based execFile/spawn (argv
-// arrays, never a shell string — /usr/bin/env only resolves the binary name),
+// Core/LiveDeps.swift: the real SamplerDeps: Process-based execFile/spawn (argv
+// arrays, never a shell string, /usr/bin/env only resolves the binary name),
 // statfs(2), /Volumes listing, realpath(3). Used by the app; the checks keep using
 // fakes so they never touch real binaries.
 import Foundation

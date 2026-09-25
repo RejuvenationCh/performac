@@ -1,4 +1,4 @@
-// Core/Collectors.swift — pure string→object parsers for every CLI output.
+// Core/Collectors.swift: pure string→object parsers for every CLI output.
 // Port of v1 collectors.js: bad input → nil/[]/empty state; never throws.
 import Foundation
 
@@ -103,7 +103,7 @@ func parseResolveConfig(_ text: String?) -> ResolveConfig {
 }
 
 // real `diskutil activity` lines carry the literal string DAVolumeName = '<null>' for unnamed
-// disks (disk/container/scheme events) — that is NOT a name, return nil so no event is written.
+// disks (disk/container/scheme events): that is NOT a name, return nil so no event is written.
 // ts comes from the line's own Time=YYYYMMDD-HH:MM:SS (local), nil when absent.
 struct DiskActivity: Equatable, Sendable {
     var kind: String   // appeared | disappeared
@@ -126,7 +126,7 @@ func parseDiskutilActivity(_ line: String?) -> DiskActivity? {
     return DiskActivity(kind: String(m.1).lowercased(), volume: name, ts: ts)
 }
 
-// `diskutil info -plist <vol>` — booleans render as <true/>/<false/> tags
+// `diskutil info -plist <vol>`: booleans render as <true/>/<false/> tags
 struct DiskInfo: Equatable, Sendable {
     var `internal`: Bool
     var ejectable: Bool

@@ -1,4 +1,4 @@
-// Check/PathsCheck.swift — ports of v1 test/paths.test.js.
+// Check/PathsCheck.swift: ports of v1 test/paths.test.js.
 import Foundation
 
 @MainActor

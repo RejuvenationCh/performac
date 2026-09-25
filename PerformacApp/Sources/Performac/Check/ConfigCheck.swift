@@ -1,4 +1,4 @@
-// Check/ConfigCheck.swift — ports of v1 test/config.test.js.
+// Check/ConfigCheck.swift: ports of v1 test/config.test.js.
 import Foundation
 
 @MainActor

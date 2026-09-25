@@ -1,11 +1,11 @@
-# Design — Performac v2
+# Design: Performac v2
 
 The shipped app is the source of truth. Every value below is read out of `Tokens.swift`,
 `ViewModels.swift` and the views themselves, not out of intentions.
 
 The first version of this screen set was recorded from a web mockup. That provenance is gone
-now — three passes of defect fixes, a repalette, a screen merge and a glass audit have
-replaced nearly everything it specified — but it is worth naming what a web mockup cost a
+now: three passes of defect fixes, a repalette, a screen merge and a glass audit have
+replaced nearly everything it specified. But it is worth naming what a web mockup cost a
 native app: a blue-tinted ground, a lettermark badge where an SF Symbol belongs, and glass
 used as decoration rather than reserved for what actually floats above content.
 
@@ -16,7 +16,7 @@ reading "Nothing worth doing." When it speaks, it is because something changed o
 and it says so in one sentence with the evidence attached.
 
 Performac is a **windowed app with a Dock icon**, one size class: 900×600 minimum, a 76pt
-rail down the left edge, content to its right. There is no second, smaller surface anymore —
+rail down the left edge, content to its right. There is no second, smaller surface anymore;
 see §No menu bar.
 
 ## Colour
@@ -35,7 +35,7 @@ at a call site:
 | `hairline` | black 10% | white 12% | every separator, 1px |
 
 The dark values for `canvas`/`surface` are explicit hex, not the semantic
-`.windowBackgroundColor`/`.controlBackgroundColor` pair — both of those resolve to `#1E1E1E`
+`.windowBackgroundColor`/`.controlBackgroundColor` pair: both of those resolve to `#1E1E1E`
 in dark aqua, identical, which made every card vanish into the page with only a hairline left
 to find it.
 
@@ -46,12 +46,12 @@ rather than shipping a hardcoded blue. Severity uses the system semantic colours
 
 Colour carries exactly two jobs: **severity** on cards and badges, and **file-type identity**
 in the treemap and its legend (video · image · audio · cache/app data · document ·
-other/system — `FileKind.color`, a fixed categorical palette, deliberately excluded from this
+other/system, `FileKind.color`, a fixed categorical palette, deliberately excluded from this
 pass). Nothing else is coloured. No gradients, no coloured shadows, no gradient text.
 
 `FileKind` itself (`Core/FileKind.swift`) is measured, not guessed: a file is classified by
 its lowercased extension, or by `.cache` when its path runs through `Library/Caches` or a
-`Cache`/`Caches` directory — never by folder name. The original heuristic read the enclosing
+`Cache`/`Caches` directory, never by folder name. The original heuristic read the enclosing
 folder's name for keywords like "movie" or "photo", which matched none of this user's
 project-shorthand folders (`UC`, `Render`, `ALP Juna`, ...) and put everything in "Other /
 System" regardless of what it actually held. A directory's colour is whichever kind holds the
@@ -73,7 +73,7 @@ monospaced-digit variants for figures:
 | `pcLabel` | 11 / medium | column headers, badges, link-outs, treemap tile names |
 | `pcNum` / `pcNumLg` | 13 / 20, `.monospacedDigit()` | every figure in the app |
 
-**Nothing in the app goes below 11pt** — that is under any macOS system text size, and text
+**Nothing in the app goes below 11pt**: that is under any macOS system text size, and text
 that small stops being a design choice and starts being an accessibility failure. The
 treemap's tile labels were the last holdout at 9–10pt; they are `pcLabel` and 11pt-mono now,
 gated on tile size (`width > 60, height > 24` for the name; `height > 36` to also fit the
@@ -85,12 +85,12 @@ than none.
 Radii are deliberately small, which is what makes it read as desktop rather than mobile:
 **2px default · 4px (`lg`) cards and buttons · 8px (`xl`) modals · 12px (`full`) pills.**
 
-Spacing scale: **4 · 8 · 12 (gutter) · 16 (stack/margin)**. Sidebar rail is **76px** fixed —
+Spacing scale: **4 · 8 · 12 (gutter) · 16 (stack/margin)**. Sidebar rail is **76px** fixed:
 width follows the longest rail label ("Duplicates") at the 11pt floor, not the other way round.
 
 ## Navigation
 
-Four screens on the rail — **Overview, Disk, Clean, Duplicates** — with **Settings pinned
+Four screens on the rail, **Overview, Disk, Clean, Duplicates**, with **Settings pinned
 below a spacer**, the way Mail and Xcode place their settings affordance apart from the
 content list. The rail is the only navigation; there is no second tab row anywhere.
 
@@ -118,7 +118,7 @@ or divides a size; every view just calls `Fmt.bytes`.
 
 ## Components
 
-**FindingCard** (`FindingCard`) — the load-bearing component:
+**FindingCard** (`FindingCard`), the load-bearing component:
 
 ```
 surface · 4px radius · 1px hairline border · small shadow · 12px pad (16 left)
@@ -130,11 +130,11 @@ surface · 4px radius · 1px hairline border · small shadow · 12px pad (16 lef
 ```
 
 The link-out carries `FindingLink`, an enum holding its destination (`reveal(path)`,
-`.activityMonitor`, `.clean`, `.loginSettings`, `.disableAgent(path)`), not just a label — it
+`.activityMonitor`, `.clean`, `.loginSettings`, `.disableAgent(path)`), not just a label: it
 was a dead accent-coloured button until this pass, because the view read only the link's kind
 and had nothing to act on. See §Rules, "a control must do something." Every case but
 `.disableAgent` navigates; that one performs an action, so `FindingCard` intercepts it for
-confirmation instead of routing it through `EngineStore.openLink` — the same shape as the
+confirmation instead of routing it through `EngineStore.openLink`, the same shape as the
 Quit button beside it.
 
 Others as built: `SizeRow` (name · item count · size · proportional bar, hover-revealed
@@ -142,11 +142,11 @@ actions) · `CacheRow` (checkbox · name · size · last-written age · safety p
 `Pill` (severity/safety badges) · `StorageBar` (turns red past capacity) · `TreeMap` + legend
 (squarified, so small items keep a clickable aspect ratio) · `CrumbBar` (the path trail with
 back/forward controls above the current folder) · `IconButtonAction` (a hover-revealed icon
-button that always carries a real action — see §Rules) · `ScanProgress` (indeterminate bar,
+button that always carries a real action; see §Rules) · `ScanProgress` (indeterminate bar,
 running totals, elapsed, Cancel) · `Sparkline` (the free-space trend line).
 
-Overview's empty state ("Nothing worth doing.") is an inline row — a green seal and one
-sentence — not a standalone component; it does not need one for something this small.
+Overview's empty state ("Nothing worth doing.") is an inline row, a green seal and one
+sentence, not a standalone component; it does not need one for something this small.
 
 **Cards do not nest.** Tiles inside a card use a fill token, never a second shadowed card.
 
@@ -156,7 +156,7 @@ The one irreversible-feeling moment. This is not up for revisiting:
 
 - The primary button is **accent-coloured, not red.** The action is recoverable; colouring it
   red teaches fear of a safe operation.
-- **Cancel is the default focus** — the safe option is the default.
+- **Cancel is the default focus**: the safe option is the default.
 - Every item lists **full path and size**, with a `pcTitle` total line ("18.0 GB total").
 - A permanent reassurance block with a filled trash icon:
   *"These go to the Trash, not deleted. You can put them back from Finder until you empty it."*
@@ -164,7 +164,7 @@ The one irreversible-feeling moment. This is not up for revisiting:
 ## No menu bar
 
 Performac is a windowed app with a Dock icon. The menu bar icon, the small window it used to
-open, and everything that rendered inside that window are gone — Vorssaint (installed
+open, and everything that rendered inside that window are gone. Vorssaint (installed
 alongside) owns the menu bar now. Closing the window does **not** quit the app: the sampler
 is the engine, and the window is just a way to look at what it has measured, so
 `applicationShouldTerminateAfterLastWindowClosed` returns `false` and the Dock icon stays
@@ -181,21 +181,21 @@ of Force Quit. If a menu bar ever comes back, it belongs to Vorssaint, not here.
 
 Adopted for exactly two places, both places content genuinely floats above something:
 
-- **the 76pt rail** — a sidebar at the window edge is Apple's own glass pattern on macOS 26.
+- **the 76pt rail**: a sidebar at the window edge is Apple's own glass pattern on macOS 26.
 - **every sheet** (`TrashSheet`, `RowTrashSheet`, `RowInfoSheet`, `QuitSheet`,
-  `DisableAgentSheet`), via `pcGlassPanel` — a sheet floats over the window behind it by
+  `DisableAgentSheet`), via `pcGlassPanel`: a sheet floats over the window behind it by
   definition.
 
 Everywhere else is opaque: title rows, toolbars, table rows, cards, badges, the treemap.
 Title rows and toolbars looked like candidates too, and were glass for a while, but both
 were wrong for the same two reasons:
 
-1. Nothing scrolls under a `Page` title row or the Disk toolbar — content begins below them,
-   not underneath — so the glass sat on an opaque canvas and rendered as a flat tint instead
+1. Nothing scrolls under a `Page` title row or the Disk toolbar, content begins below them,
+   not underneath, so the glass sat on an opaque canvas and rendered as a flat tint instead
    of depth.
 2. Both rows hold real `.bordered`/`.borderedProminent` buttons (Refresh, Scan, Cancel), and
    those buttons **are themselves Liquid Glass on macOS 26.** Wrapping glass chrome around a
-   glass button is glass stacked on glass — muddy, not layered.
+   glass button is glass stacked on glass: muddy, not layered.
 
 Two rules that matter as much as the placement:
 
@@ -211,7 +211,7 @@ invisible in the code: `.windowBackgroundColor` and `.controlBackgroundColor` **
 `#1E1E1E`** in dark aqua. This layout is cards on a ground, so the semantic pair made every card
 vanish into the page with only a hairline left to find it.
 
-So the dark surfaces are explicit, and continue the fill ladder as one sequence — see the
+So the dark surfaces are explicit, and continue the fill ladder as one sequence; see the
 dark column in §Colour above. The checks assert what that ladder has to be true of, in
 **both** modes: a card is distinguishable from its page, the fills step monotonically away
 from the card, and every text and severity colour keeps its distance from the surface it is
@@ -220,15 +220,15 @@ printed on.
 ## The all-drives root
 
 The Disk target picker offers **All drives** whenever more than one is mounted. It scans each
-root in turn — drives are separate devices, and eight concurrent stat threads already saturate
-a USB bus — and lands on `/`.
+root in turn (drives are separate devices, and eight concurrent stat threads already saturate
+a USB bus) and lands on `/`.
 
 `/` is a real path, deliberately: breadcrumbs, back/forward, the trash allowlist and
 `scan_entries` all keep working with no special case. The only thing that needs handling is
 what its children are called. Each drive is stored under `/` with its path minus the leading
 slash as the **name** (`Users/you`, `Volumes/External SSD`), so appending it to `/`
 rebuilds the real path; `SizeEntry.label` carries the readable version (`Home`, `External SSD`)
-and `display` is what rows render. **`name` stays the navigation key everywhere — never render
+and `display` is what rows render. **`name` stays the navigation key everywhere: never render
 it, never navigate by `display`.**
 
 This view is the first place a whole drive appears as a row with a Move to Trash beside it.
@@ -241,7 +241,7 @@ refusal is a backstop rather than the user's first encounter with it.
 
 `scan_entries` holds every scanned root at once, not one at a time. `buildTree` removes only
 the rows under the root it is replacing, so scanning the T7 leaves Home's tree alone and
-switching target in the picker browses the stored result with no rescan — the Scan button
+switching target in the picker browses the stored result with no rescan: the Scan button
 refreshes what is shown, it is not how you get to see it. Each root carries its own timestamp
 in `diskScanTimes`, and the picker prints the age beside every target so it is obvious which
 ones are already there.
@@ -249,11 +249,11 @@ ones are already there.
 Two rules this must keep:
 
 1. **An empty scan never replaces a tree that has rows.** A drive that comes back with nothing
-   is a bug or a permissions wall far more often than an empty drive — that is exactly how the
+   is a bug or a permissions wall far more often than an empty drive: that is exactly how the
    unscannable-T7 defect turned into a deleted Home scan. `buildTree` returns the roots it
    actually wrote so a refused one keeps its old rows *and* its old timestamp.
 2. **The combined root reports its stalest member.** `lastScanAt` for `/` is the `min` of the
-   drive timestamps, never the newest — a stale number wearing a fresh label is worse than no
+   drive timestamps, never the newest: a stale number wearing a fresh label is worse than no
    number.
 
 Prefix matching uses `substr(parent, 1, n) = ?`, not `LIKE` or `GLOB`: a volume name may
@@ -268,12 +268,12 @@ changed.
 
 macOS mounts internal APFS volumes constantly and fires the same notification for them.
 Rather than filter the notification, `apply(volumes:)` compares the recomputed list and
-returns early when nothing changed — internal volumes live under `/System/Volumes` and so
+returns early when nothing changed: internal volumes live under `/System/Volumes` and so
 never move it. Same lesson as v1's drive rule, reached the cheap way.
 
 A new drive is an **offer, not an action**: a bar appears above the listing with the drive's
 name and a Scan button, and nothing is measured until it is pressed. The offer withdraws
-itself when that drive is unplugged, so the button can never point at something absent — and
+itself when that drive is unplugged, so the button can never point at something absent, and
 if the drive being browsed disappears, the target falls back to Home.
 
 ## Scanning a spinning drive
@@ -281,7 +281,7 @@ if the drive being browsed disappears, the target falls back to Home.
 `DiskScanner.concurrency` is eight, which is right for flash and wrong for rust: on a
 mechanical disk eight workers make the head seek between eight regions instead of reading in
 something like order, so more threads make the scan **slower**. `concurrency(forVolume:)`
-asks `diskutil info -plist` — metadata only, it reads no files — and gives a volume 8 when it
+asks `diskutil info -plist` (metadata only, it reads no files) and gives a volume 8 when it
 reports `SolidState`, 2 when it does not. Verified on this machine: the T7 (SSD) gets 8, the
 Transcend (USB mechanical) gets 2, and anything off `/Volumes` is the boot disk and gets 8.
 
@@ -289,7 +289,7 @@ Transcend (USB mechanical) gets 2, and anything off `/Volumes` is the boot disk 
 and hand back what it measured rather than tearing the stream down. A `ScanSummary` carries
 `partial`, and two rules follow from it:
 
-1. A partial result **never replaces a finished tree** — half a tree that looks whole is worse
+1. A partial result **never replaces a finished tree**: half a tree that looks whole is worse
    than an old tree that is honestly labelled. It is only stored when that root had nothing.
 2. A root whose tree came from a stopped scan is recorded in `partialRoots`, and the picker
    prints "partial" beside its age rather than an age that implies the whole drive.
@@ -309,9 +309,9 @@ duplicates, creative-app caches, and what changed over time.
 1. **Native, dense, macOS.** If a change would look at home on a phone, it is wrong here.
    No bottom tabs, no FABs, no oversized touch targets, no second navigation.
 2. **Colour only for severity or treemap file type.** Everything else is neutral, and the
-   app has no brand colour of its own — `.controlAccentColor` is the accent in both modes.
+   app has no brand colour of its own: `.controlAccentColor` is the accent in both modes.
 3. **The why-line is mandatory.** A card showing a size without its evidence does not ship.
-4. **All figures are tabular**, and every size in the UI is bytes through `Fmt.bytes` — see
+4. **All figures are tabular**, and every size in the UI is bytes through `Fmt.bytes`; see
    §Units. Nothing converts a unit twice.
 5. **Icons are SF Symbols. No emoji**, in UI or in copy.
 6. **A card carries at most one remedy; every remedy is confirmed before it acts, and every
@@ -325,7 +325,7 @@ duplicates, creative-app caches, and what changed over time.
 7. **Destructive confirmations stay accent-coloured, with Cancel focused**, and always state
    recoverability.
 8. **Cards do not nest.**
-9. **Every token carries both values** — never hard-code a bare hex or a bare `.white` at a
+9. **Every token carries both values**: never hard-code a bare hex or a bare `.white` at a
    call site. The one sanctioned exception is the treemap, whose tile fills are a fixed
    palette by design, so the black label and white hairline drawn on them are correct in
    either mode.
@@ -334,5 +334,5 @@ duplicates, creative-app caches, and what changed over time.
 11. **Never state a status the app cannot evidence.**
 12. **A control that cannot act must not be drawn.** The audit that started this pass found
     eight controls wired to empty closures, including the finding card's only link-out. An
-    affordance with no effect is worse than no affordance — it teaches the user that buttons
+    affordance with no effect is worse than no affordance: it teaches the user that buttons
     in this app might not do anything.

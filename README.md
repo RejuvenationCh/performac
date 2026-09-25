@@ -1,108 +1,133 @@
 # Performac
 
-An advisory-only macOS performance coach: an always-on local sampler + rule engine that turns
-system-health signals into plain-language cards with evidence (staleness, trends, counts). It
-**never deletes, quits, or modifies anything** — every card explains *why*, and defers action to
-the tools you already own (Purge, Activity Monitor, Finder).
+A native macOS app that answers four questions about your Mac:
 
-Zero dependencies. Node ≥ 26 stdlib only (`node:sqlite`, `node:http`, `node:child_process`,
-`node:crypto`). One `index.html`, one `app.js`, one SVG sprite, one service worker. No build step.
+- **Where did the disk go?** A real scan with a drill-down browser, a treemap and bubbles.
+- **What can I safely delete?** Allowlisted caches only, each row explaining what refills it.
+- **What do I have twice?** Exact byte-for-byte duplicates, with the differing part of each path highlighted.
+- **What changed?** Free space over time, drives that keep reconnecting, caches that are growing.
 
-## Setup
+Everything it removes goes to the **Trash**. There is no other deletion path in the codebase:
+`unlink`, `removeItem` and `rm` are banned, and `FileManager.trashItem` is the only route. If
+Performac takes something you wanted, Put Back in Finder gets it back.
 
-```bash
-npm test                                     # 88 tests, all green = good state
+Zero dependencies. SwiftPM only, no Xcode project, no packages.
 
-# 1. always-on server (the sampler must run even when the app is closed)
-launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.chris.performac.plist
+## Requirements
 
-# 2. the app: open in Safari, File → Add to Dock
-open http://localhost:7420
+- **macOS 26 or later.** The UI uses Liquid Glass and the app is built against the macOS 26 SDK.
+- **Command Line Tools.** If you have never installed them: `xcode-select --install`
 
-# node path note: the plist uses /opt/homebrew/bin/node (copied from the
-# attention-dashboard agent). If your node lives elsewhere, edit the plist.
-```
-
-## One-time setup
-
-The plist expects the repo at `~/Data C (General)/Projects/Personal/Performac/`. Logs:
-`/tmp/performac.log`. Database: `performac.db` (gitignored) next to `server.js`.
-
-## Permissions (what prompts, and when)
-
-Performac deliberately asks for nothing at launch. Three prompts exist, each tied to a feature
-you trigger:
-
-| Prompt | When | What breaks if denied |
-|---|---|---|
-| Files & Folders (Downloads/Desktop) | First hourly drift walk | The drift card is replaced by a card explaining the grant |
-| Automation (System Events) | Only when you press "Scan login items" in Settings | That scan errors; everything else is unaffected |
-| Removable Volumes | First dedupe scan that includes an external drive | The scan skips the drive |
-
-Prompts from a background LaunchAgent can be silently denied — if a permission prompt seems
-missing, run the server once in the foreground (`npm start`) and trigger the feature there.
-
-## Guardrails (grep-able)
-
-- The strings `rm `, `unlink`, `rmdir`, `trash`, `kill(`, `SIGKILL`, `SIGTERM` do not appear in
-  any code path. The only filesystem writes are `performac.db*` and `/tmp/performac.log`.
-- All subprocesses go through `execFile` with argv arrays — never a shell string.
-- Spawned binaries allowlist: `ps`, `df`, `lsappinfo`, `pmset`, `ioreg`, `tmutil`, `diskutil`,
-  `mdfind`, `osascript` (notifications + read-only login-items query), `open`
-  (`-b io.getpurge.app`, `-a Activity Monitor`, `-R <path>` only). Nothing else.
-- Server binds `127.0.0.1` only; `*.db*` is never served; `POST` endpoints are same-origin JSON
-  with an allowlist and `existsSync`/`statSync` checks.
-
-## Ops
+## Install
 
 ```bash
-launchctl kickstart -k gui/$UID/com.chris.performac   # restart (e.g. after editing the plist)
-launchctl bootout gui/$UID/com.chris.performac        # stop + disable until next login
-npm start                                             # manual run, if the agent is stopped
-tail -f /tmp/performac.log
+git clone https://github.com/RejuvenationCh/performac.git
+cd performac/PerformacApp
+./Scripts/make-app.sh
 ```
 
-## Settings
+That builds the app and installs it to `~/Applications/Performac.app`. Open it from there, or
+drag it to your Dock.
 
-Everything is a calibration knob: Settings → thresholds per feature, tier-3 toggles (off by
-default), backup watch paths (`path|maxDays` per line), dedupe roots, notification master switch.
-Thresholds apply to new findings immediately; sampler cadence changes need an agent restart.
+**Why build it yourself rather than download a `.dmg`?** Because macOS only quarantines apps that
+arrive over the network. An app you compiled locally has no quarantine flag, so Gatekeeper does
+not block it and there is no "Performac is damaged" dialog to work around. It also means no one
+has to trust a binary from a stranger.
 
-## Weekly digest coach intro (optional)
+## Full Disk Access
 
-The Digest view's intro paragraph is templated by default. To get a warmer, Claude-written intro
-(Money Dashboard's pattern), install `insights/refresh_digest.js` as its own LaunchAgent —
-mirroring `com.example.finance-insights`. Save as
-`~/Library/LaunchAgents/com.example.performac-insights.plist`, then
-`launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.example.performac-insights.plist`:
+Without it, Performac cannot read every folder, so scans quietly come out smaller than your disk
+really is. Settings shows whether the grant is in place and links straight to the right pane.
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>com.example.performac-insights</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/opt/homebrew/bin/node</string>
-    <string>/Users/you/Data C (General)/Projects/Personal/Performac/insights/refresh_digest.js</string>
-  </array>
-  <key>StartCalendarInterval</key>
-  <dict>
-    <key>Weekday</key><integer>1</integer>
-    <key>Hour</key><integer>9</integer>
-    <key>Minute</key><integer>5</integer>
-  </dict>
-  <key>StandardOutPath</key>
-  <string>/tmp/performac-insights.log</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/performac-insights.err</string>
-</dict>
-</plist>
+**System Settings → Privacy & Security → Full Disk Access → add `~/Applications/Performac.app`**
+
+### One wrinkle worth knowing
+
+macOS ties that grant to the app's **signing identity**. `make-app.sh` signs with a stable
+self-signed certificate called `Performac Dev` when one exists in your keychain, so the identity
+stays constant and the grant survives rebuilds.
+
+If you do not have that certificate, the script falls back to ad-hoc signing, where the identity
+is the binary's hash. That works fine, but it means **every rebuild looks like a brand-new app to
+macOS and you have to grant Full Disk Access again.** If you plan to rebuild often, create a
+self-signed code-signing certificate named `Performac Dev` in Keychain Access
+(*Certificate Assistant → Create a Certificate → Code Signing*) and the problem goes away.
+
+## Using it
+
+**Overview** is the summary: four measured facts, free space over time (hover the chart for the
+value at any point), then findings worst-first. Each card carries its evidence and at most one
+remedy, and every remedy is confirmed and reversible.
+
+**Disk** needs a scan before it can tell you anything. Pick a target (your home folder, any
+mounted volume, or a folder you choose), press Scan, and results stream in as it walks. Scans are
+kept per drive, so switching targets is free and does not rescan. A full home scan is minutes of
+disk activity.
+
+**Clean** lists caches on a reviewed allowlist. Click a row to select it, shift-click for a range,
+and expand any row to see what the size is actually made of. Anything off the allowlist is shown
+and measured but marked Protected and cannot be selected.
+
+**Duplicates** finds exact matches by hashing files over the size threshold in Settings. There is
+no bulk action, deliberately: with duplicates one copy has to survive, so removing every copy can
+never be one misclick. Each copy has its own reveal and trash.
+
+Closing the window does not quit the app. The sampler keeps running so history keeps accruing,
+and the Dock icon brings the window back. Quit with Cmd-Q.
+
+## Keyboard
+
+| | |
+|---|---|
+| `Cmd-R` | Scan or rescan (Disk) |
+| `Cmd-Shift-R` | Re-measure findings |
+| `Cmd-[` / `Cmd-]` | Back and forward in the disk browser |
+| `Cmd-Opt-F` | Fill the screen, staying in the current Space |
+| `Cmd-Opt-Shift-F` | Restore the previous size |
+| `Cmd-Ctrl-F` | Full screen |
+
+The mouse's back and forward buttons, and a two-finger horizontal swipe, also navigate the disk
+browser.
+
+## Where it keeps things
+
+| | |
+|---|---|
+| Database | `~/Library/Application Support/com.chris.performac.v2/performac.db` |
+| Appearance and window state | `UserDefaults` |
+| Everything else | in that one SQLite file |
+
+Settings shows the database size and can reveal it in Finder. History retention is configurable;
+the default is 180 days for disk and cache samples, 14 for per-process samples.
+
+## Development
+
+```bash
+swift build                  # compile
+swift run Performac check    # the full self-check suite
+./Scripts/make-app.sh        # build, bundle, sign, install
 ```
 
-Runs Monday 09:05 (adjust Weekday/Hour/Minute as you like). The script calls the Claude CLI
-headlessly (`claude -p` — log in once with `claude` then `/login`), writes `seed/digest.json`,
-and the app adopts it while it is less than 8 days old. Without this opt-in agent, nothing
-calls the network — ever.
+There is no XCTest: Command Line Tools ships neither swift-testing nor XCTest, so checks are
+assert-based and live in `Sources/Performac/Check/`. `Performac check` runs every suite and
+prints a total. Keep it at zero failures.
+
+`PerformacApp/DESIGN.md` is the design system and the reasoning behind it, including several
+rules that exist because something went wrong once. Read it before changing the UI.
+
+### Other subcommands
+
+```bash
+swift run Performac scan <path>     # headless scan with timings
+swift run Performac parity <db> <nowMs>   # dump findings as JSON, for diffing against v1
+```
+
+## About the v1 Node app
+
+The repository still contains the original Node implementation (`server.js`, `sampler.js`,
+`rules.js` and friends) that the Swift app was ported from. It is not needed to run Performac and
+is kept for reference.
+
+## License
+
+MIT. See `LICENSE`.

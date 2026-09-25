@@ -1,4 +1,4 @@
-// VolumeCheck.swift — drives arriving and leaving.
+// VolumeCheck.swift: drives arriving and leaving.
 //
 // The picker used to read /Volumes on every render, so a drive plugged in while the Disk tab
 // was open never appeared: nothing told SwiftUI the directory had changed. The list is now

@@ -1,9 +1,9 @@
-// SettingsView.swift — macOS System Settings idiom: grouped rows, label left, control right.
+// SettingsView.swift: macOS System Settings idiom: grouped rows, label left, control right.
 //
 // Every control on this screen now does something. It used to carry five that did not: a
 // Launch-at-login toggle held in local @State and never persisted, a Show-in-menu-bar toggle
 // the same, a Reveal button wired to `{}`, a "+" wired to `{}`, and skip-folder chips whose
-// remove affordance was an Image rather than a Button — showing two hardcoded paths that did
+// remove affordance was an Image rather than a Button: showing two hardcoded paths that did
 // not even match the scanner's real defaults.
 import SwiftUI
 import AppKit
@@ -18,7 +18,7 @@ struct SettingsView: View {
     var onSave: (String, JSONValue) -> Void = { _, _ in }
 
     @State private var appearance = Appearance.current
-    /// Read from the system, not remembered locally — the previous local-only Bool meant the
+    /// Read from the system, not remembered locally: the previous local-only Bool meant the
     /// toggle reported whatever it was last clicked to, never what macOS actually does.
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var launchError: String? = nil
@@ -73,7 +73,7 @@ struct SettingsView: View {
                             }
                         }
                         // No invented figures. This used to read "can only measure 736 GB of
-                        // your 889 GB" — numbers from one scan of one machine, printed as if
+                        // your 889 GB": numbers from one scan of one machine, printed as if
                         // they were live, against the app's own rule about evidence.
                         Note("Without it, folders Performac cannot read are skipped silently, so scan totals come out lower than the disk really is.")
                     }

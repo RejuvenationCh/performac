@@ -1,5 +1,5 @@
-// Core/Config.swift — DEFAULTS are the calibration knobs; settings-table rows override
-// per top-level key. Port of v1 config.js — same values, same merge semantics.
+// Core/Config.swift: DEFAULTS are the calibration knobs; settings-table rows override
+// per top-level key. Port of v1 config.js: same values, same merge semantics.
 import Foundation
 
 // JSON value tree used for settings rows, validateSetting, and the loadConfig merge
@@ -141,7 +141,7 @@ struct Config: Codable, Sendable {
 }
 
 // validateSetting: value must match the template shape (numbers finite + positive,
-// nested objects may carry a subset of template keys) — port of config.js, verbatim rules.
+// nested objects may carry a subset of template keys): port of config.js, verbatim rules.
 func validateSetting(_ value: JSONValue, _ template: JSONValue) -> Bool {
     switch template {
     case .number:
@@ -164,20 +164,20 @@ func validateSetting(_ value: JSONValue, _ template: JSONValue) -> Bool {
     }
 }
 
-/// DEFAULTS encoded as a JSONValue — the template validateSetting checks against.
+/// DEFAULTS encoded as a JSONValue: the template validateSetting checks against.
 let defaultsTemplate: JSONValue = {
     let data = try! JSONEncoder().encode(Config.defaults)
     return JSONValue.from(try! JSONSerialization.jsonObject(with: data))
 }()
 
-// loadConfig: DEFAULTS deep-merged (one level) with settings rows — same semantics as
+// loadConfig: DEFAULTS deep-merged (one level) with settings rows, same semantics as
 // v1 config.js: top-level keys replace; two objects merge one level.
 func loadConfig(_ db: DB) -> Config {
     var merged = defaultsTemplate
     for (key, value) in allSettings(db) {
         if case .object(var a) = merged, let m = merged.objectVal, let cfg = m[key],
            case .object(let b) = value, case .object = cfg {
-            // {...cfg, ...value} — the settings row wins; unset nested keys keep DEFAULTS
+            // {...cfg, ...value}: the settings row wins; unset nested keys keep DEFAULTS
             var mergedValue = cfg.objectVal ?? [:]
             for (k, v) in b { mergedValue[k] = v }
             a[key] = .object(mergedValue)

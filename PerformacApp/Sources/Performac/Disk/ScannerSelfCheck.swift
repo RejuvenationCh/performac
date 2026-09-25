@@ -1,4 +1,4 @@
-// Disk/ScannerSelfCheck.swift — `Performac check`: synthetic-tree correctness checks
+// Disk/ScannerSelfCheck.swift: `Performac check`: synthetic-tree correctness checks
 // for DiskScanner (sizing must match du). CommandLineTools ships neither swift-testing
 // nor XCTest, so the checks are assert-based and runnable, not a test framework.
 import Foundation
@@ -7,7 +7,7 @@ enum ScannerSelfCheck {
     static func run() async -> Int32 {
         var failures = 0
         func check(_ name: String, _ cond: Bool, _ detail: String = "") {
-            print("\(cond ? "PASS" : "FAIL") \(name)\(detail.isEmpty ? "" : " — \(detail)")")
+            print("\(cond ? "PASS" : "FAIL") \(name)\(detail.isEmpty ? "" : " (\(detail))")")
             if !cond { failures += 1 }
         }
 
@@ -77,7 +77,7 @@ enum ScannerSelfCheck {
         check("skipPaths prunes subtree", prunedBytes == expectedBytes - 4096, "got \(prunedBytes)")
 
         // The case that shipped broken: /Volumes is skipped so a scan of Home does not wander
-        // onto an external drive — but choosing that drive made the root its own skip path, so
+        // onto an external drive, but choosing that drive made the root its own skip path, so
         // every child was pruned and the scan finished with 0 files in 0.0 s. A skip path that
         // contains the chosen root must be ignored, or the drive looks unscannable.
         var rootSkipped = DiskScanner()

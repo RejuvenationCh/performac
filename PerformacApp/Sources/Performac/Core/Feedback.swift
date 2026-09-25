@@ -1,11 +1,11 @@
-// Feedback.swift — the sound a move to the Trash makes.
+// Feedback.swift: the sound a move to the Trash makes.
 //
 // Finder's own sound, not a system alert: this is the same gesture, so it should sound like
 // the same gesture. It ships inside CoreAudio.component rather than /System/Library/Sounds,
 // which is why it cannot be reached by name.
 //
-// There is no preference for this. macOS already has one — System Settings › Sound › "Play
-// user interface sound effects" — and a Mac app that invents its own copy of a system toggle
+// There is no preference for this. macOS already has one (System Settings › Sound › "Play
+// user interface sound effects"), and a Mac app that invents its own copy of a system toggle
 // is a Mac app that ignores the system.
 import AppKit
 

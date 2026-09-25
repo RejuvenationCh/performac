@@ -1,4 +1,4 @@
-// Check/DatabaseCheck.swift — schema + sweep + settings roundtrip checks (db.js port).
+// Check/DatabaseCheck.swift: schema + sweep + settings roundtrip checks (db.js port).
 import Foundation
 
 @MainActor
@@ -18,7 +18,7 @@ enum DatabaseCheck {
         let got = getSetting(db, "hog")
         c.eq("settings roundtrip: hog.cpuPct", got?.objectVal?["cpuPct"]?.doubleVal ?? 0, 95)
         c.check("settings roundtrip: missing key → nil", getSetting(db, "nope") == nil)
-        // bare-string settings (v1 stores JSON.stringify of any value — the app crashed
+        // bare-string settings (v1 stores JSON.stringify of any value, the app crashed
         // here once; NSJSONSerialization refuses bare strings as top-level objects)
         setSetting(db, "premiere-sidebyside", .string("1"))
         c.eq("settings roundtrip: bare string", getSetting(db, "premiere-sidebyside")?.stringVal, "1")

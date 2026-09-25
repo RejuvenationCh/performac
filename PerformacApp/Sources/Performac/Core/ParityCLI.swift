@@ -1,4 +1,4 @@
-// Core/ParityCLI.swift — `Performac parity <db> <nowMs>`: run the engine's
+// Core/ParityCLI.swift: `Performac parity <db> <nowMs>`: run the engine's
 // refreshFindings against a database copy at a fixed clock and dump findings as JSON,
 // normalized to v1's shapes (empty link_kind/link_target as null) for a clean diff.
 import Foundation

@@ -1,7 +1,7 @@
-// Core/V2Database.swift — v2 works on its own copy of v1's database.
+// Core/V2Database.swift: v2 works on its own copy of v1's database.
 //
 // plan-v2 step 5 correction (user's instruction): never open v1's performac.db
-// directly — v1's launchd agent is live and writing to it, and two samplers on one
+// directly: v1's launchd agent is live and writing to it, and two samplers on one
 // SQLite file means contention and duplicate rows. On first run, the database is
 // copied to ~/Library/Application Support/com.chris.performac.v2/performac.db;
 // history carries over, the two apps diverge cleanly, and v1 stays untouched as
@@ -24,7 +24,7 @@ func copyV1DatabaseIfNeeded(v1Path: String) -> String {
     if !fm.fileExists(atPath: dest) {
         try? fm.createDirectory(atPath: V2_SUPPORT_DIR, withIntermediateDirectories: true)
         if !sqliteBackup(from: v1Path, to: dest) {
-            // plain file copy fallback (no WAL checkpoint — best effort)
+            // plain file copy fallback (no WAL checkpoint, best effort)
             try? fm.copyItem(atPath: v1Path, toPath: dest)
         }
     }

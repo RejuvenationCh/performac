@@ -1,5 +1,5 @@
-// Check/RulesCheck.swift — ports of v1 test/rules.test.js. Card copy expectations
-// are asserted verbatim — the v1 tests are the executable specification.
+// Check/RulesCheck.swift: ports of v1 test/rules.test.js. Card copy expectations
+// are asserted verbatim: the v1 tests are the executable specification.
 import Foundation
 
 @MainActor
@@ -117,7 +117,7 @@ enum RulesCheck {
             let f = fs[0]
             c.eq("cache: severity", f.severity, "red")
             // size_mb is MiB; 32/36/38 "GB" in the fixture are really GiB, so the correct decimal
-            // text (mbText, matching Fmt.bytes) reads a bit larger — 38 GiB is 40.8 GB, not 38.0.
+            // text (mbText, matching Fmt.bytes) reads a bit larger: 38 GiB is 40.8 GB, not 38.0.
             c.eq("cache: exact headline", f.headline, "Premiere's media cache is 40.8 GB and hasn't been written to in 24 days")
             c.check("cache: growth why", f.why.contains("grew 2.1 GB in the last 7 days"), f.why)
             c.eq("cache: linkKind", f.linkKind, "reveal")
@@ -128,7 +128,7 @@ enum RulesCheck {
         do {
             let fs = Rules.cacheGrowth(samples([(0, 6, 1)]), cacheCfg, NOW)
             c.check("cache: 6 GB yesterday → info", fs.count == 1 && fs[0].severity == "info")
-            c.check("cache: in active use", fs.count == 1 && fs[0].why.contains("in active use — leave it"), fs.first?.why ?? "")
+            c.check("cache: in active use", fs.count == 1 && fs[0].why.contains("in active use: leave it"), fs.first?.why ?? "")
         }
         do {
             let fs = Rules.cacheGrowth(samples([(0, 6, 15)]), cacheCfg, NOW)
@@ -248,7 +248,7 @@ enum RulesCheck {
             c.check("drive: 3 cycles → red", fs.count == 1 && fs[0].severity == "red")
             c.eq("drive: exact headline", fs.first?.headline, "T7 disconnected and reconnected 3 times in the last 24 hours")
             c.eq("drive: exact why", fs.first?.why,
-                 "A loose cable, failing port, or failing drive shows up as surprise unmount cycles — check the connection before your next shoot")
+                 "A loose cable, failing port, or failing drive shows up as surprise unmount cycles. Check the connection before your next shoot")
             c.check("drive: no link", fs.first?.linkKind == nil)
         }
         do {
@@ -287,7 +287,7 @@ enum RulesCheck {
         }
         do {
             // Real 'External SSD' sequence: second mount had no user action and no recorded
-            // unmount — a mount for an already-mounted volume counts as a flap.
+            // unmount: a mount for an already-mounted volume counts as a flap.
             let events = [
                 driveEvent(NOW - 300_000, "mount", "External SSD"),
                 driveEvent(NOW - 232_000, "mount", "External SSD"),   // the flap
@@ -306,7 +306,7 @@ enum RulesCheck {
             let events = [
                 driveEvent(NOW - 400_000, "mount", "T7"),
                 sleepGap(NOW - 300_000, wake),
-                driveEvent(wake + 5000, "mount", "T7"),   // reappears on wake — normal
+            driveEvent(wake + 5000, "mount", "T7"),   // reappears on wake, normal
             ]
             c.check("drive: wake reappearance not a flap", Rules.driveInstability(events, cfg, NOW).isEmpty)
         }
@@ -324,7 +324,7 @@ enum RulesCheck {
             c.check("backup: no destination → red", fs.count == 1 && fs[0].severity == "red")
             c.eq("backup: exact headline", fs.first?.headline, "No Time Machine destination is configured on this Mac")
             c.eq("backup: exact why", fs.first?.why,
-                 "Your event and campus footage has no re-shoot option — a Mac that has never been backed up is one drive failure from losing all of it")
+                 "Your event and campus footage has no re-shoot option. A Mac that has never been backed up is one drive failure from losing all of it")
             c.check("backup: no link", fs.first?.linkKind == nil)
             c.check("backup: System Settings detail", fs.count == 1 && fs[0].detail.contains("System Settings"), fs.first?.detail ?? "")
         }
@@ -461,7 +461,7 @@ enum RulesCheck {
             let fs = Rules.storageTrend(rows, scfg, NOW)
             c.check("storage: 9 GB/week → amber", fs.count == 1 && fs[0].severity == "amber")
             c.eq("storage: exact headline", fs.first?.headline,
-                 "Macintosh HD is losing ~9 GB a week — full in about 7 weeks at this rate")
+                 "Macintosh HD is losing ~9 GB a week: full in about 7 weeks at this rate")
             c.check("storage: cites window + free", fs.count == 1 && fs[0].why.contains("14") && fs[0].why.contains("62"), fs.first?.why ?? "")
         }
         do {
@@ -534,7 +534,7 @@ enum RulesCheck {
             c.check("login: all matched → empty", Rules.loginItemsAudit(
                 ["AltTab"], [], ["AltTab"], [], plenty, Config.defaults, NOW).isEmpty)
 
-            // A Login Item has no removable API — the remedy is a deep link to the pane.
+            // A Login Item has no removable API: the remedy is a deep link to the pane.
             c.eq("login: item gets login_settings link", fs.first?.linkKind, "login_settings")
             c.check("login: item link has no target", fs.first?.linkTarget == nil)
 

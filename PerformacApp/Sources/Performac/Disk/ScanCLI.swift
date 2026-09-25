@@ -1,4 +1,4 @@
-// Disk/ScanCLI.swift — `Performac scan <path>`: headless scan with the numbers the
+// Disk/ScanCLI.swift: `Performac scan <path>`: headless scan with the numbers the
 // go/no-go decision needs (total time, time-to-first-progress, peak RSS, top dirs).
 import Foundation
 

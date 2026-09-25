@@ -1,4 +1,4 @@
-// Core/Database.swift — SQLite3 wrapper: v1's schema verbatim (db.js), WAL,
+// Core/Database.swift, SQLite3 wrapper: v1's schema verbatim (db.js), WAL,
 // retention sweep, settings helpers. SQLite3 is the system C library.
 import SQLite3
 import Foundation
@@ -66,7 +66,7 @@ CREATE INDEX IF NOT EXISTS idx_trash_ts ON trash_log(ts);
 CREATE TABLE IF NOT EXISTS temp_samples(ts INTEGER NOT NULL, celsius REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_temp_ts ON temp_samples(ts);
 -- The last disk scan's tree. Kept in a table rather than a settings blob so browsing a
--- stale scan is the same indexed lookup as browsing a fresh one — one code path, and a
+-- stale scan is the same indexed lookup as browsing a fresh one: one code path, and a
 -- ~100k-node home directory never has to be held in memory or re-parsed as JSON.
 CREATE TABLE IF NOT EXISTS scan_entries(
   parent TEXT NOT NULL, name TEXT NOT NULL, items INTEGER NOT NULL,
@@ -78,13 +78,13 @@ final class DB: @unchecked Sendable {
     let handle: OpaquePointer
     /// One connection is shared by the sampler (utility pool) and the store (main actor).
     /// SQLite serializes individual API calls, but a prepare/finalize interleaving across
-    /// threads aborts with SQLITE_MISUSE — so all statement work holds this lock.
+    /// threads aborts with SQLITE_MISUSE, so all statement work holds this lock.
     let lock = NSLock()
 
     /// `readOnly` opens a second connection for the UI.
     ///
     /// Every statement on a connection holds one lock, so a UI read on the same connection
-    /// blocks behind whatever the sampler is doing — a cache walk, a drift walk, an 87k-row
+    /// blocks behind whatever the sampler is doing: a cache walk, a drift walk, an 87k-row
     /// insert. That is what made expanding a folder take seconds: not the query (0.1 ms) but
     /// waiting for the lock. WAL allows concurrent readers alongside one writer, so the UI
     /// gets its own handle and never waits on a background write.
@@ -152,10 +152,10 @@ final class Stmt: @unchecked Sendable {
             // Was fatalError, which turned any schema drift into a launch crash: adding an
             // mtime column to scan_entries did exactly that, because CREATE TABLE IF NOT
             // EXISTS never alters an existing table. A statement that cannot be prepared is
-            // now inert — it reads as empty and writes nothing — so a bad query costs a
+            // now inert: it reads as empty and writes nothing, so a bad query costs a
             // feature, never the app.
             let msg = String(cString: sqlite3_errmsg(db.handle))
-            FileHandle.standardError.write(Data("[db] prepare failed: \(msg) — \(sql)\n".utf8))
+            FileHandle.standardError.write(Data("[db] prepare failed: \(msg) (\(sql))\n".utf8))
             stmt = nil
             return
         }
@@ -231,7 +231,7 @@ final class Stmt: @unchecked Sendable {
     }
 }
 
-// retention deletes; dup_groups keeps the latest scan only — port of db.js sweep
+// retention deletes; dup_groups keeps the latest scan only: port of db.js sweep
 func sweep(_ db: DB, _ cfg: Config, _ now: Int64) {
     let day: Int64 = 86_400_000
     db.prepare("DELETE FROM proc_samples WHERE ts < ?").run([.int(now - Int64(cfg.retentionDays.proc) * day)])
@@ -270,7 +270,7 @@ func allSettings(_ db: DB) -> [String: JSONValue] {
 }
 
 extension JSONValue {
-    /// JSONValue → JSONSerialization-compatible object (objects/arrays only — used for
+    /// JSONValue → JSONSerialization-compatible object (objects/arrays only, used for
     /// re-encoding merged configs where the top level is always an object)
     var jsonObject: Any {
         switch self {
@@ -284,7 +284,7 @@ extension JSONValue {
     }
 
     /// Full JSON text. NSJSONSerialization refuses bare numbers/strings as the top-level
-    /// object, but v1's settings rows store JSON.stringify(...) of any value — so encode
+    /// object, but v1's settings rows store JSON.stringify(...) of any value, so encode
     /// strings ourselves. Keys are config identifiers (plain ASCII).
     var jsonString: String {
         switch self {

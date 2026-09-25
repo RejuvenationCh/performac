@@ -1,4 +1,4 @@
-// Check/NotifyCheck.swift — ports of v1 test/notify.test.js: cooldown logic,
+// Check/NotifyCheck.swift, ports of v1 test/notify.test.js: cooldown logic,
 // kind allowlist, argv (no shell), quote stripping.
 import Foundation
 

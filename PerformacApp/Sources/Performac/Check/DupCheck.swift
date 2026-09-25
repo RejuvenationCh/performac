@@ -1,4 +1,4 @@
-// DupCheck.swift — the duplicate pipeline, on a real temp tree. Written to falsify:
+// DupCheck.swift: the duplicate pipeline, on a real temp tree. Written to falsify:
 // the same-size decoy must be eliminated, and a unique-size file must never be a candidate.
 import Foundation
 
@@ -13,10 +13,10 @@ enum DupCheck {
         // three identical 1 MiB files in different directories
         let payload = Data(repeating: 0x41, count: 1_048_576)
         for p in ["\(a)/one.bin", "\(b)/two.bin", "\(root)/three.bin"] { fm.createFile(atPath: p, contents: payload) }
-        // same SIZE, different content — must survive bucketing but die at hashing
+        // same SIZE, different content: must survive bucketing but die at hashing
         var decoy = Data(repeating: 0x41, count: 1_048_576); decoy[1_048_575] = 0x42
         fm.createFile(atPath: "\(a)/decoy.bin", contents: decoy)
-        // unique size — must never even be a candidate
+        // unique size: must never even be a candidate
         fm.createFile(atPath: "\(b)/lonely.bin", contents: Data(repeating: 0x43, count: 2_097_152))
 
         let s = DupScanner()

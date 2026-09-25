@@ -1,4 +1,4 @@
-// Disk/Scanner.swift — concurrent recursive tree sizing, the go/no-go prototype.
+// Disk/Scanner.swift: concurrent recursive tree sizing, the go/no-go prototype.
 //
 // Design goals (plan-v2 §Technical risks #1):
 //   - FileManager.enumerator (lazy, streaming) + URLResourceValues
@@ -8,14 +8,14 @@
 //     Task bridge hung under this toolchain (DirectoryEnumerator's iterator is noasync,
 //     so enumeration is sync on a background queue, and a sync producer feeding an async
 //     consumer never delivered stream termination). concurrentPerform is the same
-//     bounded-parallelism semantics with one thread and one stream — simpler, no Tasks.
+//     bounded-parallelism semantics with one thread and one stream: simpler, no Tasks.
 //   - never follows symlinks (enumerator doesn't descend; symlink items are not counted)
 //   - skips /System and configured skip roots (a "/" scan is normalized to the Data
-//     volume to avoid firmlink double-counting — see main.swift)
+//     volume to avoid firmlink double-counting; see main.swift)
 //   - streams .progress events while running so the UI populates progressively
 //
 // DELETION RULE: this file never deletes anything. The only permitted deletion path
-// in this codebase is FileManager.default.trashItem — and it is not used here at all.
+// in this codebase is FileManager.default.trashItem, and it is not used here at all.
 import Foundation
 import os
 
@@ -52,7 +52,7 @@ public struct DirTotal: Sendable {
 }
 
 /// One row a browser can show: a directory (with its rolled-up total) or a large file.
-/// Files below this never appear as their own row — they are counted in their folder's
+/// Files below this never appear as their own row: they are counted in their folder's
 /// total. Without a floor a home directory would produce ~900k rows.
 let largeFileMin: Int64 = 10 * 1_048_576
 
@@ -62,7 +62,7 @@ public struct ScanEntry: Sendable {
     public let bytes: Int64
     public let isDirectory: Bool
     /// Newest modification time beneath this entry (or its own, for a file). Epoch ms,
-    /// 0 when unknown — the column sorts unknowns last rather than pretending they are 1970.
+    /// 0 when unknown: the column sorts unknowns last rather than pretending they are 1970.
     public let mtime: Int64
     /// A file's own kind, or a directory's dominant kind by bytes (see `KindTally.dominant`).
     public let kind: FileKind
@@ -110,7 +110,7 @@ public struct DiskScanner: Sendable {
     public var concurrency: Int = 8
 
     /// `diskutil info -plist` reports SolidState for flash and omits it for a spinning disk.
-    /// Metadata only — this reads no files and does not touch the volume's contents.
+    /// Metadata only: this reads no files and does not touch the volume's contents.
     public static func concurrency(forVolume path: String) -> Int {
         guard path.hasPrefix("/Volumes/") else { return 8 }   // the boot disk is flash
         let p = Process()
@@ -148,11 +148,11 @@ public struct DiskScanner: Sendable {
         }
     }
 
-    // MARK: — the whole scan runs synchronously on one background queue —
+    // MARK: the whole scan runs synchronously on one background queue
 
     private func runSync(root: URL, continuation: AsyncStream<ScanEvent>.Continuation, cancelFlag: CancelFlag) {
         // canonicalize with realpath(3): URL.resolvingSymlinksInPath does not resolve
-        // firmlinks (/var → /private/var), but the enumerator returns resolved paths —
+        // firmlinks (/var → /private/var), but the enumerator returns resolved paths:
         // comparisons against the unresolved root/skip paths miss.
         func canon(_ p: String) -> String {
             guard let c = realpath(p, nil) else { return p }
@@ -162,7 +162,7 @@ public struct DiskScanner: Sendable {
         let root = URL(fileURLWithPath: canon(root.path))
         // A skip path that contains the chosen root would prune the entire scan on its first
         // entry. /Volumes is on the list so a scan of Home does not wander onto an external
-        // drive — but picking that drive skipped every one of its children and finished with
+        // drive. But picking that drive skipped every one of its children and finished with
         // 0 files in 0.0 s, which read as "the drive cannot be scanned". Same for /System when
         // the root is /System/Volumes/Data, which is where a scan of "/" is redirected.
         let skip = skipPaths.map(canon).filter { root.path != $0 && !root.path.hasPrefix($0 + "/") }
@@ -173,7 +173,7 @@ public struct DiskScanner: Sendable {
         let start = Date()
         var totals: [String: (files: Int, bytes: Int64)] = [:]   // per-directory, by full path
         // Per-directory byte tally by kind, keyed the same as `totals` and rolled up the same
-        // way — one FileKind classification per item, no second walk.
+        // way: one FileKind classification per item, no second walk.
         var kindTotals: [String: KindTally] = [:]
         var filesScanned = 0
         var bytes: Int64 = 0

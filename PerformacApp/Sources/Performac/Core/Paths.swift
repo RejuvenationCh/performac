@@ -1,4 +1,4 @@
-// Core/Paths.swift — D2 cache registry (runtime-detected) + the directory walker.
+// Core/Paths.swift: D2 cache registry (runtime-detected) + the directory walker.
 // Port of v1 paths.js: cacheTargets is pure (real config/prefs text and mdfind results
 // arrive via inputs); measure walks without following symlinks.
 import Foundation
@@ -21,7 +21,7 @@ struct CacheTarget: Equatable, Sendable {
     var optional: Bool = false
     var note: String?          // "side-by-side"
     var safety: String?        // "safe" | "check-first" (generic entries)
-    var measurement: MeasureResult?   // premeasured — no double walk
+    var measurement: MeasureResult?   // premeasured, no double walk
 }
 
 struct CacheTargetsInputs: Sendable {
@@ -43,7 +43,7 @@ func cacheTargets(_ cfg: Config, inputs: CacheTargetsInputs = CacheTargetsInputs
     let home = inputs.home ?? NSHomeDirectory()
     var targets: [CacheTarget] = []
 
-    // Resolve — config.dat is plain key = value text
+    // Resolve: config.dat is plain key = value text
     let rc = parseResolveConfig(inputs.resolveCfg ?? "")
     let fsRoot = rc.fsRoot ?? home + "/Movies"
     let cacheDir = rc.cacheDir ?? "CacheClip"
@@ -51,7 +51,7 @@ func cacheTargets(_ cfg: Config, inputs: CacheTargetsInputs = CacheTargetsInputs
     targets.append(CacheTarget(id: "resolve-gallery", label: "Resolve gallery stills", path: fsRoot + "/.gallery"))
     targets.append(CacheTarget(id: "resolve-proxy", label: "Resolve proxies", path: fsRoot + "/ProxyMedia", optional: true))
 
-    // Premiere — fixed Adobe/Common subdirs; prefs may override
+    // Premiere: fixed Adobe/Common subdirs; prefs may override
     let prefs = inputs.prefs ?? ""
     let sideBySide = prefs.firstMatch(of: /<BE\.Prefs\.MediaCache\.FilesSideBySide>\s*(true|false)/)?.1 == "true"
     let override = prefs.firstMatch(of: /<BE\.Prefs\.MediaCache[^>]*>\s*(\/[^<\s]*)/)?.1
@@ -64,7 +64,7 @@ func cacheTargets(_ cfg: Config, inputs: CacheTargetsInputs = CacheTargetsInputs
     targets.append(CacheTarget(id: "premiere-peaks", label: "Premiere peak files", path: adobe + "/Peak Files"))
     targets.append(CacheTarget(id: "premiere-analyzer", label: "Premiere analyzer cache", path: adobe + "/Analyzer Cache Files"))
 
-    // Lightroom — previews sit beside each catalog; mdfind discovers the catalogs
+    // Lightroom: previews sit beside each catalog; mdfind discovers the catalogs
     var seen = Set<String>()
     var defaultCovered = false
     let lrHome = home + "/Pictures/Lightroom"
@@ -83,7 +83,7 @@ func cacheTargets(_ cfg: Config, inputs: CacheTargetsInputs = CacheTargetsInputs
         targets.append(CacheTarget(id: "lr-default", label: "Lightroom Classic (default catalog)", path: lrHome))
     }
 
-    // generic caches — safety labels mirror Purge's Safe to Clean / Check First
+    // generic caches: safety labels mirror Purge's Safe to Clean / Check First
     let generic: [(String, String, String, String)] = [
         ("gen-xcode", "Xcode cache", home + "/Library/Caches/com.apple.dt.Xcode", "safe"),
         ("gen-deriveddata", "Xcode DerivedData", home + "/Library/Developer/Xcode/DerivedData", "safe"),

@@ -1,4 +1,4 @@
-// Check/SamplerCheck.swift — ports of v1 test/sampler.test.js. Everything through
+// Check/SamplerCheck.swift: ports of v1 test/sampler.test.js. Everything through
 // injected deps; checks never touch real binaries.
 import Foundation
 
@@ -29,7 +29,7 @@ final class FakeDeps: SamplerDeps, @unchecked Sendable {
     /// Sampler.tick() calls execFile and spawn from concurrent tasks, and appending to a plain
     /// Array from two threads corrupts its refcounts. That segfaulted a check run
     /// (EXC_BAD_ACCESS in _swift_release_dealloc under Array.append). Rare enough to look like
-    /// a fluke, which is the dangerous kind — the whole suite is the gate on every change here.
+    /// a fluke, which is the dangerous kind: the whole suite is the gate on every change here.
     private let lock = NSLock()
     private var _calls: [[String]] = []
     private var _streams: [FakeStream] = []
@@ -246,7 +246,7 @@ enum SamplerCheck {
             duStream.emit(SamplerFixtures.DU_APPEAR)    // ...and announces itself again
             await s.tick()
             // lastVolumes is seeded at construction, so a drive already plugged in produces
-            // no mount event at all — correct, and the re-announce must not invent one.
+            // no mount event at all: correct, and the re-announce must not invent one.
             c.eq("stream: re-announce invents no mount",
                  db.prepare("SELECT COUNT(*) n FROM events WHERE kind = 'mount' AND key = 'T7'").get()?["n"]?.intVal, 0)
             c.eq("stream: re-announce is recorded separately",
@@ -326,7 +326,7 @@ enum SamplerCheck {
             let s = Sampler(db: db, cfg: Config.defaults, deps: makeDeps(now: { t.value }))
             await s.tick()
             c.eq("sleep: no gap on normal tick", db.prepare("SELECT COUNT(*) n FROM events WHERE kind = 'sleep_gap'").get()?["n"]?.intVal, 0)
-            t.value += 3 * 30_000   // 90 s at tickSec 30 — the machine slept
+            t.value += 3 * 30_000   // 90 s at tickSec 30: the machine slept
             await s.tick()
             let gaps = db.prepare("SELECT * FROM events WHERE kind = 'sleep_gap'").all()
             c.check("sleep: one gap event", gaps.count == 1)
@@ -340,7 +340,7 @@ enum SamplerCheck {
             let t = MutBox<Int64>(SamplerFixtures.NOW)
             let s = Sampler(db: db, cfg: Config.defaults, deps: makeDeps(now: { t.value }))
             await s.tick()
-            t.value += 60_000   // 2 ticks — slow tick, not sleep
+            t.value += 60_000   // 2 ticks: slow tick, not sleep
             await s.tick()
             c.eq("sleep: short gap → none", db.prepare("SELECT COUNT(*) n FROM events WHERE kind = 'sleep_gap'").get()?["n"]?.intVal, 0)
             s.stop()
@@ -374,7 +374,7 @@ enum SamplerCheck {
             duStream.emit(SamplerFixtures.DU_APPEAR)   // probe #1 fails → no event, correctly
             await s.tick()
             c.eq("probe: failed first probe → no mount", db.prepare("SELECT COUNT(*) n FROM events WHERE kind = 'mount'").get()?["n"]?.intVal, 0)
-            duStream.emit(SamplerFixtures.DU_APPEAR)   // the same drive reappears — re-probed, not blind forever
+            duStream.emit(SamplerFixtures.DU_APPEAR)   // the same drive reappears: re-probed, not blind forever
             await s.tick()
             c.eq("probe: reappearing drive re-probed and seen", db.prepare("SELECT COUNT(*) n FROM events WHERE kind = 'mount'").get()?["n"]?.intVal, 1)
             s.stop()
@@ -382,7 +382,7 @@ enum SamplerCheck {
     }
 }
 
-/// First diskutil probe throws (a flaky drive), later probes succeed — the
+/// First diskutil probe throws (a flaky drive), later probes succeed, the
 /// nine-behaviors rule: a failed probe must never be cached.
 final class ThrowingProbeDeps: SamplerDeps, @unchecked Sendable {
     var probeCount = 0

@@ -1,4 +1,4 @@
-// Core/Rules.swift — pure functions: history rows → Finding[]. Card copy is v1's verbatim.
+// Core/Rules.swift: pure functions, history rows → Finding[]. Card copy is v1's verbatim.
 // Finding = {id, kind, severity:'info'|'amber'|'red', headline, why, detail,
 //            linkKind:'reveal'|'open_purge'|'open_activity_monitor'|null, linkTarget}
 import Foundation
@@ -72,7 +72,7 @@ enum Rules {
     private static let humanizeTokens: [String: String] = [
         "vscode": "VS Code", "npm": "npm", "ios": "iOS", "macos": "macOS",
     ]
-    /// Reverse-DNS vendor components a bundle id leads with — never part of the app's name.
+    /// Reverse-DNS vendor components a bundle id leads with, never part of the app's name.
     private static let humanizeVendorPrefixes: Set<String> =
         ["com", "org", "io", "net", "co", "dev", "app", "me", "us"]
 
@@ -118,13 +118,13 @@ enum Rules {
         return "\(Int(ageDays.rounded())) days"
     }
 
-    /// "1 week" / "3 weeks" — every place a count sits next to a noun goes through this
+    /// "1 week" / "3 weeks": every place a count sits next to a noun goes through this
     /// instead of repeating `n == 1 ? "" : "s"` (or, worse, forgetting the check).
     static func plural(_ n: Int, _ singular: String, _ plural: String? = nil) -> String {
         "\(n) \(n == 1 ? singular : (plural ?? singular + "s"))"
     }
 
-    // flag only — never move. entries = [{path, folder, sizeMb, mtime}] from the depth-2 walk
+    // flag only; never move. entries = [{path, folder, sizeMb, mtime}] from the depth-2 walk
     static func drift(_ entries: [DriftEntry], _ cfg: Config, _ now: Int64) -> [EngineFinding] {
         var byFolder: [String: [DriftEntry]] = [:]
         for e in entries {
@@ -143,10 +143,10 @@ enum Rules {
                 why: sorted.prefix(cfg.drift.maxItems)
                     .map { i in
                         let base = i.path.split(separator: "/").last.map(String.init) ?? i.path
-                        return "\(base) — \(mbText(i.sizeMb)), untouched \(plural(Int((i.ageDays! / 30).rounded()), "month"))"
+                        return "\(base): \(mbText(i.sizeMb)), untouched \(plural(Int((i.ageDays! / 30).rounded()), "month"))"
                     }
                     .joined(separator: " · "),
-                detail: "Flagging only — moving or deleting is yours to decide.",
+                detail: "Flagging only. Moving or deleting is yours to decide.",
                 linkKind: "reveal", linkTarget: folder))
         }
         return out
@@ -162,7 +162,7 @@ enum Rules {
 
     /// The single size formatter. `size_mb` columns are MiB; this converts to bytes and
     /// formats decimally (thousands, not 1024s) so a figure here agrees with `Fmt.bytes`
-    /// (Model/ViewModels.swift) to the decimal place — e.g. a 50164 MiB cache reads "52.6 GB"
+    /// (Model/ViewModels.swift) to the decimal place, e.g. a 50164 MiB cache reads "52.6 GB"
     /// in both places, not "49.0 GB" here and "52.6 GB" there. Kept in the engine, not shared
     /// with the UI layer, since Rules.swift must not depend on presentation code.
     private static let sizeLocale = Locale(identifier: "en_US")
@@ -180,7 +180,7 @@ enum Rules {
     /// A login item or LaunchAgent that appears to do nothing.
     ///
     /// v1 compared LaunchAgent *labels* ("com.chris.performac") against process *names*
-    /// ("node"). Those never match, so every agent was flagged — including Performac's own
+    /// ("node"). Those never match, so every agent was flagged, including Performac's own
     /// backend, which was running at the time. 19 of 24 findings were false. Three fixes:
     ///  1. An agent launchd currently has running is in use. Ground truth beats inference.
     ///  2. Otherwise match the agent's resolved program ("node"), never its label.
@@ -189,7 +189,7 @@ enum Rules {
         var label: String
         var program: String?      // basename of ProgramArguments[0] / Program, nil if unreadable
         /// The plist's actual file path, not a guess at `~/Library/LaunchAgents/<label>.plist`
-        /// — a plist's filename is not guaranteed to match its own Label key. nil for agents
+        /// a plist's filename is not guaranteed to match its own Label key. nil for agents
         /// read from an older, pathless setting; a card about one then offers no action.
         var plistPath: String?
         init(label: String, program: String? = nil, plistPath: String? = nil) {
@@ -197,7 +197,7 @@ enum Rules {
         }
     }
 
-    /// The Trash holds space until it is emptied — and this app puts things there. Without
+    /// The Trash holds space until it is emptied, and this app puts things there. Without
     /// this card you clean 18 GB, watch free space not move, and conclude the app is broken.
     ///
     /// Performac deliberately does NOT offer to empty it. The Trash is the undo for every
@@ -209,7 +209,7 @@ enum Rules {
             id: "trash-holding", kind: "trash", severity: "info",
             headline: "Your Trash is holding \(mbText(Double(bytes) / 1_048_576))",
             why: "Space in the Trash is still used. Emptying it is the only step that actually gives it back.",
-            detail: "\(plural(items, "item")). Performac never empties the Trash — it is the undo for everything this app removes, so that stays your call.",
+            detail: "\(plural(items, "item")). Performac never empties the Trash: it is the undo for everything this app removes, so that stays your call.",
             linkKind: "reveal", linkTarget: NSHomeDirectory() + "/.Trash")]
     }
 
@@ -227,7 +227,7 @@ enum Rules {
         return [EngineFinding(
             id: "single-copy", kind: "copies", severity: "amber",
             headline: "\(plural(alone.count, "folder")) exist in only one place (\(mbText(Double(total) / 1_048_576)))",
-            why: "\(named)\(more) — no copy of these was found on any other drive Performac can see.",
+            why: "\(named)\(more): no copy of these was found on any other drive Performac can see.",
             detail: "This is not a backup check: it only sees drives that are connected. A folder listed here has nothing standing between it and a drive failure.",
             linkKind: nil, linkTarget: nil)]
     }
@@ -250,13 +250,13 @@ enum Rules {
             EngineFinding(
                 id: "login-\(slug(label))", kind: "login", severity: "info",
                 headline: "\(label) launches at login but hasn't run in \(plural(Int(historyDays), "day")) of samples",
-                why: "It is not running now and its program has not appeared in any sample — it may be doing nothing.",
+                why: "It is not running now and its program has not appeared in any sample: it may be doing nothing.",
                 detail: detail,
                 linkKind: linkKind, linkTarget: linkTarget)
         }
 
-        // Login Items has no public removal API — Accessibility would be needed to script
-        // System Events — so the only honest remedy is a deep link to the settings pane.
+        // Login Items has no public removal API. Accessibility would be needed to script
+        // System Events, so the only honest remedy is a deep link to the settings pane.
         for item in items where !seen(item) {
             out.append(make(item,
                 "Short-lived helpers can slip between 30-second ticks.",
@@ -267,14 +267,14 @@ enum Rules {
             if let prog = agent.program, seen(prog) { continue }  // its program has been sampled
             if agent.program == nil, seen(agent.label) { continue }
             // A LaunchAgent's plist is the user's own file, so unloading it and trashing the
-            // plist is a real, reversible fix — offered only when its real path is known.
+            // plist is a real, reversible fix, offered only when its real path is known.
             if let path = agent.plistPath, !path.isEmpty {
                 out.append(make(agent.label,
-                    "Short-lived helpers can slip between 30-second ticks. Disabling it unloads it and moves its plist to the Trash — recoverable from there, and it stops relaunching at login.",
+                    "Short-lived helpers can slip between 30-second ticks. Disabling it unloads it and moves its plist to the Trash, recoverable from there, and it stops relaunching at login.",
                     linkKind: "disable_agent", linkTarget: path))
             } else {
                 out.append(make(agent.label,
-                    "Short-lived helpers can slip between 30-second ticks — review it in ~/Library/LaunchAgents.",
+                    "Short-lived helpers can slip between 30-second ticks. Review it in ~/Library/LaunchAgents.",
                     linkKind: nil, linkTarget: nil))
             }
         }
@@ -321,12 +321,12 @@ enum Rules {
             id: "browser-bloat", kind: "browser", severity: "info",
             headline: "Your browsers are holding \(String(format: "%.1f", peakGb)) GB of RAM (mostly \(top))",
             why: "Total browser memory stayed above \(b.rssGb) GB for at least \(plural(b.minMinutes, "minute")).",
-            detail: "A tab audit usually beats quitting browsers — heavy tabs are the real users. macOS reclaims what it needs under pressure.",
+            detail: "A tab audit usually beats quitting browsers: heavy tabs are the real users. macOS reclaims what it needs under pressure.",
             linkKind: nil, linkTarget: nil)]
     }
 
     // per-volume least-squares fit over fitDays; weeks-left math from the slope.
-    // Requires ≥ 4 days of history — a shorter fit is noise, not a trend.
+    // Requires ≥ 4 days of history: a shorter fit is noise, not a trend.
     static func storageTrend(_ diskSamples: [DiskSample], _ cfg: Config, _ now: Int64) -> [EngineFinding] {
         let since = now - Int64(cfg.storage.fitDays) * DAY
         var byVol: [String: [DiskSample]] = [:]
@@ -356,7 +356,7 @@ enum Rules {
             let severity = weeksLeft < Double(cfg.storage.redWeeksLeft) ? "red" : "amber"
             out.append(EngineFinding(
                 id: "storage-\(slug(vol))", kind: "storage", severity: severity,
-                headline: "\(vol) is losing ~\(Int((-gbPerWeek).rounded())) GB a week — full in about \(plural(Int(weeksLeft.rounded()), "week")) at this rate",
+                headline: "\(vol) is losing ~\(Int((-gbPerWeek).rounded())) GB a week: full in about \(plural(Int(weeksLeft.rounded()), "week")) at this rate",
                 why: "Free space fell from \(String(format: "%.0f", sorted[0].freeGb)) GB to \(String(format: "%.0f", currentFree)) GB over the last \(Int(Double(now - sorted[0].ts) / Double(DAY))) days, with \(String(format: "%.0f", currentFree)) GB free now.",
                 detail: "", linkKind: nil, linkTarget: nil))
         }
@@ -390,7 +390,7 @@ enum Rules {
                     out.append(EngineFinding(
                         id: "hog-\(slug(name))", kind: "hog", severity: "amber",
                         headline: "\(name) has averaged \(Int((openSum / Double(openCount)).rounded()))% CPU for \(plural(Int(Double(durMs) / 60_000), "minute"))",
-                        why: "That's sustained load, not a momentary spike — if you're not using it, quit it from Activity Monitor.",
+                        why: "That's sustained load, not a momentary spike. If you're not using it, quit it from Activity Monitor.",
                         detail: "", linkKind: "open_activity_monitor", linkTarget: nil))
                 }
                 openStart = nil; openEnd = nil; openSum = 0; openCount = 0
@@ -412,7 +412,7 @@ enum Rules {
     }
 
     /// Contiguous runs of samples above the CPU threshold, merging gaps under 2 minutes.
-    /// The one place that decides where an export starts and ends — `isExportWindow` and
+    /// The one place that decides where an export starts and ends: `isExportWindow` and
     /// `thermalDuringExport` both go through this rather than each taking a first/last
     /// timestamp across a process's *entire* retained history, which is what turned "Premiere
     /// spiked twice, four days apart" into a reported 5834-minute export.
@@ -450,7 +450,7 @@ enum Rules {
         let fronts = frontEvents.filter { $0.kind == "front_app" }
         // Positive test, not a denylist: surface only a process whose exact name has appeared
         // as a front_app in recorded history. A real app has been in front at some point; a
-        // system service (com.apple.*, plugin-container, * Helper) never has — and a denylist
+        // system service (com.apple.*, plugin-container, * Helper) never has, and a denylist
         // keeps leaking new ones. Trade-off: cards stay quiet until front history accumulates
         // after a fresh install; silent beats wrong.
         let everFront = Set(fronts.map { $0.key })
@@ -465,7 +465,7 @@ enum Rules {
             out.append(EngineFinding(
                 id: "idle-\(slug(name))", kind: "idle", severity: "info",
                 headline: "\(display) is holding \(String(format: "%.1f", Double(s.rssMb) / 1024)) GB of RAM and hasn't been in front since \(sinceText(last.ts, now))",
-                why: "macOS reclaims memory from background apps under pressure on its own — free RAM for its own sake does nothing.",
+                why: "macOS reclaims memory from background apps under pressure on its own. Free RAM for its own sake does nothing.",
                 detail: "Worth quitting only if things actually feel slow.",
                 linkKind: nil, linkTarget: nil))
         }
@@ -484,7 +484,7 @@ enum Rules {
         return "\(cal.component(.month, from: d))/\(cal.component(.day, from: d)) \(hm)"
     }
 
-    // groups = [{hash, sizeMb, paths:[...]}] — deliberately exact-only, no fuzzy matching
+    // groups = [{hash, sizeMb, paths:[...]}], deliberately exact-only, no fuzzy matching
     struct DupGroup: Sendable {
         var hash: String
         var sizeMb: Int64
@@ -526,14 +526,14 @@ enum Rules {
     static func backupStaleness(_ tmState: TmState, _ watchStats: [WatchStat], _ cfg: Config, _ now: Int64) -> [EngineFinding] {
         var out: [EngineFinding] = []
         // Time Machine reporting is opt-out per machine (backup.checkTimeMachine). With no
-        // destination and none planned, the red card is noise rather than news — the watched
+        // destination and none planned, the red card is noise rather than news. The watched
         // paths below are the honest signal instead, and are unaffected by this flag.
         let tmOn = cfg.backup.checkTimeMachine
         if tmOn && !tmState.configured {
             out.append(EngineFinding(
                 id: "backup-no-destination", kind: "backup", severity: "red",
                 headline: "No Time Machine destination is configured on this Mac",
-                why: "Your event and campus footage has no re-shoot option — a Mac that has never been backed up is one drive failure from losing all of it",
+                why: "Your event and campus footage has no re-shoot option. A Mac that has never been backed up is one drive failure from losing all of it",
                 detail: "Set one up in System Settings → General → Time Machine.",
                 linkKind: nil, linkTarget: nil))
         } else if tmOn, let iso = tmState.backupISO {
@@ -544,7 +544,7 @@ enum Rules {
                 out.append(EngineFinding(
                     id: "backup-stale", kind: "backup", severity: "red",
                     headline: "Your last Time Machine backup is \(plural(Int(ageDays.rounded()), "day")) old",
-                    why: "The newest backup on \(dest) is from \(iso.prefix(10)) — everything shot since then has no copy anywhere.",
+                    why: "The newest backup on \(dest) is from \(iso.prefix(10)): everything shot since then has no copy anywhere.",
                     detail: "", linkKind: nil, linkTarget: nil))
             }
         } else if tmOn {
@@ -552,7 +552,7 @@ enum Rules {
                 id: "backup-unreadable", kind: "backup", severity: "info",
                 headline: "A Time Machine destination exists, but its backup history is unreadable",
                 why: "Performac can see \(tmState.names.first ?? "the destination") but could not read the latest backup timestamp.",
-                detail: "If this persists with the drive attached, tmutil latestbackup may need Full Disk Access — which Performac deliberately does not request. Check manually: run 'tmutil latestbackup' in Terminal.",
+                detail: "If this persists with the drive attached, tmutil latestbackup may need Full Disk Access, which Performac deliberately does not request. Check manually: run 'tmutil latestbackup' in Terminal.",
                 linkKind: nil, linkTarget: nil))
         }
         for w in watchStats {
@@ -571,7 +571,7 @@ enum Rules {
     }
 
     // a "cycle" = unmount followed by reappearance (mount) within 30 min; user ejects don't count.
-    // sleep_gap events (ts = wake tick, detail = pre-sleep tick ms) mark machine sleep — a pair
+    // sleep_gap events (ts = wake tick, detail = pre-sleep tick ms) mark machine sleep: a pair
     // whose window overlaps a gap is the Mac napping, not a failing cable. Awake pairs still fire.
     static func driveInstability(_ events: [EventRow], _ cfg: Config, _ now: Int64) -> [EngineFinding] {
         var gaps: [(start: Int64, end: Int64)] = []
@@ -590,7 +590,7 @@ enum Rules {
             // Two shapes count as a cycle. The ordinary one is unmount -> mount within 30 min.
             // The other is a mount for a volume already believed mounted: it must have gone away
             // and come back with the disconnect too brief for the stream to report at all. That
-            // is the more dangerous shape — fast enough to corrupt a write in progress — so a
+            // is the more dangerous shape, fast enough to corrupt a write in progress, so a
             // missing unmount must not make it invisible. A volume's first mount is not a cycle
             // (boot noise), and neither is one reappearing across a sleep/wake gap.
             var cycles: [Int64] = []
@@ -621,13 +621,13 @@ enum Rules {
                 out.append(EngineFinding(
                     id: "drive-\(slug(vol))", kind: "drive", severity: "red",
                     headline: "\(vol) disconnected and reconnected \(in24) times in the last 24 hours",
-                    why: "A loose cable, failing port, or failing drive shows up as surprise unmount cycles — check the connection before your next shoot",
+                    why: "A loose cable, failing port, or failing drive shows up as surprise unmount cycles. Check the connection before your next shoot",
                     detail: "", linkKind: nil, linkTarget: nil))
             } else if in7 > cfg.drive.cycles7d {
                 out.append(EngineFinding(
                     id: "drive-\(slug(vol))", kind: "drive", severity: "amber",
                     headline: "\(vol) disconnected and reconnected \(in7) times in the last 7 days",
-                    why: "Repeated disconnects spread over the week point at a loose cable or a failing port — keep an eye on it before your next shoot.",
+                    why: "Repeated disconnects spread over the week point at a loose cable or a failing port. Keep an eye on it before your next shoot.",
                     detail: "", linkKind: nil, linkTarget: nil))
             }
         }
@@ -644,7 +644,7 @@ enum Rules {
     /// readable unprivileged, so it now works from actual temperature.
     ///
     /// An export is expected to be hot. What is worth telling someone is how hot, for how
-    /// long — a number they can compare between exports and act on (a stand, a cleaned fan
+    /// long, a number they can compare between exports and act on (a stand, a cleaned fan
     /// intake, a shorter timeline).
     static func thermalDuringExport(_ procSamples: [ProcSample], _ temps: [TempSample],
                                     _ cfg: Config, _ now: Int64, _ power: EventRow?) -> [EngineFinding] {
@@ -664,7 +664,7 @@ enum Rules {
             let qualifying = exportWindows(samples, cfg)
                 .filter { $0.end - $0.start >= Int64(cfg.export.minMinutes * 60_000) }
             // one card per app: the export that actually happened, not a splice of every
-            // qualifying burst in retained history — so the most recent one.
+            // qualifying burst in retained history, so the most recent one.
             guard let window = qualifying.max(by: { $0.start < $1.start }) else { continue }
             let first = window.start, last = window.end
             let minutes = Double(last - first) / 60_000
@@ -681,7 +681,7 @@ enum Rules {
                     id: "thermal-\(slug(app))", kind: "thermal",
                     severity: hotMinutes >= 20 ? "amber" : "info",
                     headline: "\(app) ran at \(Int(peak.rounded()))°C during a \(Int(minutes))-minute export",
-                    why: "It held above \(Int(cfg.thermal.hotC))°C for \(Int(hotMinutes)) of those minutes, which is where this Mac starts throttling — the export takes longer than the work requires.",
+                    why: "It held above \(Int(cfg.thermal.hotC))°C for \(Int(hotMinutes)) of those minutes, which is where this Mac starts throttling: the export takes longer than the work requires.",
                     detail: onBattery
                         ? "This ran on battery, where macOS limits performance by design. On mains it would run cooler and finish sooner."
                         : "Worth checking the vents are clear and the machine is not sitting on something soft.",
@@ -726,23 +726,23 @@ enum Rules {
                     ? "\(m.app)'s \(media) is \(sizeText) and in active use"
                     : "\(m.app)'s \(media) is \(sizeText)"
                 why = fresh
-                    ? "Last written \(ageTextAgo(ageDays)); in active use — leave it."
-                    : "Last written \(ageTextAgo(ageDays)) and still under your \(cfg.cacheRules.staleDays)-day staleness line — leave it."
+                    ? "Last written \(ageTextAgo(ageDays)); in active use: leave it."
+                    : "Last written \(ageTextAgo(ageDays)) and still under your \(cfg.cacheRules.staleDays)-day staleness line: leave it."
             } else {
                 severity = sizeGb >= cfg.cacheRules.redGb ? "red" : "amber"
                 headline = "\(m.app)'s \(media) is \(sizeText) and hasn't been written to in \(plural(Int(ageDays!.rounded()), "day"))"
                 let weekAgo = sorted.filter { $0.ts <= now - 7 * DAY }.last
                 if let weekAgo, latest.sizeMb > weekAgo.sizeMb {
                     let grew = mbText(Double(latest.sizeMb - weekAgo.sizeMb))
-                    why = "It grew \(grew) in the last 7 days and hasn't been touched in \(plural(Int(ageDays!.rounded()), "day")) — stale render data your current work no longer needs."
+                    why = "It grew \(grew) in the last 7 days and hasn't been touched in \(plural(Int(ageDays!.rounded()), "day")): stale render data your current work no longer needs."
                 } else {
-                    why = "It hasn't been touched in \(plural(Int(ageDays!.rounded()), "day")) — stale render data your current work no longer needs."
+                    why = "It hasn't been touched in \(plural(Int(ageDays!.rounded()), "day")): stale render data your current work no longer needs."
                 }
             }
             out.append(EngineFinding(
                 id: "cache-\(id)", kind: "cache", severity: severity,
                 headline: headline, why: why,
-                detail: m.clearing.isEmpty ? "" : "Safest route: clear it from inside the app — \(m.clearing)",
+                detail: m.clearing.isEmpty ? "" : "Safest route: clear it from inside the app. \(m.clearing)",
                 linkKind: m.safety == "safe" ? "open_purge" : "reveal",
                 linkTarget: latest.path))
         }

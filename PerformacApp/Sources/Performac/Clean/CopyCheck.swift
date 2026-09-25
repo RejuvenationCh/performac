@@ -1,4 +1,4 @@
-// CopyCheck.swift — which folders exist in exactly one place.
+// CopyCheck.swift: which folders exist in exactly one place.
 //
 // The user has ~331 GB of irreplaceable footage and no backup of any kind, and has said
 // twice that a backup drive is not happening. This does not argue with that. It answers a
@@ -29,7 +29,7 @@ enum CopyCheck {
 
     /// Compare the immediate children of `roots` against every other root.
     ///
-    /// Only folders over `minBytes` are considered — a 2 MB folder having no second copy is
+    /// Only folders over `minBytes` are considered: a 2 MB folder having no second copy is
     /// not news, and listing it would bury the folders that matter.
     static func compare(roots: [String], minBytes: Int64, listing: (String) -> [(name: String, bytes: Int64, isDir: Bool)]) -> [CopyStatus] {
         var perRoot: [String: [(name: String, bytes: Int64)]] = [:]

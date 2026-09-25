@@ -1,4 +1,4 @@
-// DiskModes.swift — the four ways the Disk view can draw the current folder.
+// DiskModes.swift: the four ways the Disk view can draw the current folder.
 // Outline is the default: the only one that shows depth without losing your place.
 import SwiftUI
 import AppKit
@@ -73,7 +73,7 @@ struct OutlineList: View {
     }
 }
 
-/// A plain row. No recursion, no per-row state, no child loading — the list above owns all
+/// A plain row. No recursion, no per-row state, no child loading: the list above owns all
 /// three, so this only draws.
 private struct OutlineRow: View {
     let entry: SizeEntry
@@ -106,7 +106,7 @@ private struct OutlineRow: View {
             if hover { IconButtonAction("magnifyingglass", help: "Reveal in Finder") { onReveal(path) } }
             Text(entry.mtime > 0
                  ? Ago.text(Date(timeIntervalSince1970: Double(entry.mtime) / 1000))
-                 : "—")
+                 : "-")
                 .font(.pcNum).foregroundStyle(PC.meta)
                 .frame(width: 84, alignment: .trailing).lineLimit(1)
             Text(entry.items > 0 ? Fmt.count(entry.items) : "")
@@ -257,7 +257,7 @@ private struct Bubble: View {
             Circle()
                 .fill(entry.kind.color.opacity(hover ? 0.42 : 0.26))
                 .overlay(Circle().stroke(entry.kind.color.opacity(0.85), lineWidth: hover ? 2 : 1))
-            // Label anything that can hold text. Only genuinely tiny circles stay bare —
+            // Label anything that can hold text. Only genuinely tiny circles stay bare:
             // a clipped half-word is worse than none.
             // Text has to fit the square inscribed in the circle (side = r * √2), not the
             // circle's width. Sizes are proportional with NO floor: a floor is what made
@@ -284,7 +284,7 @@ private struct Bubble: View {
             }
         }
         .frame(width: radius * 2, height: radius * 2)
-        .help("\(entry.display) — \(Fmt.bytes(entry.bytes))")
+        .help("\(entry.display): \(Fmt.bytes(entry.bytes))")
         .onHover { hover = $0 }
     }
 }
