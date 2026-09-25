@@ -131,19 +131,31 @@ extension FileKind {
     }
 }
 
+// Liquid Glass is macOS 26 only, and requiring 26 for it put the whole app out of reach of
+// almost everyone: the build failed on an older Mac before it could produce an .app at all.
+// These were the only three 26-only calls in the codebase, so guarding them drops the floor
+// to macOS 14 and costs nothing on 26, where the glass still renders.
+//
+// The fallbacks are not placeholders. Below 26 these surfaces become opaque, which is exactly
+// what the rest of the app already does for anything that is not floating above content.
 extension View {
-    /// Chrome that floats over content: rails, headers, footers, bars.
+    /// Chrome at the window edge: the rail.
+    @ViewBuilder
     func pcGlassChrome() -> some View {
-        self.glassEffect(.regular, in: .rect(cornerRadius: 0))
+        if #available(macOS 26, *) {
+            self.glassEffect(.regular, in: .rect(cornerRadius: 0))
+        } else {
+            self.background(PC.surface)
+        }
     }
 
-    /// A floating panel with its own shape: popovers, sheets, detached controls.
+    /// A panel that genuinely floats: every sheet.
+    @ViewBuilder
     func pcGlassPanel(_ radius: CGFloat = PC.rXl) -> some View {
-        self.glassEffect(.regular, in: .rect(cornerRadius: radius))
-    }
-
-    /// Controls the user presses. `.interactive()` gives the press its specular response.
-    func pcGlassControl(_ radius: CGFloat = PC.rPill) -> some View {
-        self.glassEffect(.regular.interactive(), in: .rect(cornerRadius: radius))
+        if #available(macOS 26, *) {
+            self.glassEffect(.regular, in: .rect(cornerRadius: radius))
+        } else {
+            self.background(PC.surface, in: RoundedRectangle(cornerRadius: radius))
+        }
     }
 }

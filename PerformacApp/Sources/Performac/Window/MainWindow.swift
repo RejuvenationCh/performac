@@ -91,7 +91,9 @@ struct MainWindow: View {
                     fdaGranted: store.fdaGranted,
                     databaseSummary: store.databaseSummary,
                     ignored: store.ignoredProcesses,
+                    ignorable: store.ignorableProcesses,
                     onUnignore: { store.unignoreProcess($0) },
+                    onIgnore: { store.ignoreProcess($0) },
                     onSave: { key, value in _ = store.saveSetting(key, value) })
                 }
             }

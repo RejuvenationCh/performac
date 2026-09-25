@@ -278,31 +278,57 @@ final class EngineStore: ObservableObject {
     /// Several distinct caches can share one label: every `lr-*` id renders as
     /// "Lightroom Classic" via `LR_META`. Give each same-named group a suffix drawn from its
     /// own path so the rows are no longer indistinguishable.
+    /// Where a cache lives, in the terms a person uses: the drive, or the top folder in home.
+    private static func locationName(_ path: String) -> String {
+        let p = (path as NSString).expandingTildeInPath
+        if p.hasPrefix("/Volumes/") {
+            return p.dropFirst("/Volumes/".count).split(separator: "/").first.map(String.init) ?? "a drive"
+        }
+        let home = NSHomeDirectory()
+        if p.hasPrefix(home + "/") {
+            let rest = p.dropFirst(home.count + 1).split(separator: "/").map(String.init)
+            return rest.first ?? "Home"
+        }
+        return (p as NSString).pathComponents.filter { $0 != "/" }.first ?? p
+    }
+
+    /// Several caches can share a display name: every Lightroom catalog is "Lightroom Classic".
+    /// Three indistinguishable rows is a real problem, but the first attempt at fixing it fell
+    /// back to the cache id, which is a hundred-character slug of the whole path and put the
+    /// user's folder tree in the row title.
+    ///
+    /// The catalog's own folder is the natural label. When two catalogs share even that, which
+    /// happens when one has been copied to another drive, the thing that actually differs is
+    /// where it lives, so that gets added and nothing longer ever does.
     static func disambiguated(_ entries: [CacheEntry]) -> [CacheEntry] {
         var byName: [String: [Int]] = [:]
         for (i, e) in entries.enumerated() { byName[e.name, default: []].append(i) }
-        let generic: Set<String> = ["Cache", "Caches", "Data", "tmp"]
+        let generic: Set<String> = ["Cache", "Caches", "Data", "tmp", "Lr", "Lightroom"]
         var out = entries
+
         for (name, idxs) in byName where idxs.count > 1 {
-            var labels: [Int: String] = [:]
+            // Step one: the containing folder, skipping names that say nothing.
+            var qualifier: [Int: String] = [:]
             for i in idxs {
-                let comps = (out[i].path as NSString).pathComponents.filter { $0 != "/" }
-                var suffix = comps.last ?? out[i].path
-                if generic.contains(suffix), comps.count >= 2 {
-                    suffix = comps.suffix(2).joined(separator: "/")
-                }
-                labels[i] = "\(name) (\(suffix))"
+                let parent = (out[i].path as NSString).deletingLastPathComponent as NSString
+                let comps = parent.pathComponents.filter { $0 != "/" }
+                qualifier[i] = comps.reversed().first { !generic.contains($0) }
+                    ?? comps.last ?? locationName(out[i].path)
             }
-            // entries are already unique by path, but a suffix can still collide (e.g. two
-            // catalogs both ending ".../Cache"): fall back to the cache id for just those
-            var firstSeen: [String: Int] = [:]
-            var collided = Set<Int>()
-            for i in idxs {
-                if let prev = firstSeen[labels[i]!] { collided.insert(prev); collided.insert(i) }
-                else { firstSeen[labels[i]!] = i }
+            // Step two: add the drive or top folder only for the ones still colliding.
+            var counts: [String: Int] = [:]
+            for i in idxs { counts[qualifier[i]!, default: 0] += 1 }
+            for i in idxs where counts[qualifier[i]!]! > 1 {
+                qualifier[i] = "\(qualifier[i]!), \(locationName(out[i].path))"
             }
+            // Step three: if two are genuinely indistinguishable, number them rather than
+            // print anything longer.
+            var seen: [String: Int] = [:]
             for i in idxs {
-                out[i].name = collided.contains(i) ? "\(name) (\(out[i].cacheID))" : labels[i]!
+                let q = qualifier[i]!
+                seen[q, default: 0] += 1
+                let n = seen[q]!
+                out[i].name = n == 1 ? "\(name) (\(q))" : "\(name) (\(q) \(n))"
             }
         }
         return out
@@ -990,6 +1016,20 @@ final class EngineStore: ObservableObject {
         let cfg = loadConfig(readDB)
         let builtin = Set(Config.defaults.hog.ignore)
         return cfg.hog.ignore.filter { !builtin.contains($0) }.sorted()
+    }
+
+    /// Processes actually seen recently, so ignoring one is a choice from a list rather than
+    /// typing a name exactly right. Already-ignored ones are left out: offering to ignore
+    /// something twice is a dead menu item.
+    var ignorableProcesses: [String] {
+        let cutoff = Int64(Date().timeIntervalSince1970 * 1000) - 7 * 86_400_000
+        let already = Set(loadConfig(readDB).hog.ignore)
+        let rows = readDB.prepare("""
+            SELECT name, MAX(cpu) peak FROM proc_samples WHERE ts >= ?
+            GROUP BY name ORDER BY peak DESC LIMIT 40
+            """).all([.int(cutoff)])
+        return rows.compactMap { $0["name"]?.stringVal }
+            .filter { !$0.isEmpty && !already.contains($0) }
     }
 
     func ignoreProcess(_ name: String) {

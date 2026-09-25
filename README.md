@@ -13,26 +13,27 @@ Performac takes something you wanted, Put Back in Finder gets it back.
 
 Zero dependencies. SwiftPM only, no Xcode project, no packages.
 
-## Requirements
-
-- **macOS 26 or later.** The UI uses Liquid Glass and the app is built against the macOS 26 SDK.
-- **Command Line Tools.** If you have never installed them: `xcode-select --install`
-
 ## Install
 
 ```bash
 git clone https://github.com/RejuvenationCh/performac.git
-cd performac/PerformacApp
-./Scripts/make-app.sh
+cd performac
+./install.sh
 ```
 
-That builds the app and installs it to `~/Applications/Performac.app`. Open it from there, or
-drag it to your Dock.
+That is the whole thing. It checks your macOS version and toolchain first and tells you what to
+do if either is missing, then builds and installs to `~/Applications/Performac.app`.
 
-**Why build it yourself rather than download a `.dmg`?** Because macOS only quarantines apps that
-arrive over the network. An app you compiled locally has no quarantine flag, so Gatekeeper does
-not block it and there is no "Performac is damaged" dialog to work around. It also means no one
-has to trust a binary from a stranger.
+**Requirements:** macOS 14 (Sonoma) or later, and Apple's Command Line Tools. If you have never
+installed the tools, `install.sh` will say so and give you the command (`xcode-select --install`).
+
+On macOS 26 and later the rail and sheets use Liquid Glass. Below that they fall back to opaque
+surfaces, which is what the rest of the app already uses.
+
+**Why build it yourself rather than download a disk image?** Because macOS only quarantines apps
+that arrive over the network. An app you compiled locally has no quarantine flag, so Gatekeeper
+does not block it and there is no "damaged app" dialog to work around. It also means no one has
+to trust a binary from a stranger.
 
 ## Full Disk Access
 

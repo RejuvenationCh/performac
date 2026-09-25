@@ -14,7 +14,9 @@ struct SettingsView: View {
     var fdaGranted: Bool = false
     let databaseSummary: String
     var ignored: [String] = []
+    var ignorable: [String] = []
     var onUnignore: (String) -> Void = { _ in }
+    var onIgnore: (String) -> Void = { _ in }
     var onSave: (String, JSONValue) -> Void = { _, _ in }
 
     @State private var appearance = Appearance.current
@@ -35,13 +37,17 @@ struct SettingsView: View {
     init(config: Config = .defaults, fdaGranted: Bool = false,
          databaseSummary: String = "not measured",
          ignored: [String] = [],
+         ignorable: [String] = [],
          onUnignore: @escaping (String) -> Void = { _ in },
+         onIgnore: @escaping (String) -> Void = { _ in },
          onSave: @escaping (String, JSONValue) -> Void = { _, _ in }) {
         self.config = config
         self.fdaGranted = fdaGranted
         self.databaseSummary = databaseSummary
         self.ignored = ignored
+        self.ignorable = ignorable
         self.onUnignore = onUnignore
+        self.onIgnore = onIgnore
         self.onSave = onSave
         _staleDays = State(initialValue: config.cacheRules.staleDays)
         _weeksLeft = State(initialValue: config.storage.warnWeeksLeft)
@@ -111,17 +117,34 @@ struct SettingsView: View {
                     }
 
                     SettingsGroup(header: "Ignored processes") {
-                        if ignored.isEmpty {
-                            Note("Nothing ignored. Use Ignore on a CPU or memory card to stop reporting a process.")
-                        } else {
-                            ForEach(Array(ignored.enumerated()), id: \.element) { i, name in
-                                if i > 0 { Divider().overlay(PC.hairline) }
-                                Row(name) {
-                                    Button("Stop ignoring") { onUnignore(name) }
-                                        .controlSize(.small)
-                                }
+                        ForEach(Array(ignored.enumerated()), id: \.element) { i, name in
+                            if i > 0 { Divider().overlay(PC.hairline) }
+                            Row(name) {
+                                Button("Stop ignoring") { onUnignore(name) }
+                                    .controlSize(.small)
                             }
                         }
+                        if !ignored.isEmpty { Divider().overlay(PC.hairline) }
+                        // A list, not a text field: the name has to match exactly, and typing
+                        // it is the one way to get a rule that silently never fires.
+                        Row("Ignore a process") {
+                            Menu {
+                                if ignorable.isEmpty {
+                                    Text("Nothing sampled in the last week")
+                                } else {
+                                    ForEach(ignorable, id: \.self) { name in
+                                        Button(name) { onIgnore(name) }
+                                    }
+                                }
+                            } label: {
+                                Label("Add", systemImage: "plus")
+                            }
+                            .menuStyle(.borderlessButton).fixedSize()
+                            .help("Processes seen in the last week. Ignoring one stops CPU and memory cards about it.")
+                        }
+                        Note(ignored.isEmpty
+                             ? "Nothing ignored. You can also use Ignore on a CPU or memory card."
+                             : "Ignoring stops CPU and memory cards about that process. Nothing else changes.")
                     }
 
                     SettingsGroup(header: "Scanning") {
