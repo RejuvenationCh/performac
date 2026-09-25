@@ -4,3 +4,14 @@ seed/digest.json
 .DS_Store
 node_modules
 .claude/worktrees/
+
+# Personal working notes and AI handoff docs. Kept on disk, out of the repo:
+# they carry folder names, drive names and working habits that a shared tool
+# has no reason to publish. Untracked with `git rm --cached`, since .gitignore
+# alone does not stop git tracking a file it already knows about.
+plan.md
+plan-v2.md
+deepseek-handoff.md
+deepseek-resume.md
+insights/performac-coach.md
+handoff.sh
