@@ -3,14 +3,35 @@
 // plan-v2 step 5 correction (user's instruction): never open v1's performac.db
 // directly: v1's launchd agent is live and writing to it, and two samplers on one
 // SQLite file means contention and duplicate rows. On first run, the database is
-// copied to ~/Library/Application Support/com.chris.performac.v2/performac.db;
+// copied to ~/Library/Application Support/<BUNDLE_ID>/performac.db;
 // history carries over, the two apps diverge cleanly, and v1 stays untouched as
 // the fallback. The copy uses SQLite's online backup API so WAL content is included
 // and v1's file is only ever opened read-only.
 import SQLite3
 import Foundation
 
-let V2_SUPPORT_DIR = NSHomeDirectory() + "/Library/Application Support/com.chris.performac.v2"
+let BUNDLE_ID = "io.github.rejuvenationch.performac"
+/// Until 0.2.0 the bundle id carried the author's name into every user's Library. Kept only
+/// so migrateLegacyInstall can find what it left behind.
+let LEGACY_BUNDLE_ID = "com.chris.performac.v2"
+let V2_SUPPORT_DIR = NSHomeDirectory() + "/Library/Application Support/" + BUNDLE_ID
+
+/// Carry an install from the old bundle id across to the new one: the support folder (the
+/// database, so history survives) is moved, not copied, and old preferences are copied where
+/// the new domain has none. Nothing of the old install is deleted. Runs before anything
+/// opens the database. Full Disk Access and the login item are tied to the id and cannot be
+/// carried: macOS asks for those again.
+func migrateLegacyInstall() {
+    let fm = FileManager.default
+    let legacy = NSHomeDirectory() + "/Library/Application Support/" + LEGACY_BUNDLE_ID
+    if !fm.fileExists(atPath: V2_SUPPORT_DIR), fm.fileExists(atPath: legacy) {
+        try? fm.moveItem(atPath: legacy, toPath: V2_SUPPORT_DIR)
+    }
+    let d = UserDefaults.standard
+    for (k, v) in d.persistentDomain(forName: LEGACY_BUNDLE_ID) ?? [:] where d.object(forKey: k) == nil {
+        d.set(v, forKey: k)
+    }
+}
 
 func v2DatabasePath() -> String {
     V2_SUPPORT_DIR + "/performac.db"

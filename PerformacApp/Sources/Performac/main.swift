@@ -26,7 +26,7 @@ if CommandLine.arguments.count >= 4, CommandLine.arguments[1] == "parity" {
     exit(await ParityCLI.run(dbPath: CommandLine.arguments[2], now: Int64(CommandLine.arguments[3]) ?? 0))
 }
 if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "rowsbench" {
-    let db = DB(path: NSHomeDirectory() + "/Library/Application Support/com.chris.performac.v2/performac.db")
+    let db = DB(path: v2DatabasePath())
     func children(_ path: String) -> Int {
         db.prepare("SELECT name, items, bytes, is_dir FROM scan_entries WHERE parent = ? ORDER BY bytes DESC")
             .all([.text(path)]).count
@@ -44,7 +44,7 @@ if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "rowsbench" {
     exit(0)
 }
 if CommandLine.arguments.count >= 2, CommandLine.arguments[1] == "contend" {
-    let path = NSHomeDirectory() + "/Library/Application Support/com.chris.performac.v2/performac.db"
+    let path = v2DatabasePath()
     let writer = DB(path: path)
     let home = NSHomeDirectory()
     // a background writer doing what a tick does
@@ -97,6 +97,8 @@ if CommandLine.arguments.count > 1 {
     }
 }
 
+// Before AppDelegate: creating it creates EngineStore, which opens the database.
+migrateLegacyInstall()
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate

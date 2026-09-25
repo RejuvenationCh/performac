@@ -8,6 +8,8 @@ cd "$(dirname "$0")/.."
 # UNIVERSAL=1 builds Intel and Apple Silicon into one binary (needs Xcode, not just the
 # Command Line Tools). Release builds use it; a local build does not need to.
 ARCH_FLAGS=""
+# The multi-arch build warns "x86_64 is deprecated for your deployment target (macOS 27)":
+# Xcode's own default, not the binary's. vtool -show-build shows minos 14.0 for both slices.
 [ "${UNIVERSAL:-0}" = 1 ] && ARCH_FLAGS="--arch arm64 --arch x86_64"
 swift build -c release $ARCH_FLAGS
 BIN="$(swift build -c release $ARCH_FLAGS --show-bin-path)/Performac"
@@ -23,6 +25,8 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 cp "$BIN" "$APP/Contents/MacOS/Performac"
+# Drawn by Scripts/make-icon.swift; committed so a build needs no rendering step.
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -30,13 +34,15 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <plist version="1.0">
 <dict>
 	<key>CFBundleIdentifier</key>
-	<string>com.chris.performac.v2</string>
+	<string>io.github.rejuvenationch.performac</string>
 	<key>CFBundleName</key>
 	<string>Performac</string>
 	<key>CFBundleDisplayName</key>
 	<string>Performac</string>
 	<key>CFBundleExecutable</key>
 	<string>Performac</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

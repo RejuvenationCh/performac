@@ -20,6 +20,7 @@ protocol StreamChild: AnyObject, Sendable {
 
 protocol SamplerDeps: Sendable {
     func execFile(_ bin: String, _ args: [String]) async throws -> String
+    func notify(_ title: String, _ subtitle: String?, _ body: String) async throws
     func spawn(_ bin: String, _ args: [String]) -> StreamChild
     func statfs(_ path: String) async throws -> StatFs
     func listVolumes() -> [String]
@@ -32,9 +33,9 @@ nonisolated(unsafe) var lastTickAt: Int64?
 nonisolated(unsafe) var lastFindingsAt: Int64?
 
 // run all rules, upsert findings by id, delete ids no longer produced, notify.
-// exec is the injected execFile ({stdout} contract) used by maybeNotify.
+// post is the injected notification poster used by maybeNotify; nil posts nothing.
 func refreshFindings(_ db: DB, _ cfg: Config, _ now: Int64,
-                     _ exec: (@Sendable (String, [String]) async throws -> String)?) async {
+                     _ post: Poster?) async {
     let powerEvents = rowsToEvents(db.prepare("SELECT * FROM events WHERE kind = 'power' ORDER BY ts").all())
     let lastPower = powerEvents.last
 
@@ -167,9 +168,9 @@ func refreshFindings(_ db: DB, _ cfg: Config, _ now: Int64,
     } else {
         db.prepare("DELETE FROM findings").run()
     }
-    if let exec {
+    if let post {
         for f in findings {
-            _ = await maybeNotify(db, f, cfg, now, exec)
+            _ = await maybeNotify(db, f, cfg, now, post)
         }
     }
     lastFindingsAt = now
@@ -376,7 +377,7 @@ final class Sampler: @unchecked Sendable {
             db.prepare("INSERT INTO temp_samples(ts, celsius) VALUES(?,?)").run([.int(t), .real(c)])
         }
         lastTickAt = t
-        await refreshFindings(db, loadConfig(db), t, { @Sendable [deps] bin, args in try await deps.execFile(bin, args) })
+        await refreshFindings(db, loadConfig(db), t, { @Sendable [deps] t, s, b in try await deps.notify(t, s, b) })
     }
 
     func diskTick() async {
@@ -396,7 +397,7 @@ final class Sampler: @unchecked Sendable {
                                 .real(Double(st.blocks * st.bsize) / GB)])
             }
         }
-        await refreshFindings(db, loadConfig(db), t, { @Sendable [deps] bin, args in try await deps.execFile(bin, args) })
+        await refreshFindings(db, loadConfig(db), t, { @Sendable [deps] t, s, b in try await deps.notify(t, s, b) })
     }
 
     // MARK: streams
@@ -517,7 +518,7 @@ func cacheTick(_ db: DB, _ cfg: Config, _ deps: any SamplerDeps) async {
         ins.run([.int(t), .text(tg.id), .text(tg.path), .int(Int64(m.sizeMb.rounded())),
                  m.newestMtime.map { .int($0) } ?? .null, .int(Int64(m.fileCount))])
     }
-    await refreshFindings(db, loadConfig(db), t, { bin, args in try await deps.execFile(bin, args) })
+    await refreshFindings(db, loadConfig(db), t, { t, s, b in try await deps.notify(t, s, b) })
 }
 
 func readPremierePrefs(_ home: String) -> String {
@@ -536,7 +537,6 @@ func readPremierePrefs(_ home: String) -> String {
 
 func driftTick(_ db: DB, _ cfg: Config, _ deps: any SamplerDeps) async {
     let t = deps.now()
-    let home = NSHomeDirectory()
     var entries: [[String: Any]] = []
     var eperm: [String] = []
     for p in cfg.drift.paths {
@@ -572,7 +572,7 @@ func driftTick(_ db: DB, _ cfg: Config, _ deps: any SamplerDeps) async {
     }
     setSetting(db, "driftEntries", JSONValue.from(entries))
     setSetting(db, "driftEperm", JSONValue.from(eperm))
-    await refreshFindings(db, loadConfig(db), t, { bin, args in try await deps.execFile(bin, args) })
+    await refreshFindings(db, loadConfig(db), t, { t, s, b in try await deps.notify(t, s, b) })
 }
 
 /// Resolve ~/Library/LaunchAgents to {label, program} and ask launchd which labels are
@@ -643,11 +643,11 @@ func backupTick(_ db: DB, _ cfg: Config, _ deps: any SamplerDeps) async {
         stats.append(["path": p, "newestMtime": m.newestMtime ?? NSNull(), "maxAgeDays": Double(w.maxAgeDays)])
     }
     setSetting(db, "watchStats", JSONValue.from(stats))
-    await refreshFindings(db, loadConfig(db), t, { bin, args in try await deps.execFile(bin, args) })
+    await refreshFindings(db, loadConfig(db), t, { t, s, b in try await deps.notify(t, s, b) })
 }
 
 // Monday 09:00–10:00 local, once per week (settings.lastDigestNotify): one native ping.
-func mondayDigestCheck(_ db: DB, _ cfg: Config, _ now: Int64, _ execFile: @Sendable (String, [String]) async throws -> String) async {
+func mondayDigestCheck(_ db: DB, _ cfg: Config, _ now: Int64, _ post: Poster) async {
     if !cfg.weeklyDigestNotify || cfg.notifyEnabled == false { return }
     let d = Date(timeIntervalSince1970: Double(now) / 1000)
     let cal = Calendar.current
@@ -658,7 +658,6 @@ func mondayDigestCheck(_ db: DB, _ cfg: Config, _ now: Int64, _ execFile: @Senda
     if now - monday9Ms > 3_600_000 { return }
     if Int64(getSetting(db, "lastDigestNotify")?.doubleVal ?? 0) >= monday9Ms { return }
     let n = db.prepare("SELECT COUNT(*) n FROM findings WHERE severity != 'info'").get()?["n"]?.intVal ?? 0
-    _ = try? await execFile("osascript", ["-e",
-        "display notification \"Your weekly Mac digest is ready: \(n) thing\(n == 1 ? "" : "s") worth doing\" with title \"Performac\""])
+    try? await post("Performac", nil, "Your weekly Mac digest is ready: \(n) thing\(n == 1 ? "" : "s") worth doing")
     setSetting(db, "lastDigestNotify", JSONValue.number(Double(now)))
 }

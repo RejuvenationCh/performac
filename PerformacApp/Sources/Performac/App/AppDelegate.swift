@@ -6,6 +6,7 @@
 // processes never outlive the app.
 import AppKit
 import SwiftUI
+import UserNotifications
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
@@ -23,6 +24,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // Light, dark, or the system's choice. Defaults to matching the system; every token
         // in Tokens.swift carries both values.
         Appearance.applyStored()
+
+        // Without a delegate macOS drops notifications while Performac is the front app,
+        // which is exactly when a finding is most likely to fire. Unbundled builds have no
+        // notification centre at all (it aborts the process), so they skip this.
+        if Bundle.main.bundleIdentifier != nil { UNUserNotificationCenter.current().delegate = self }
 
         startEngine()
 
@@ -53,14 +59,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
         })
         // 5min disk tick
-        engineTasks.append(Task.detached(priority: .utility) { [sampler, store] in
+        engineTasks.append(Task.detached(priority: .utility) { [sampler] in
             while !Task.isCancelled {
                 await sampler.diskTick()
                 try? await Task.sleep(for: .seconds(Double(cfg.diskTickSec)))
             }
         })
         // hourly: caches, backup state, drift walk, retention sweep, digest ping
-        engineTasks.append(Task.detached(priority: .utility) { [sampler, store] in
+        engineTasks.append(Task.detached(priority: .utility) { [store] in
             while !Task.isCancelled {
                 await cacheTick(db, cfg, deps)
                 await backupTick(db, cfg, deps)
@@ -68,7 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 trashTick(db)
                 await driftTick(db, cfg, deps)
                 sweep(db, cfg, deps.now())
-                await mondayDigestCheck(db, cfg, deps.now(), { bin, args in try await deps.execFile(bin, args) })
+                await mondayDigestCheck(db, cfg, deps.now(), { t, s, b in try await deps.notify(t, s, b) })
                 await MainActor.run { store.refreshFromDatabase() }
                 try? await Task.sleep(for: .seconds(3600))
             }
@@ -101,7 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             await loginTick(db, deps)
             trashTick(db)
             await driftTick(db, cfg, deps)
-            await refreshFindings(db, loadConfig(db), deps.now(), { b, a in try await deps.execFile(b, a) })
+            await refreshFindings(db, loadConfig(db), deps.now(), { t, s, b in try await deps.notify(t, s, b) })
             await MainActor.run { store.refreshFromDatabase(); store.refreshing = false }
         }
     }
@@ -270,5 +276,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window = w
         w.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                            willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]
+    }
+
+    /// Clicking a notification brings the window forward rather than only activating.
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                            didReceive response: UNNotificationResponse) async {
+        await MainActor.run { self.openWindow() }
     }
 }

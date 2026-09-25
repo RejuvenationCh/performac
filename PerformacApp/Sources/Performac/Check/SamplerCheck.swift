@@ -46,6 +46,7 @@ final class FakeDeps: SamplerDeps, @unchecked Sendable {
         self.power = power
     }
 
+    func notify(_ title: String, _ subtitle: String?, _ body: String) async throws {}
     func execFile(_ bin: String, _ args: [String]) async throws -> String {
         lock.withLock { _calls.append([bin] + args) }
         switch bin {
@@ -385,15 +386,21 @@ enum SamplerCheck {
 /// First diskutil probe throws (a flaky drive), later probes succeed, the
 /// nine-behaviors rule: a failed probe must never be cached.
 final class ThrowingProbeDeps: SamplerDeps, @unchecked Sendable {
-    var probeCount = 0
+    /// Locked for the same reason as FakeDeps: tick() reaches spawn and execFile from
+    /// concurrent tasks, and an unguarded append there segfaulted the suite once already.
+    private let lock = NSLock()
+    private var _probeCount = 0
+    private var _streams: [FakeStream] = []
+    var probeCount: Int { lock.withLock { _probeCount } }
+    var streams: [FakeStream] { lock.withLock { _streams } }
     let ps: String
     let volumes: @Sendable () -> [String]
     let nowFn: @Sendable () -> Int64
     let external: String
-    private(set) var streams: [FakeStream] = []
     init(ps: String, volumes: @escaping @Sendable () -> [String], now: @escaping @Sendable () -> Int64, external: String) {
         self.ps = ps; self.volumes = volumes; self.nowFn = now; self.external = external
     }
+    func notify(_ title: String, _ subtitle: String?, _ body: String) async throws {}
     func execFile(_ bin: String, _ args: [String]) async throws -> String {
         switch bin {
         case "ps": return ps
@@ -402,8 +409,7 @@ final class ThrowingProbeDeps: SamplerDeps, @unchecked Sendable {
             return "\"LSDisplayName\"=\"Zen\""
         case "pmset": return "Note: No CPU power status has been recorded"
         case "diskutil":
-            probeCount += 1
-            if probeCount == 1 { throw NSError(domain: "fake", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not find disk: /Volumes/T7"]) }
+            if lock.withLock({ _probeCount += 1; return _probeCount }) == 1 { throw NSError(domain: "fake", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not find disk: /Volumes/T7"]) }
             return external
         default:
             throw NSError(domain: "fake", code: 1)
@@ -411,7 +417,7 @@ final class ThrowingProbeDeps: SamplerDeps, @unchecked Sendable {
     }
     func spawn(_ bin: String, _ args: [String]) -> StreamChild {
         let c = FakeStream(bin: bin, args: args)
-        streams.append(c)
+        lock.withLock { _streams.append(c) }
         return c
     }
     func statfs(_ path: String) async throws -> StatFs { StatFs(bsize: 4096, blocks: 1_000_000, bavail: 500_000) }

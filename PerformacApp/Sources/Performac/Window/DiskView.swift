@@ -75,7 +75,7 @@ struct DiskView: View {
                     .help("Scan the selected location. Cmd-R")
                 }
                 Spacer()
-                Picker("", selection: Binding(get: { mode }, set: onMode)) {
+                Picker("", selection: Binding(get: { mode }, set: { onMode($0) })) {
                     ForEach(DiskViewMode.allCases, id: \.self) { m in
                         Image(systemName: m.symbol).help(m.label).tag(m)
                     }
@@ -197,7 +197,7 @@ struct DiskView: View {
                         // keep fresh, and the choice would be meaningless.
                         if lastScanAt != nil {
                             Toggle("Always refresh on open", isOn: Binding(
-                                get: { autoRefresh }, set: onToggleAutoRefresh))
+                                get: { autoRefresh }, set: { onToggleAutoRefresh($0) }))
                                 .toggleStyle(.checkbox).font(.pcSmall).foregroundStyle(PC.ink2)
                                 .help("Rescan every time this view opens. A full scan is minutes of disk activity.")
                         }
@@ -210,7 +210,7 @@ struct DiskView: View {
 
                 VStack(spacing: 0) {
                     HStack {
-                        Picker("", selection: Binding(get: { rightMode }, set: onRightMode)) {
+                        Picker("", selection: Binding(get: { rightMode }, set: { onRightMode($0) })) {
                             ForEach(RightPanelMode.allCases, id: \.self) { m in
                                 Image(systemName: m.symbol).help(m.label).tag(m)
                             }
@@ -416,7 +416,7 @@ func squarify(_ values: [Double], _ bounds: CGRect) -> [CGRect] {
     guard !values.isEmpty, bounds.width > 0, bounds.height > 0 else { return [] }
     let total = values.reduce(0, +)
     guard total > 0 else { return [] }
-    var areas = values.map { $0 / total * Double(bounds.width * bounds.height) }
+    let areas = values.map { $0 / total * Double(bounds.width * bounds.height) }
     var out: [CGRect] = []
     var rect = bounds
     var row: [Double] = []

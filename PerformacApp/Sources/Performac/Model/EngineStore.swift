@@ -460,8 +460,7 @@ final class EngineStore: ObservableObject {
 
     /// Where the database lives. Named so Settings can reveal it rather than offering a
     /// Reveal button wired to an empty closure.
-    static let databasePath =
-        NSHomeDirectory() + "/Library/Application Support/com.chris.performac.v2/performac.db"
+    static let databasePath = v2DatabasePath()
 
     /// Size of the database on disk, for Settings.
     var databaseSummary: String {
@@ -471,7 +470,7 @@ final class EngineStore: ObservableObject {
         let path = Self.databasePath
         var bytes: Int64 = 0
         for suffix in ["", "-wal", "-shm"] {
-            bytes += (try? FileManager.default.attributesOfItem(atPath: path + suffix)[.size] as? Int64) as? Int64 ?? 0
+            bytes += (try? FileManager.default.attributesOfItem(atPath: path + suffix)[.size] as? Int64) ?? 0
         }
         return "\(Fmt.count(Int(rows))) samples · \(Fmt.bytes(bytes))"
     }

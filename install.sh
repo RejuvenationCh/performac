@@ -98,7 +98,7 @@ If it keeps failing, build it yourself instead:
     # Quit a running copy first, then set the old one aside rather than deleting it. It
     # lands in a temporary folder macOS clears on its own.
     if pgrep -qf "$APP/Contents/MacOS/Performac"; then
-        osascript -e 'tell application id "com.chris.performac.v2" to quit' >/dev/null 2>&1
+        osascript -e 'quit app "Performac"' >/dev/null 2>&1
         for _ in $(seq 50); do pgrep -qf "$APP/Contents/MacOS/Performac" || break; sleep 0.2; done
         # macOS refuses to quit an app while it shows a dialog, and replacing it underneath a
         # running copy would leave the old one on screen.

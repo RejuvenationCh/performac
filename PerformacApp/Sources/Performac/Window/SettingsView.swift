@@ -25,6 +25,7 @@ struct SettingsView: View {
     /// toggle reported whatever it was last clicked to, never what macOS actually does.
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var launchError: String? = nil
+    @State private var notifyResult: String? = nil
 
     // Edit-in-progress values for the numeric fields. Seeded from config and resynced below
     // whenever the stored value changes, so this screen cannot drift from the config it edits.
@@ -101,6 +102,22 @@ struct SettingsView: View {
                         if let launchError {
                             Note(launchError)
                         }
+                        Divider().overlay(PC.hairline)
+                        Row("Notifications") {
+                            Button("Send Test") {
+                                Task {
+                                    do {
+                                        try await LiveDeps().notify("Performac", "Test notification",
+                                                                    "Notifications from Performac reach you.")
+                                        notifyResult = "Sent. If nothing appeared, check Focus and System Settings, Notifications."
+                                    } catch {
+                                        notifyResult = "macOS is not letting Performac notify. Allow it in System Settings, Notifications, Performac."
+                                    }
+                                }
+                            }
+                            .controlSize(.small)
+                        }
+                        Note(notifyResult ?? "Only for things that need you: a drive that keeps dropping, a missed backup, space running out.")
                     }
 
                     SettingsGroup(header: "Thresholds") {

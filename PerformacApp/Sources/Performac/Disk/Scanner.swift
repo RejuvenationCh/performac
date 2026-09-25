@@ -191,21 +191,16 @@ public struct DiskScanner: Sendable {
 
         func process(_ batch: [URL]) {
             let sliceLen = max(1, batch.count / concurrency + 1)
-            var slices: [[URL]] = []
-            var i = 0
-            while i < batch.count {
-                slices.append(Array(batch[i ..< min(i + sliceLen, batch.count)]))
-                i += sliceLen
+            let slices = stride(from: 0, to: batch.count, by: sliceLen).map {
+                Array(batch[$0 ..< min($0 + sliceLen, batch.count)])
             }
-            var increments: [(String, String, Int64, Int64, FileKind)] = []
-            let lock = NSLock()
+            // A lock that owns its state, so the concurrent appends are checked, not trusted.
+            let collected = OSAllocatedUnfairLock(initialState: [(String, String, Int64, Int64, FileKind)]())
             DispatchQueue.concurrentPerform(iterations: slices.count) { idx in
                 let r = statSlice(slices[idx])
-                lock.lock()
-                increments.append(contentsOf: r)
-                lock.unlock()
+                collected.withLock { $0.append(contentsOf: r) }
             }
-            for (dir, filePath, b, mt, kind) in increments {
+            for (dir, filePath, b, mt, kind) in collected.withLock({ $0 }) {
                 let cur = totals[dir] ?? (0, 0)
                 totals[dir] = (cur.files + 1, cur.bytes + b)
                 filesScanned += 1

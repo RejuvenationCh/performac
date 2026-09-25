@@ -52,9 +52,12 @@ struct OverviewView: View {
     /// A brand new install has measured nothing yet, which is not the same as having measured
     /// and found nothing. Saying "Nothing worth doing" before the first samples land is the app
     /// claiming a result it has not earned, and it is the first thing anyone sees.
-    private var firstRun: Bool {
-        findings.isEmpty && facts.watchingDays < 1 && facts.lastScanAt == nil
-    }
+    ///
+    /// The card is for the whole first day. It used to also require zero findings, which a new
+    /// install almost never has: backup state and old installers need no history and turn up
+    /// on the first tick, so the card meant for new users was the one they never saw.
+    private var firstDay: Bool { facts.watchingDays < 1 }
+    private var nothingMeasured: Bool { firstDay && findings.isEmpty && facts.lastScanAt == nil }
 
     private var firstRunCard: some View {
         HStack(alignment: .top, spacing: PC.gutter) {
@@ -65,8 +68,9 @@ struct OverviewView: View {
                     .font(.pcTitle).foregroundStyle(PC.ink)
                 Text("""
                      It samples every 30 seconds and needs about four days before it can tell a \
-                     trend from a normal day, so this screen stays quiet for a while. Nothing \
-                     here is a verdict yet.
+                     trend from a normal day, so anything built on a trend stays quiet for now. \
+                     Cards that need no history, like old installers or a missing backup, \
+                     appear straight away.
                      """)
                     .font(.pcBody).foregroundStyle(PC.ink2).lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -85,7 +89,7 @@ struct OverviewView: View {
 
     /// Templated from the findings actually present. It never claims more than the cards do.
     private var summary: String {
-        if firstRun {
+        if nothingMeasured {
             return "Nothing measured yet. The facts above fill in as samples arrive; the cards below need a few days of history before they can say anything honest."
         }
         if findings.isEmpty {
@@ -174,15 +178,19 @@ struct OverviewView: View {
                     }
                     .padding(PC.gutter).frame(maxWidth: .infinity, alignment: .leading).pcCard()
 
-                    if firstRun {
+                    if firstDay {
                         firstRunCard
-                    } else if worst.isEmpty {
-                        HStack(spacing: PC.s2) {
-                            Image(systemName: "checkmark.seal.fill").foregroundStyle(PC.green)
-                            Text("Nothing worth doing.").font(.pcBody).foregroundStyle(PC.ink2)
-                            Spacer()
+                    }
+                    if worst.isEmpty {
+                        // On day one the card above already says why it is quiet.
+                        if !firstDay {
+                            HStack(spacing: PC.s2) {
+                                Image(systemName: "checkmark.seal.fill").foregroundStyle(PC.green)
+                                Text("Nothing worth doing.").font(.pcBody).foregroundStyle(PC.ink2)
+                                Spacer()
+                            }
+                            .padding(PC.gutter).pcCard()
                         }
-                        .padding(PC.gutter).pcCard()
                     } else {
                         SectionHeader(text: "Worth knowing (\(worst.count))")
                         ForEach(worst) {

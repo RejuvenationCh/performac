@@ -3,6 +3,7 @@
 // statfs(2), /Volumes listing, realpath(3). Used by the app; the checks keep using
 // fakes so they never touch real binaries.
 import Foundation
+import UserNotifications
 
 /// Free-function wrapper so the protocol method `statfs` doesn't shadow the C import.
 private func sysStatfs(_ path: String, _ s: UnsafeMutablePointer<statfs>) -> Int32 {
@@ -28,6 +29,22 @@ final class LiveDeps: SamplerDeps {
                 cont.resume(throwing: error)
             }
         }
+    }
+
+    struct NotPosted: Error {}
+
+    /// Posts as Performac. Throws when it could not, so maybeNotify keeps the cooldown open:
+    /// unbundled (`swift run`, where UserNotifications aborts the process), or not allowed.
+    func notify(_ title: String, _ subtitle: String?, _ body: String) async throws {
+        guard Bundle.main.bundleIdentifier != nil else { throw NotPosted() }
+        let center = UNUserNotificationCenter.current()
+        // Asks once; after that it answers from the stored choice without a prompt.
+        guard try await center.requestAuthorization(options: [.alert, .sound]) else { throw NotPosted() }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        if let subtitle { content.subtitle = subtitle }
+        content.body = body
+        try await center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
     }
 
     func spawn(_ bin: String, _ args: [String]) -> StreamChild {

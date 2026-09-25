@@ -1,5 +1,5 @@
-// Check/NotifyCheck.swift, ports of v1 test/notify.test.js: cooldown logic,
-// kind allowlist, argv (no shell), quote stripping.
+// Check/NotifyCheck.swift, ports of v1 test/notify.test.js: cooldown logic, kind
+// allowlist, and what reaches the poster.
 import Foundation
 
 @MainActor
@@ -19,15 +19,14 @@ enum NotifyCheck {
         }
 
         final class Calls: @unchecked Sendable { var calls: [[String]] = [] }
-        func fakeExec() -> (calls: Calls, exec: @Sendable (String, [String]) async throws -> String) {
+        func fakeExec() -> (calls: Calls, exec: Poster) {
             let box = Calls()
-            return (box, { @Sendable file, args in
-                box.calls.append([file] + args)
-                return ""
+            return (box, { @Sendable title, subtitle, body in
+                box.calls.append([title, subtitle ?? "", body])
             })
         }
 
-        // red finding fires osascript once with argv array and stripped quotes
+        // red finding posts once; no AppleScript in the way, so quotes arrive intact
         do {
             let db = DB(path: ":memory:")
             let (calls, exec) = fakeExec()
@@ -35,9 +34,8 @@ enum NotifyCheck {
             let fired = await maybeNotify(db, f, cfg, 1000, exec)
             c.check("red fires", fired)
             c.check("one call", calls.calls.count == 1)
-            c.eq("osascript argv", calls.calls[0],
-                 ["osascript", "-e",
-                  "display notification \"Why quoted\" with title \"Performac\" subtitle \"Head quoted\""])
+            c.eq("posts title, headline, why", calls.calls[0],
+                 ["Performac", "Head \"quoted\"", "Why \"quoted\""])
         }
         // cooldown 24h
         do {
@@ -87,12 +85,11 @@ enum NotifyCheck {
             final class Flag: @unchecked Sendable { var value = true }
             let fail = Flag()
             let f = insertFinding(db)
-            _ = await maybeNotify(db, f, cfg, 1000, { @Sendable _, _ in
+            _ = await maybeNotify(db, f, cfg, 1000, { @Sendable _, _, _ in
                 if fail.value { throw NSError(domain: "fake", code: 1) }
-                return ""
             })
             fail.value = false
-            let fired = await maybeNotify(db, f, cfg, 1000, { @Sendable _, _ in "" })
+            let fired = await maybeNotify(db, f, cfg, 1000, { @Sendable _, _, _ in })
             c.check("failed fire does not burn cooldown", fired)
         }
     }

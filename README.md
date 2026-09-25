@@ -56,6 +56,12 @@ really is. Settings shows whether the grant is in place and links straight to th
 
 **System Settings → Privacy & Security → Full Disk Access → add `~/Applications/Performac.app`**
 
+## Notifications
+
+Only for things that need you: a drive that keeps dropping, a missed backup, space running out.
+macOS asks the first time one is sent. If you said no, or want to check, Settings has a Send Test
+button, and the switch is under System Settings, Notifications, Performac.
+
 macOS ties that grant to the app's **signing identity**. Releases are all signed with the same
 certificate, so the grant survives every update.
 
@@ -108,7 +114,7 @@ browser.
 
 | | |
 |---|---|
-| Database | `~/Library/Application Support/com.chris.performac.v2/performac.db` |
+| Database | `~/Library/Application Support/io.github.rejuvenationch.performac/performac.db` |
 | Appearance and window state | `UserDefaults` |
 | Everything else | in that one SQLite file |
 

@@ -6,8 +6,6 @@ enum PathsCheck {
     static let HOME = "/Users/testuser"
 
     static func run(_ c: CheckSuite) async {
-        let noInputs = CacheTargetsInputs()
-
         // resolve targets: config wiring → cache, gallery, proxy (optional)
         do {
             let cfg = "Site.1.FS.1.Root = \(HOME)/Movies\nRenderCaching.CacheDir = CacheClip"
