@@ -533,7 +533,7 @@ enum Rules {
             out.append(EngineFinding(
                 id: "backup-no-destination", kind: "backup", severity: "red",
                 headline: "No Time Machine destination is configured on this Mac",
-                why: "Your event and campus footage has no re-shoot option. A Mac that has never been backed up is one drive failure from losing all of it",
+                why: "A Mac that has never been backed up is one drive failure from losing everything on it, and whatever cannot be re-downloaded or re-created is gone for good",
                 detail: "Set one up in System Settings → General → Time Machine.",
                 linkKind: nil, linkTarget: nil))
         } else if tmOn, let iso = tmState.backupISO {
@@ -621,13 +621,13 @@ enum Rules {
                 out.append(EngineFinding(
                     id: "drive-\(slug(vol))", kind: "drive", severity: "red",
                     headline: "\(vol) disconnected and reconnected \(in24) times in the last 24 hours",
-                    why: "A loose cable, failing port, or failing drive shows up as surprise unmount cycles. Check the connection before your next shoot",
+                    why: "A loose cable, failing port, or failing drive shows up as surprise unmount cycles. Check the connection before you trust it with anything you cannot replace",
                     detail: "", linkKind: nil, linkTarget: nil))
             } else if in7 > cfg.drive.cycles7d {
                 out.append(EngineFinding(
                     id: "drive-\(slug(vol))", kind: "drive", severity: "amber",
                     headline: "\(vol) disconnected and reconnected \(in7) times in the last 7 days",
-                    why: "Repeated disconnects spread over the week point at a loose cable or a failing port. Keep an eye on it before your next shoot.",
+                    why: "Repeated disconnects spread over the week point at a loose cable or a failing port. Worth watching before you rely on the drive.",
                     detail: "", linkKind: nil, linkTarget: nil))
             }
         }

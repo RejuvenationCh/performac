@@ -248,7 +248,7 @@ enum RulesCheck {
             c.check("drive: 3 cycles → red", fs.count == 1 && fs[0].severity == "red")
             c.eq("drive: exact headline", fs.first?.headline, "T7 disconnected and reconnected 3 times in the last 24 hours")
             c.eq("drive: exact why", fs.first?.why,
-                 "A loose cable, failing port, or failing drive shows up as surprise unmount cycles. Check the connection before your next shoot")
+                 "A loose cable, failing port, or failing drive shows up as surprise unmount cycles. Check the connection before you trust it with anything you cannot replace")
             c.check("drive: no link", fs.first?.linkKind == nil)
         }
         do {
@@ -324,7 +324,7 @@ enum RulesCheck {
             c.check("backup: no destination → red", fs.count == 1 && fs[0].severity == "red")
             c.eq("backup: exact headline", fs.first?.headline, "No Time Machine destination is configured on this Mac")
             c.eq("backup: exact why", fs.first?.why,
-                 "Your event and campus footage has no re-shoot option. A Mac that has never been backed up is one drive failure from losing all of it")
+                 "A Mac that has never been backed up is one drive failure from losing everything on it, and whatever cannot be re-downloaded or re-created is gone for good")
             c.check("backup: no link", fs.first?.linkKind == nil)
             c.check("backup: System Settings detail", fs.count == 1 && fs[0].detail.contains("System Settings"), fs.first?.detail ?? "")
         }

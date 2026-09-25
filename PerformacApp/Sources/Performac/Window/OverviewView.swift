@@ -39,6 +39,16 @@ struct OverviewView: View {
             .map(\.element)
     }
 
+    /// Two points thirty seconds apart satisfy "count >= 2" and draw a flat line under a
+    /// heading reading "last 0 hours", while the note below it correctly says there is not
+    /// enough history yet. The x axis has to span something before the line means anything, so
+    /// the gate is elapsed time rather than a sample count.
+    private var trendDrawable: Bool {
+        guard trendPoints.count >= 2,
+              let first = trendPoints.first, let last = trendPoints.last else { return false }
+        return last.ts - first.ts >= 3_600_000   // one hour
+    }
+
     /// A brand new install has measured nothing yet, which is not the same as having measured
     /// and found nothing. Saying "Nothing worth doing" before the first samples land is the app
     /// claiming a result it has not earned, and it is the first thing anyone sees.
@@ -152,7 +162,7 @@ struct OverviewView: View {
                                 .transition(.opacity)
                             }
                         }
-                        if trendPoints.count >= 2 {
+                        if trendDrawable {
                             Sparkline(points: trendPoints) { hoveredPoint = $0 }
                                 .frame(height: 54)
                         } else {
