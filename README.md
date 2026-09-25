@@ -15,25 +15,39 @@ Zero dependencies. SwiftPM only, no Xcode project, no packages.
 
 ## Install
 
+Paste this into Terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/RejuvenationCh/performac/main/install.sh | bash
+```
+
+It downloads the latest release, puts it in `~/Applications` and opens it. No Xcode, no
+compiling. Runs on Apple Silicon and Intel, macOS 14 (Sonoma) or later.
+
+**Updates install themselves.** Performac checks GitHub once a day (or right away from Settings,
+Check Now), installs a newer release in the background, and asks you to restart. The previous
+version goes to the Trash, so going back is one Put Back away. An update is accepted only if it
+is signed by the same certificate as the copy you have.
+
+**Why no "damaged app" warning?** macOS quarantines apps that a browser downloads, and
+Gatekeeper then blocks anything without a paid Apple Developer ID. `curl` and the app's own
+updater do not set that flag, so neither path is blocked. Downloading the zip from the releases
+page in a browser *does* get it quarantined, so use the command above.
+
+### Building it yourself
+
 ```bash
 git clone https://github.com/RejuvenationCh/performac.git
 cd performac
-./install.sh
+./install.sh --source
 ```
 
-That is the whole thing. It checks your macOS version and toolchain first and tells you what to
-do if either is missing, then builds and installs to `~/Applications/Performac.app`.
-
-**Requirements:** macOS 14 (Sonoma) or later, and Apple's Command Line Tools. If you have never
-installed the tools, `install.sh` will say so and give you the command (`xcode-select --install`).
+This needs Apple's Command Line Tools (`install.sh` says so and gives you the command if they
+are missing). A copy you build yourself does not update itself: it is signed with your own
+identity, not the release certificate, so it offers the release page instead.
 
 On macOS 26 and later the rail and sheets use Liquid Glass. Below that they fall back to opaque
 surfaces, which is what the rest of the app already uses.
-
-**Why build it yourself rather than download a disk image?** Because macOS only quarantines apps
-that arrive over the network. An app you compiled locally has no quarantine flag, so Gatekeeper
-does not block it and there is no "damaged app" dialog to work around. It also means no one has
-to trust a binary from a stranger.
 
 ## Full Disk Access
 
@@ -42,17 +56,17 @@ really is. Settings shows whether the grant is in place and links straight to th
 
 **System Settings → Privacy & Security → Full Disk Access → add `~/Applications/Performac.app`**
 
-### One wrinkle worth knowing
+macOS ties that grant to the app's **signing identity**. Releases are all signed with the same
+certificate, so the grant survives every update.
 
-macOS ties that grant to the app's **signing identity**. `make-app.sh` signs with a stable
-self-signed certificate called `Performac Dev` when one exists in your keychain, so the identity
-stays constant and the grant survives rebuilds.
+### If you build from source
 
-If you do not have that certificate, the script falls back to ad-hoc signing, where the identity
-is the binary's hash. That works fine, but it means **every rebuild looks like a brand-new app to
-macOS and you have to grant Full Disk Access again.** If you plan to rebuild often, create a
-self-signed code-signing certificate named `Performac Dev` in Keychain Access
-(*Certificate Assistant → Create a Certificate → Code Signing*) and the problem goes away.
+`make-app.sh` signs with a self-signed certificate called `Performac Dev` when one exists in your
+keychain, and falls back to ad hoc signing when it does not, where the identity is the binary's
+hash. Ad hoc works, but **every rebuild looks like a brand-new app to macOS and you have to grant
+Full Disk Access again.** If you rebuild often, create a self-signed code-signing certificate
+named `Performac Dev` in Keychain Access (*Certificate Assistant, Create a Certificate, Code
+Signing*) and the problem goes away.
 
 ## Using it
 

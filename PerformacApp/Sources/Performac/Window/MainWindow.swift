@@ -5,6 +5,7 @@ import AppKit
 
 struct MainWindow: View {
     @ObservedObject var store = EngineStore.shared
+    @ObservedObject var updates = UpdateChecker.shared
     /// Route lives in the store (see `Route` in ViewModels.swift) so a finding card's link-out
     /// can navigate and so the choice survives the window closing.
     var body: some View {
@@ -101,6 +102,71 @@ struct MainWindow: View {
             .background(PC.canvas)
         }
         .frame(minWidth: 900, minHeight: 600)
+        .sheet(item: $updates.offered) { r in
+            UpdateSheet(release: r, current: Updates.running, ready: updates.ready,
+                        onRestart: { updates.restart() }) { updates.offered = nil }
+        }
+    }
+}
+
+/// A newer release, with its notes. Normally already installed and waiting for a restart;
+/// when it could not be installed here, it links to the release page instead.
+private struct UpdateSheet: View {
+    let release: Release
+    let current: String?
+    let ready: Bool
+    var onRestart: () -> Void
+    var onClose: () -> Void
+
+    /// Inline markdown (bold, code, links) rendered; line breaks kept so a bulleted changelog
+    /// still reads as a list. Falls back to the raw text if it does not parse.
+    private var notes: AttributedString {
+        // Inline parsing leaves "### Fixes" literal, so headings become bold lines first.
+        let raw = (release.body?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
+            .replacingOccurrences(of: #"(?m)^#{1,6}\s*(.+?)\s*$"#, with: "**$1**", options: .regularExpression)
+        if raw.isEmpty { return AttributedString("This release has no notes.") }
+        return (try? AttributedString(markdown: raw, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(raw)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(ready ? "Performac \(release.version) is installed" : "Performac \(release.version) is available")
+                .font(.pcHeadline).foregroundStyle(PC.ink)
+                .padding(.horizontal, 24).padding(.top, 20).padding(.bottom, 2)
+            Text(ready ? "Restart to start using it. Settings and history carry over, and the previous version is in the Trash."
+                 // Not "built from source": a failed download or a signature mismatch lands here
+                 // too, and the sheet cannot tell which.
+                 : "\(current.map { "You have \($0). " } ?? "")It could not be installed automatically. Get it from the release page, or run the installer again.")
+                .font(.pcSmall).foregroundStyle(PC.meta)
+                .padding(.horizontal, 24).padding(.bottom, PC.gutter)
+            ScrollView {
+                Text(notes).font(.pcSmall).foregroundStyle(PC.ink2).lineSpacing(2)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(PC.gutter)
+            }
+            .frame(maxHeight: 320).fixedSize(horizontal: false, vertical: true)
+            .pcCard()
+            .padding(.horizontal, 24).padding(.bottom, PC.stack)
+            HStack(spacing: PC.s2 + 2) {
+                Spacer()
+                Button("Later", action: onClose).keyboardShortcut(.cancelAction)
+                if ready {
+                    Button("Restart Now", action: onRestart)
+                        .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                } else {
+                    Button("View Release") {
+                        if let u = URL(string: release.html_url) { NSWorkspace.shared.open(u) }
+                        onClose()
+                    }
+                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                }
+            }
+            .padding(.horizontal, 24).padding(.bottom, 20)
+        }
+        .frame(width: 500)
+        .pcGlassPanel(PC.rXl)
     }
 }
 

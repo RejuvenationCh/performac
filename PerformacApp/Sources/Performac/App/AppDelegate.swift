@@ -73,6 +73,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 try? await Task.sleep(for: .seconds(3600))
             }
         })
+        // Update check: the loop wakes hourly because the app rarely quits, and checkIfDue
+        // itself holds it to once a day.
+        engineTasks.append(Task { @MainActor in
+            while !Task.isCancelled {
+                await UpdateChecker.shared.checkIfDue()
+                try? await Task.sleep(for: .seconds(3600))
+            }
+        })
         // first refresh so the UI has real data before the first tick lands
         Task { [store] in
             await MainActor.run { store.refreshFromDatabase() }

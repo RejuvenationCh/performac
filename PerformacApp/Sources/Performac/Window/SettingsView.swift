@@ -20,6 +20,7 @@ struct SettingsView: View {
     var onSave: (String, JSONValue) -> Void = { _, _ in }
 
     @State private var appearance = Appearance.current
+    @ObservedObject private var updates = UpdateChecker.shared
     /// Read from the system, not remembered locally: the previous local-only Bool meant the
     /// toggle reported whatever it was last clicked to, never what macOS actually does.
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
@@ -173,6 +174,20 @@ struct SettingsView: View {
                                 .controlSize(.small)
                             }
                         }
+                        Divider().overlay(PC.hairline)
+                        Row("Version") {
+                            HStack(spacing: PC.s2) {
+                                Text(Updates.running ?? "development build").font(.pcNum).foregroundStyle(PC.meta)
+                                Button(updates.checking ? "Checking" : "Check Now") {
+                                    Task { await updates.checkNow() }
+                                }
+                                .controlSize(.small).disabled(updates.checking)
+                            }
+                        }
+                        Note(updates.status.isEmpty
+                             ? updates.lastCheck.map { "Updates install themselves: Performac checks GitHub once a day. Last checked \(Ago.text($0))." }
+                                ?? "Updates install themselves: Performac checks GitHub once a day. Not checked yet."
+                             : updates.status)
                     }
                 }
                 .padding(.horizontal, PC.stack).padding(.bottom, PC.stack)
