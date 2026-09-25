@@ -117,9 +117,7 @@ private struct Rail: View {
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(PC.accent)
                 .frame(width: 28, height: 28)
-                // The window uses .fullSizeContentView, so content starts at y=0 under the
-                // titlebar — this clears the traffic lights instead of sitting under them.
-                .padding(.top, 28).padding(.bottom, PC.s2)
+                .padding(.top, PC.gutter).padding(.bottom, PC.s2)
             ForEach(Route.primary) { r in
                 RailButton(route: r, selected: route == r) { route = r }
             }

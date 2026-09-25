@@ -240,9 +240,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func openWindow() {
         if let w = window { w.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return }
+        // No .fullSizeContentView. It put the SwiftUI content across the whole window
+        // including the titlebar strip, which swallowed double-clicks there — so the system's
+        // "double-click the title bar to zoom" never reached windowWillUseStandardFrame below.
+        // It also forced the rail to carry a 28pt top pad to dodge the traffic lights. Letting
+        // AppKit own a real titlebar restores the gesture for free and drops the workaround.
         let w = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false)
         w.title = "Performac"
         w.titlebarAppearsTransparent = true
