@@ -381,7 +381,7 @@ final class Sampler: @unchecked Sendable {
 
     func diskTick() async {
         let t = deps.now()
-        var vols: [(String, String)] = [("Macintosh HD", "/")]
+        var vols: [(String, String)] = [(bootVolumeName(), "/")]
         for v in deps.listVolumes() {
             let p = "/Volumes/\(v)"
             do {
@@ -541,8 +541,8 @@ func driftTick(_ db: DB, _ cfg: Config, _ deps: any SamplerDeps) async {
     var eperm: [String] = []
     for p in cfg.drift.paths {
         // dropFirst(2) removed "~/" including the separator, so "~/Downloads" became
-        // "/Users/youDownloads": a path that never exists. Every drift walk then
-        // failed with EPERM and the app blamed macOS permissions for its own typo.
+        // "/Users/<name>Downloads": a path that never exists. Every drift walk then failed
+        // with EPERM and the app blamed macOS permissions for its own typo.
         let dir = (p as NSString).expandingTildeInPath
         guard let tops = try? FileManager.default.contentsOfDirectory(at: URL(fileURLWithPath: dir), includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey]) else {
             eperm.append(dir)

@@ -462,10 +462,11 @@ final class EngineStore: ObservableObject {
         /// week" and the two read as contradicting each other.
         var volume: String = Trend.bootVolume
 
-        /// The name `disk_samples` records the boot disk under. On Trend rather than the
+        /// The name `disk_samples` records the boot disk under, read from the volume itself so
+        /// it matches what the sampler writes and what Finder shows. On Trend rather than the
         /// store because the store is @MainActor and Trend is Sendable: a main-actor static
         /// cannot be a default for a nonisolated value.
-        static let bootVolume = "Macintosh HD"
+        static let bootVolume = bootVolumeName()
     }
     @Published var trend = Trend()
     /// When the visible findings were last recomputed, so a card is never mistaken for live.
@@ -1149,6 +1150,10 @@ final class EngineStore: ObservableObject {
     }
 }
 
-/// v1's live database: the seeding source. Read-only, opened only through the
-/// online-backup copy path.
-let V1_DATABASE_PATH = "/Users/you/Data C (General)/Projects/Personal/Performac/performac.db"
+/// Optional one-time seed from the v1 Node app's database, for the single machine that ran it.
+///
+/// This used to be one developer's absolute home path compiled into every build: dead weight on
+/// any other Mac, and their folder layout published in the binary. A fresh install wants an empty
+/// database anyway, which is exactly what copyV1DatabaseIfNeeded produces when the source is
+/// missing. Set PERFORMAC_V1_DB to migrate that history instead.
+let V1_DATABASE_PATH = ProcessInfo.processInfo.environment["PERFORMAC_V1_DB"] ?? ""

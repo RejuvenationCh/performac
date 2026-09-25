@@ -3,6 +3,17 @@
 // arrive via inputs); measure walks without following symlinks.
 import Foundation
 
+/// The boot volume's name as Finder shows it.
+///
+/// This was the literal "Macintosh HD" in two places: the sampler wrote it as the volume key on
+/// every disk_samples row, and the trend query read it back. Writer and reader agreed with each
+/// other, so nothing broke, and nothing revealed that they both disagreed with any Mac whose
+/// disk had been renamed. Now that the Overview chart prints this name, a wrong one is visible.
+func bootVolumeName() -> String {
+    (try? URL(fileURLWithPath: "/").resourceValues(forKeys: [.volumeNameKey]))?
+        .volumeName ?? "Macintosh HD"
+}
+
 // per-id metadata used by rules for card copy and link-outs
 let CACHE_META: [String: (app: String, media: Bool, clearing: String)] = [
     "premiere-media":    ("Premiere", true, "Premiere: Settings → Media Cache → Delete."),
