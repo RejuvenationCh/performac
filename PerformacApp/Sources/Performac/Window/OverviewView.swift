@@ -39,8 +39,45 @@ struct OverviewView: View {
             .map(\.element)
     }
 
+    /// A brand new install has measured nothing yet, which is not the same as having measured
+    /// and found nothing. Saying "Nothing worth doing" before the first samples land is the app
+    /// claiming a result it has not earned, and it is the first thing anyone sees.
+    private var firstRun: Bool {
+        findings.isEmpty && facts.watchingDays < 1 && facts.lastScanAt == nil
+    }
+
+    private var firstRunCard: some View {
+        HStack(alignment: .top, spacing: PC.gutter) {
+            Image(systemName: "clock.badge.checkmark")
+                .font(.system(size: 20)).foregroundStyle(PC.accent)
+            VStack(alignment: .leading, spacing: PC.s1) {
+                Text("Performac has just started watching")
+                    .font(.pcTitle).foregroundStyle(PC.ink)
+                Text("""
+                     It samples every 30 seconds and needs about four days before it can tell a \
+                     trend from a normal day, so this screen stays quiet for a while. Nothing \
+                     here is a verdict yet.
+                     """)
+                    .font(.pcBody).foregroundStyle(PC.ink2).lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("""
+                     Disk and Duplicates do not wait: both answer as soon as you run a scan. \
+                     Clean already knows what your caches are holding.
+                     """)
+                    .font(.pcBody).foregroundStyle(PC.ink2).lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(PC.gutter).frame(maxWidth: .infinity, alignment: .leading).pcCard()
+    }
+
     /// Templated from the findings actually present. It never claims more than the cards do.
     private var summary: String {
+        if firstRun {
+            return "Nothing measured yet. The facts above fill in as samples arrive; the cards below need a few days of history before they can say anything honest."
+        }
         if findings.isEmpty {
             return "Nothing worth doing. Caches are in normal range and nothing has changed enough to mention."
         }
@@ -127,7 +164,9 @@ struct OverviewView: View {
                     }
                     .padding(PC.gutter).frame(maxWidth: .infinity, alignment: .leading).pcCard()
 
-                    if worst.isEmpty {
+                    if firstRun {
+                        firstRunCard
+                    } else if worst.isEmpty {
                         HStack(spacing: PC.s2) {
                             Image(systemName: "checkmark.seal.fill").foregroundStyle(PC.green)
                             Text("Nothing worth doing.").font(.pcBody).foregroundStyle(PC.ink2)
