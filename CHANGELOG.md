@@ -13,6 +13,17 @@ Installed copies pick it up within a day and install it themselves. Only a relea
 that same certificate will install, so keep it: losing it strands every existing install on
 its current version.
 
+## 0.2.1
+
+- Disk can scan the whole startup disk, not only Home. It is in the picker under the disk's
+  own name.
+- The Disk screen says how much of the used space a scan found and what the rest is. A Home
+  scan beside the whole disk's free space read as tens of gigabytes gone missing.
+- Relaunching opened the last drive scanned under the name of the one picked, so a Home scan
+  could list an external drive's folders.
+- Move to Trash refuses the startup disk's top level (Applications, Library, Users and the rest)
+  and every account's home folder.
+
 ## 0.2.0
 
 **Coming from 0.1.0? Install once more by hand**, because this version cannot update itself

@@ -58,11 +58,16 @@ enum Trash {
     /// not be reached. The all-drives view lists the drives themselves as rows, which puts a
     /// "Move to Trash" beside "External SSD". The guard lives here rather than in the menu
     /// because this is the one function every deletion in the app goes through.
+    ///
+    /// A scan of the startup disk lists its top level as rows too: Applications, Library,
+    /// Users, private, usr, and every account's home folder. None of those is a thing to trash
+    /// either, whichever of the two paths macOS shows them under.
     static func isRootLike(_ path: String) -> Bool {
         let p = (path as NSString).standardizingPath
-        if p == "/" || p == NSHomeDirectory() { return true }
-        if (p as NSString).deletingLastPathComponent == "/Volumes" { return true }
-        return false
+        let data = "/System/Volumes/Data"
+        if p == "/" || p == NSHomeDirectory() || p == data { return true }
+        let parent = (p as NSString).deletingLastPathComponent
+        return ["/", "/Volumes", data, "/Users", data + "/Users"].contains(parent)
     }
 
     /// A record of everything the app has ever removed, so "what happened to that folder"

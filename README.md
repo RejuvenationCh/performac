@@ -80,8 +80,8 @@ Signing*) and the problem goes away.
 value at any point), then findings worst-first. Each card carries its evidence and at most one
 remedy, and every remedy is confirmed and reversible.
 
-**Disk** needs a scan before it can tell you anything. Pick a target (your home folder, any
-mounted volume, or a folder you choose), press Scan, and results stream in as it walks. Scans are
+**Disk** needs a scan before it can tell you anything. Pick a target (your home folder, the whole
+startup disk, any mounted volume, or a folder you choose), press Scan, and results stream in as it walks. Scans are
 kept per drive, so switching targets is free and does not rescan. A full home scan is minutes of
 disk activity.
 

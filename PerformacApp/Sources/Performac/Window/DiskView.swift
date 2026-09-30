@@ -46,6 +46,21 @@ struct DiskView: View {
     var onRightMode: (RightPanelMode) -> Void = { _ in }
     var onCancel: () -> Void = {}
     private var sorted: [SizeEntry] { entries.sorted(by: sort) }
+
+    /// The toolbar's free space is the whole drive, and a scan is one folder of it. Side by side
+    /// with nothing between them, "29 GB free of 63 GB" over a 335 MB Home scan read as 33 GB
+    /// gone missing. Only at the scan's top, where the rows add up to the scan.
+    private var coverage: String? {
+        let root = (scanRoot as NSString).expandingTildeInPath
+        guard browsePath == root, root != EngineStore.allDrives, totalBytes > 0 else { return nil }
+        let used = totalBytes - freeBytes
+        let scanned = entries.reduce(Int64(0)) { $0 + $1.bytes }
+        guard used > scanned else { return nil }
+        let rest = root == NSHomeDirectory()
+            ? "The rest is outside Home: macOS, apps, system data and other accounts. Pick \(bootVolumeName()) above to scan all of it."
+            : "The rest is space no scan can read: macOS itself, swap, snapshots, and folders Performac is not allowed into."
+        return "This scan finds \(Fmt.bytes(scanned)) of the \(Fmt.bytes(used)) in use. \(rest)"
+    }
     private var maxBytes: Int64 { entries.map(\.bytes).max() ?? 1 }
 
     private func rowInfo(_ e: SizeEntry) -> RowInfo {
@@ -127,7 +142,7 @@ struct DiskView: View {
                 ScanProgress(files: scanFiles, bytes: scanBytes, elapsed: scanElapsed,
                              currentPath: scanPath, onCancel: onCancel)
             } else if let at = lastScanAt, !entries.isEmpty {
-                StaleBanner(at: at)
+                StaleBanner(at: at, coverage: coverage)
             }
 
             HSplitView {
@@ -250,6 +265,7 @@ struct DiskView: View {
 /// strip reading "Last scan: 2s ago", which teaches you to ignore the colour.
 struct StaleBanner: View {
     let at: Int64
+    var coverage: String? = nil
     private static let staleAfter: TimeInterval = 86_400
 
     private var date: Date { Date(timeIntervalSince1970: Double(at) / 1000) }
@@ -263,6 +279,10 @@ struct StaleBanner: View {
                 .font(.pcSmall).foregroundStyle(PC.ink2).monospacedDigit()
             if stale {
                 Text("· rescan for current numbers").font(.pcSmall).foregroundStyle(PC.amber)
+            }
+            if let coverage {
+                Text("· " + coverage).font(.pcSmall).foregroundStyle(PC.meta)
+                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
         }

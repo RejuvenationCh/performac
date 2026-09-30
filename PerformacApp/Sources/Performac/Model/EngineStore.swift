@@ -877,24 +877,31 @@ final class EngineStore: ObservableObject {
     static let allDrives = "/"
 
     /// The drives an all-drives scan actually walks: every target except the sentinel itself.
+    /// Home is left out: it lives on the startup disk, so counting both counts it twice.
     var allDriveRoots: [String] {
-        scanTargets.filter { $0.path != Self.allDrives }
+        scanTargets.filter { $0.path != Self.allDrives && $0.path != NSHomeDirectory() }
             .map { ($0.path as NSString).expandingTildeInPath }
     }
+
+    /// The startup disk's writable half: where everything that is not macOS itself lives.
+    static let bootData = "/System/Volumes/Data"
 
     /// A friendly name for a child of the all-drives root, whose stored name is a sub-path.
     static func driveLabel(forChild name: String) -> String {
         let full = "/" + name
         if full == NSHomeDirectory() { return "Home" }
+        if full == bootData { return bootVolumeName() }
         return (full as NSString).lastPathComponent
     }
 
     /// Home plus every mounted volume. Externals appear here the moment they are plugged in.
     var scanTargets: [(label: String, path: String)] {
-        var out: [(String, String)] = [("Home", NSHomeDirectory())]
+        // Home alone could never explain the disk: on a fresh Mac nearly everything in use is
+        // outside it, and the free-space bar beside a Home scan read as 30 GB gone missing.
+        var out: [(String, String)] = [("Home", NSHomeDirectory()), (bootVolumeName(), Self.bootData)]
         for p in mountedVolumes { out.append(((p as NSString).lastPathComponent, p)) }
-        // offered only when there is more than one thing to combine
-        if out.count > 1 { out.insert(("All drives", Self.allDrives), at: 0) }
+        // offered only when there is a second drive to combine with the startup disk
+        if !mountedVolumes.isEmpty { out.insert(("All drives", Self.allDrives), at: 0) }
         return out
     }
 
@@ -1103,8 +1110,9 @@ final class EngineStore: ObservableObject {
     /// Breadcrumb components from the scan root down to where we are.
     var breadcrumb: [(name: String, path: String)] {
         let rootPath = (scanRoot as NSString).expandingTildeInPath
-        let rootName = rootPath == Self.allDrives
-            ? "All drives" : (rootPath as NSString).lastPathComponent
+        let rootName = rootPath == Self.allDrives ? "All drives"
+            : rootPath == Self.bootData ? bootVolumeName()
+            : (rootPath as NSString).lastPathComponent
         guard browsePath.hasPrefix(rootPath) else {
             return [(rootName, rootPath)]
         }
@@ -1174,10 +1182,11 @@ final class EngineStore: ObservableObject {
             // carry the single old timestamp over to the per-root form
             scanTimes = [(root as NSString).expandingTildeInPath: ts]
         }
-        guard let o = getSetting(db, "lastDiskScan")?.objectVal else { return }
         // The tree lives in scan_entries, so a stale scan is fully browsable on relaunch.
-        let root = (o["root"]?.stringVal ?? scanRoot as String)
-        browsePath = (root as NSString).expandingTildeInPath
+        // Land on the picker's own target: trees are kept per root. This used to land on
+        // wherever the most recent scan ran, so after scanning the T7 and picking Home, a
+        // relaunch listed the T7's folders under a Home label beside the internal disk's space.
+        browsePath = (scanRoot as NSString).expandingTildeInPath
         diskEntries = childrenOf(browsePath)
     }
 

@@ -129,7 +129,10 @@ public struct DiskScanner: Sendable {
         return solid ? 8 : 2
     }
     /// Path prefixes to prune entirely (skipDescendants when the enumerator reaches them).
-    public var skipPaths: [String] = ["/System", "/Volumes"]
+    /// The last one is where every mounted drive also appears inside the startup disk's Data
+    /// volume. "/Volumes" alone does not match it, so a startup-disk scan walked straight into
+    /// the externals and counted them as part of this Mac.
+    public var skipPaths: [String] = ["/System", "/Volumes", "/System/Volumes/Data/Volumes"]
     public var progressInterval: TimeInterval = 0.2
 
     public init() {}

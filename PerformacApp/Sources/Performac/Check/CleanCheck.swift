@@ -189,6 +189,13 @@ extension CleanCheck {
         // the guard is in moveToTrash, not only in the menu: an allowlisted drive is refused
         let r = Trash.moveToTrash([NSHomeDirectory()], allowed: [NSHomeDirectory()],
                                   db: nil, now: 0)
+        for p in ["/Applications", "/Library", "/Users/someone", "/System/Volumes/Data",
+                  "/System/Volumes/Data/Library", "/System/Volumes/Data/private",
+                  "/System/Volumes/Data/Users/someone"] {
+            c.check("trash: refuses startup-disk top level \(p)", Trash.isRootLike(p))
+        }
+        c.check("trash: a file inside Applications is not root-like",
+                !Trash.isRootLike("/Applications/Some.app"))
         c.check("trash: moveToTrash refuses a drive even when allowlisted",
                 r.first?.ok == false)
         c.check("trash: and says why", r.first?.message?.contains("whole drive") == true)

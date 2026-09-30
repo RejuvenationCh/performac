@@ -24,14 +24,24 @@ enum VolumeCheck {
         // only when there is more than one thing to combine
         let targets = store.scanTargets
         c.check("volumes: Home is always a target", targets.contains { $0.label == "Home" })
+        c.check("volumes: the startup disk is always a target", targets.contains { $0.path == EngineStore.bootData })
         c.eq("volumes: every mounted drive is a target",
              Set(targets.map(\.path)).intersection(live), Set(live))
         c.eq("volumes: All drives is offered exactly when there is more than one",
              targets.contains { $0.path == EngineStore.allDrives }, live.count >= 1)
         c.eq("volumes: the combined option is not itself a drive to walk",
              store.allDriveRoots.contains(EngineStore.allDrives), false)
-        c.eq("volumes: every drive is walked by a combined scan",
-             Set(store.allDriveRoots), Set([NSHomeDirectory()] + live))
+        c.eq("volumes: a combined scan walks the startup disk and every drive, not Home twice",
+             Set(store.allDriveRoots), Set([EngineStore.bootData] + live))
+
+        // relaunch lands on the picked target, not on wherever the last scan happened to run
+        do {
+            let db = DB(path: NSTemporaryDirectory() + "performac-land-\(UUID().uuidString).db")
+            setSetting(db, "diskScanRoot", JSONValue.from(["path": NSHomeDirectory()]))
+            setSetting(db, "lastDiskScan", JSONValue.from(["root": "/Volumes/T7", "ts": 1.0]))
+            let relaunched = EngineStore(db: db)
+            c.eq("volumes: relaunch browses the picked target", relaunched.browsePath, NSHomeDirectory())
+        }
 
         // a drive appearing is offered; the same list twice changes nothing
         store.mountedVolumesForChecks = ["/Volumes/A"]
