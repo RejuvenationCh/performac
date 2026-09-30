@@ -21,11 +21,13 @@ Paste this into Terminal:
 curl -fsSL https://raw.githubusercontent.com/RejuvenationCh/performac/main/install.sh | bash
 ```
 
-It downloads the latest release, puts it in `~/Applications` and opens it. No Xcode, no
+It downloads the latest release, puts it in `~/Applications` and opens it. Run it again any time:
+it says what you have and what it is installing, and does nothing if you are already current
+(`curl ... | bash -s -- --force` reinstalls anyway). No Xcode, no
 compiling. Runs on Apple Silicon and Intel, macOS 14 (Sonoma) or later.
 
-**Updates install themselves.** Performac checks GitHub once a day (or right away from Settings,
-Check Now), installs a newer release in the background, and asks you to restart. The previous
+**Updates install themselves.** Performac checks GitHub once a day (or right away from the
+Performac menu, Check for Updates), installs a newer release in the background, and asks you to restart. The previous
 version goes to the Trash, so going back is one Put Back away. An update is accepted only if it
 is signed by the same certificate as the copy you have.
 

@@ -15,6 +15,10 @@ its current version.
 
 ## 0.2.1
 
+- Performac menu, Check for Updates. A newer release installs and offers a restart; otherwise
+  it says you are up to date.
+- The install command knows what you have: it says which version it is replacing, and does
+  nothing when you already have the latest. Add `bash -s -- --force` to reinstall anyway.
 - Disk can scan the whole startup disk, not only Home. It is in the picker under the disk's
   own name.
 - The Disk screen says how much of the used space a scan found and what the rest is. A Home

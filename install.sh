@@ -6,6 +6,10 @@
 # Downloads the latest release, already built. No compiler, no Xcode. Because curl (not a
 # browser) fetches it, macOS does not quarantine it and there is no "damaged app" dialog.
 #
+#   curl -fsSL .../install.sh | bash -s -- --force
+#
+# Reinstalls even when the latest release is already there, to repair a damaged copy.
+#
 #   ./install.sh --source
 #
 # Builds from a clone instead. Every failure below is turned into a sentence saying what to do,
@@ -82,8 +86,26 @@ usually fixes it. If they say something else, that output is the useful part: se
     rm -f "$LOG"
     [ -d "$APP" ] || fail "The build reported success but $APP is not there. Something is wrong."
 else
+    # Say what is about to happen, and do nothing when there is nothing to do. The latest
+    # version comes from the same API the app's update check asks. If GitHub does not answer
+    # (offline, rate limited), install anyway rather than refuse.
+    HAVE="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Contents/Info.plist" 2>/dev/null)"
+    LATEST=""
+    [ -z "${PERFORMAC_ZIP_URL:-}" ] && LATEST="$(curl -fsSL https://api.github.com/repos/RejuvenationCh/performac/releases/latest 2>/dev/null \
+        | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -1)"
+    if [ -n "$HAVE" ] && [ "$HAVE" = "$LATEST" ] && [ "${1:-}" != "--force" ]; then
+        say "Performac $HAVE is already installed, and it is the latest release. Nothing to do."
+        say "It also updates itself: Performac menu, Check for Updates."
+        open "$APP"
+        exit 0
+    fi
+
     TMP="$(mktemp -d -t performac)"
-    say "Downloading the latest release."
+    if [ -n "$HAVE" ] && [ "$HAVE" = "$LATEST" ]; then say "Reinstalling Performac $HAVE."
+    elif [ -n "$HAVE" ] && [ -n "$LATEST" ]; then say "Replacing Performac $HAVE with $LATEST."
+    elif [ -n "$LATEST" ]; then say "Installing Performac $LATEST."
+    else say "Downloading the latest release."
+    fi
     curl -fL --progress-bar -o "$TMP/Performac.zip" "$ZIP_URL" \
         || fail "The download failed. Check the connection and try again.
 

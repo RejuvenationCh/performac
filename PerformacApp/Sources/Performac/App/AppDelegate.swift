@@ -125,6 +125,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "About Performac", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        let updates = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
+        updates.target = self
+        appMenu.addItem(updates)
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide Performac", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(withTitle: "Quit Performac", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -211,6 +214,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             default: break
             }
             return event
+        }
+    }
+
+    /// Where a Mac user looks first. A newer release brings up the same sheet the daily check
+    /// does; anything else (up to date, offline, a development build) is said in an alert,
+    /// because a menu command that answers with nothing reads as broken.
+    @objc private func checkForUpdates() {
+        let updates = UpdateChecker.shared
+        guard !updates.checking else { return }
+        openWindow()
+        Task { @MainActor in
+            await updates.checkNow()
+            guard updates.offered == nil else { return }
+            let alert = NSAlert()
+            alert.messageText = "Check for Updates"
+            alert.informativeText = updates.status
+            alert.runModal()
         }
     }
 
