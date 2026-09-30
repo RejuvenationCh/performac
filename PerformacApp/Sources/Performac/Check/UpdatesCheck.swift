@@ -24,6 +24,19 @@ enum UpdatesCheck {
         c.eq("updates: keeps the release notes", r?.body, "- Faster scans")
         c.true_("updates: no assets decodes as nil", r?.assets == nil)
 
+        c.eq("updates: a wrapped bullet reads as one line",
+             Updates.reflow("- Checks once a day; otherwise\n  it says so.\n- Second"),
+             "- Checks once a day; otherwise it says so.\n- Second")
+        c.eq("updates: paragraphs and headings stay apart",
+             Updates.reflow("**Heads up** first\nline.\n\n## Next\ntext"),
+             "**Heads up** first line.\n\n## Next\ntext")
+        c.eq("updates: a code block is kept exactly",
+             Updates.reflow("Run:\n\n```bash\ncurl -fsSL x\n| bash\n```\nAfter"),
+             "Run:\n\n```bash\ncurl -fsSL x\n| bash\n```\nAfter")
+        c.eq("updates: numbered steps stay separate",
+             Updates.reflow("1. Bump it\n   and commit.\n2. Run it"), "1. Bump it and commit.\n2. Run it")
+        c.eq("updates: Windows line endings too", Updates.reflow("a\r\nb"), "a b")
+
         let withZip = #"{"tag_name":"v0.2.0","html_url":"u","assets":[{"name":"Performac.zip","browser_download_url":"https://x/Performac.zip","size":1}]}"#
         let z = try? JSONDecoder().decode(Release.self, from: Data(withZip.utf8))
         c.eq("updates: finds the release zip", z?.assets?.first(where: { $0.name == Updates.assetName })?.browser_download_url, "https://x/Performac.zip")

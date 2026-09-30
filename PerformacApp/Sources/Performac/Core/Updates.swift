@@ -122,6 +122,29 @@ enum Updates {
         return p.terminationStatus
     }
 
+    /// Release notes come from CHANGELOG.md, which is hard-wrapped, and the sheet keeps line
+    /// breaks so a list stays a list. Together those broke every bullet mid-sentence. A line is
+    /// joined onto the one above unless either is blank, either is a heading, it starts a bullet, or it
+    /// is part of a code block, which is kept exactly.
+    static func reflow(_ text: String) -> String {
+        var out: [String] = []
+        var inFence = false
+        for line in text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n") {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            let fence = t.hasPrefix("```")
+            if let last = out.last, !inFence, !fence, !t.isEmpty,
+               !last.trimmingCharacters(in: .whitespaces).isEmpty, !last.hasPrefix("```"), !last.hasPrefix("#"),
+               !t.hasPrefix("- "), !t.hasPrefix("* "), !t.hasPrefix("#"),
+               t.range(of: #"^\d+\. "#, options: .regularExpression) == nil {
+                out[out.count - 1] += " " + t
+            } else {
+                out.append(line)
+            }
+            if fence { inFence.toggle() }
+        }
+        return out.joined(separator: "\n")
+    }
+
     static func parse(_ s: String) -> (core: [Int], pre: String?, text: String) {
         var v = s.trimmingCharacters(in: .whitespaces)
         if v.first == "v" || v.first == "V" { v.removeFirst() }

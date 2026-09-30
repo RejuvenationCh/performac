@@ -122,7 +122,7 @@ private struct UpdateSheet: View {
     /// still reads as a list. Falls back to the raw text if it does not parse.
     private var notes: AttributedString {
         // Inline parsing leaves "### Fixes" literal, so headings become bold lines first.
-        let raw = (release.body?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
+        let raw = Updates.reflow(release.body?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
             .replacingOccurrences(of: #"(?m)^#{1,6}\s*(.+?)\s*$"#, with: "**$1**", options: .regularExpression)
         if raw.isEmpty { return AttributedString("This release has no notes.") }
         return (try? AttributedString(markdown: raw, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
